@@ -258,11 +258,13 @@ def test_new_name_rules_retag_everything(
 
 def test_old_mov_labels_become_m4a(tmp_path: Path) -> None:
     path = tmp_path / "c.sqlite"
-    with closing(db.connect(path)) as conn:
-        conn.execute("PRAGMA user_version = 3")
-        conn.execute(
+    with closing(sqlite3.connect(path)) as old:  # a catalogue from before migration 4
+        for script in db.MIGRATIONS[:3]:
+            old.executescript(script)
+        old.execute("PRAGMA user_version = 3")
+        old.execute(
             "INSERT INTO asset (hash, bytes, container, origin) VALUES ('a', 1, 'mov', 'source')"
         )
-        conn.commit()
+        old.commit()
     with closing(db.connect(path)) as conn:
         assert conn.execute("SELECT container FROM asset").fetchone()[0] == "m4a"

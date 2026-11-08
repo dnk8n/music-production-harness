@@ -73,6 +73,7 @@ def build_parser() -> argparse.ArgumentParser:
     ana.add_argument("--force", action="store_true", help="re-analyse even if cached")
 
     _add_search(cat_sub)
+    _add_provenance(cat_sub)
 
     spec = sub.add_parser("spec", help="spec tooling")
     spec_sub = spec.add_subparsers(dest="action", required=True)
@@ -103,6 +104,24 @@ def _add_search(cat_sub: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     find.add_argument("--licence", help="e.g. commercial-pack, cc0")
     find.add_argument("--limit", type=int, default=20)
     find.add_argument("--json", action="store_true", help="machine-readable output")
+
+
+def _add_provenance(cat_sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    der = cat_sub.add_parser("derive", help="make a derivative (cached, with its recipe)")
+    der.add_argument("sound", help="source-relative path or hash prefix")
+    der.add_argument("recipe", choices=["trim"])
+    der.add_argument("--start", type=float, default=0.0, help="seconds")
+    der.add_argument("--end", type=float, required=True, help="seconds")
+    der.add_argument("--stash", metavar="NAME", help="also keep it in this stash")
+    keep = cat_sub.add_parser("stash", help="keep a derivative safe from cache purges")
+    keep.add_argument("sound")
+    keep.add_argument("name")
+    cat_sub.add_parser("purge-cache", help="delete cached derivatives (stashes stay)")
+    cat_sub.add_parser("refresh", help="rebuild missing derivatives from their recipes")
+    cat_sub.add_parser("lineage", help="show how a sound was made").add_argument("sound")
+    web = cat_sub.add_parser("browse", help="search, play, layer and trace sounds in a browser")
+    web.add_argument("--port", type=int, default=8765)
+    web.add_argument("--no-open", action="store_true", help="just print the address")
 
 
 def main(argv: Sequence[str] | None = None) -> int:

@@ -80,6 +80,7 @@ class Hit:
     reasons: tuple[str, ...]
     duration_s: float | None
     lufs: float | None
+    facts: dict[str, str] = field(default_factory=dict)  # best role, bpm, key, form
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -89,6 +90,7 @@ class Hit:
             "reasons": list(self.reasons),
             "duration_s": self.duration_s,
             "lufs": self.lufs,
+            "facts": self.facts,
         }
 
 
@@ -244,7 +246,15 @@ def score(item: Candidate, query: Query) -> Hit | None:
         reasons=tuple(reason for _, reason in kept),
         duration_s=item.duration_s,
         lufs=_lufs(item),
+        facts=facts(item),
     )
+
+
+def facts(item: Candidate) -> dict[str, str]:
+    found = {name: best.value for name in ("role", "bpm", "key") if (best := item.best(name))}
+    if form := _form(item):
+        found["form"] = form
+    return found
 
 
 def search(conn: sqlite3.Connection, query: Query) -> Result:

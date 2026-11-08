@@ -1,0 +1,26 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+dist/
+build/
+*.egg-info/
+# Local runtime data never belongs in the repo
+/data/
+*.sqlite
+*.sqlite3
+*.db
+# Audio renders and caches live in the configured data_dir, never here
+*.wav
+*.aif
+*.aiff
+*.flac
+# Local user config may reference private paths
+config/local.toml
+.env
+.env.*
+.DS_Store

@@ -1,0 +1,298 @@
+# Benchmarks
+
+**Status:** draft (built in step 3; Dean's sign-off unlocks the first track spec)
+
+Each benchmark is a short render (8 to 32 bars) with three parts:
+
+1. **Description:** what Dean should hear, in plain words, written before rendering.
+2. **Measurements:** automated checks that the render does what the score says.
+3. **Verdict:** Dean listens on the feedback page and records pass/fail plus notes.
+
+A benchmark passes when the measurements pass *and* Dean passes it. Renders
+are 48 kHz / 24-bit AIFF via the delivery path, so they also exercise
+REQ-AUD-03.
+
+## Shared measurements
+
+### REQ-BEN-01: Timing accuracy
+Detected onsets fall within ±1 ms of their scored position (after swing),
+for every drum hit in the benchmark.
+- **Why:** a quantised groove that drifts sounds sloppy. We need to know the
+  pipeline is sample-accurate before blaming the music.
+- **Verify:** measure
+
+### REQ-BEN-02: Every benchmark has a written expectation
+A benchmark can't render until its description, tempo, length and
+measurements are in this file.
+- **Why:** writing the expectation first is what makes the listening test honest.
+- **Verify:** test
+
+### REQ-BEN-03: Benchmark QA report
+Each render writes `report.json` next to the audio: score hash, tool
+versions, measurements with pass/fail, loudness, true peak, and the licence marker.
+- **Why:** the feedback page and the AI reviewer read the report, not the code.
+- **Verify:** test
+
+## Drum patterns
+
+Grid notation: 16 steps per bar, `x` hit, `X` accent, `.` rest,
+`o` open hat. Kits come from the catalogue (909/808-style hits from the
+Loopmasters techno packs, Photek hits) unless a pattern says "synth".
+
+### BM-DRUM-01: Detroit four-to-the-floor
+130 BPM, straight.
+```
+kick  X . . . X . . . X . . . X . . .
+clap  . . . . x . . . . . . . x . . .
+chh   . . x . . . x . . . x . . . x .
+```
+Hear: a driving, even pulse. Hats sit exactly between kicks (the offbeat
+"tss"), clap on 2 and 4. Mechanical on purpose, like early Underground
+Resistance or Jeff Mills.
+- **Why:** the reference groove. If this isn't tight, nothing else will be.
+- **Verify:** measure, listen
+
+### BM-DRUM-02: Jersey garage shuffle
+122 BPM, 16th swing 58%.
+```
+kick  X . . . X . . . X . . . X . . .
+clap  . . . . x . . . . . . . x . . .
+chh   x x x x x x x x x x x x x x x x
+ohh   . . o . . . o . . . o . . . o .
+```
+Hear: the same four-on-the-floor, but every second 16th hat arrives late, so
+the hats skip and bounce. Open hats on the offbeat give the Jersey and
+Paradise Garage lift (Tony Humphries, Kerri Chandler).
+- **Why:** swing is the main thing that separates the Jersey sound from Detroit.
+  It tests that swing is applied and measured correctly.
+- **Verify:** measure, listen
+
+### BM-DRUM-03: UK garage 2-step
+132 BPM, 16th swing 62%.
+```
+kick  X . . . . . . . . . x . . . . .
+snare . . . . X . . . . . . . X . . .
+chh   x . x x x . x x x . x x x . x x
+```
+Hear: no kick on beats 2 and 4. The kick skips, landing on 1 and the "and"
+of 3, so the groove limps forward. A heavily swung hat carries it.
+- **Why:** checks that the system handles broken kick patterns, not just 4/4.
+- **Verify:** measure, listen
+
+### BM-DRUM-04: Electro syncopation
+128 BPM, straight, synth (808-style from SuperCollider).
+```
+kick  X . . x . . x . . . X . . x . .
+snare . . . . X . . . . . . . X . . .
+chh   x . x . x . x . x . x . x . x .
+```
+Hear: a funky, robotic kick that dodges the beat (Drexciya, Cybotron). The
+snare holds 2 and 4 steady while the kick pushes and pulls around it.
+- **Why:** tests synthesised drums (not samples) and syncopation.
+- **Verify:** measure, listen
+
+### BM-DRUM-05: Dub techno with ghost notes
+124 BPM, straight.
+```
+kick  X . . . X . . . X . . . X . . .
+rim   . . . x . . x . . x . . . . x .
+chh   . . x . . . x . . . x . . . x .
+```
+Rim velocities alternate 100% and 45% (ghost notes).
+Hear: a soft, deep kick with a quiet rimshot dancing around it. Some rims are
+barely audible, more felt than heard (Basic Channel feel).
+- **Why:** tests velocity dynamics. Ghost notes must be quieter, not missing.
+- **Verify:** measure, listen
+
+### BM-DRUM-06: Chicago jack
+125 BPM, straight.
+```
+kick  X . . . X . . . X . . . X . . .
+clap  . . . . x . . . . . . . x . . .
+chh   x x . x x x . x x x . x x x . x
+ohh   . . o . . . o . . . o . . . o .
+```
+Hear: busy, jacking 909 hats with an open hat cutting through on each offbeat.
+The open hat is choked (cut short) by the next closed hat.
+- **Why:** tests hat choke groups. An open hat ringing over a closed one is a
+  classic programming error.
+- **Verify:** measure, listen
+
+### BM-DRUM-07: Tribal techno, 3 against 4
+128 BPM. Kick in 4/4. Toms repeat every 3 sixteenths, and the tom cycle continues
+across bar lines (the grid shows bar 1 only).
+```
+kick  X . . . X . . . X . . . X . . .
+tom   x . . x . . x . . x . . x . . x
+chh   . . x . . . x . . . x . . . x .
+```
+Hear: the toms seem to rotate against the kick, since the pattern only lines
+up again every 3 bars. Hypnotic rather than repetitive.
+- **Why:** polyrhythm is the base for the African drum layers in track 1.
+- **Verify:** measure, listen
+
+### BM-DRUM-08: Afro house clave
+122 BPM. Son clave (3-2) over a 4/4 kick, with conga and shaker.
+```
+kick   X . . . X . . . X . . . X . . .
+clave  x . . x . . x . . . x . x . . .
+conga  . . x . . x . x . . x . . . x x
+shaker x x x x x x x x x x x x x x x x
+```
+Hear: the clave's 3-2 call-and-response sits over a steady kick. Congas
+answer between the clave hits, and the shaker gives constant motion with
+natural, uneven velocity (±10% humanisation, seeded).
+- **Why:** organic recorded percussion over electronic kick is the heart of
+  the track 1 brief. Seeded humanisation tests determinism with variation.
+- **Verify:** measure, listen
+
+### BM-DRUM-09: Breakbeat chop
+130 BPM. A catalogued break (Photek or Mutant Breaks) sliced at onsets and
+re-sequenced: slice order 1 2 3 4 1 2 7 8 / 1 2 3 4 5 5 7 8.
+Hear: the original break's feel, with a repeated slice in bar 2 creating a
+stutter. No clicks at slice boundaries.
+- **Why:** tests onset slicing, re-sequencing and click-free edits (fades of
+  1 ms or less at zero crossings).
+- **Verify:** measure, listen
+
+### BM-DRUM-10: Speed garage drive
+130 BPM, 16th swing 55%.
+```
+kick  X . . . X . . . X . . . X . . .
+snare . . . . x . . . . . . . x . x x
+chh   x x x x x x x x x x x x x x x x
+ohh   . . o . . . o . . . o . . . o .
+```
+Snare roll velocity ramps from 60% to 100% over the last 4 steps of every
+4th bar.
+Hear: four-to-the-floor with a pushy shuffle, and a snare flam that builds
+into each phrase.
+- **Why:** tests velocity ramps and phrase-level variation (every 4th bar).
+- **Verify:** measure, listen
+
+## Bass
+
+### BM-BASS-01: Acid line
+130 BPM. A 16-step 303-style line, synthesised in SuperCollider with an
+oversampled resonant low-pass filter (REQ-AUD-04).
+```
+note   C2 C2 C3 C2 D#2 C2 G2 C2 C2 A#2 C2 C3 C2 F2 C2 G2
+accent .  .  X  .  .   .  X  .  .  .   .  X  .  .  .  X
+slide  .  .  .  .  S   .  .  .  .  S   .  .  .  .  .  .
+gate   x  x  x  .  x   x  x  x  x  x   .  x  x  x  x  x
+```
+Hear: the squelch. Accented notes are louder and brighter, with a vocal
+"wow". Slid notes glide in pitch without retriggering. Turning cutoff up
+opens from muffled to buzzy, and resonance up makes it whistle and scream.
+Live controls (laptop keyboard, through Renoise in step 4, standalone in step 3):
+
+| Keys | Control | Range |
+|---|---|---|
+| `1` / `2` | cutoff down / up | 80 Hz to 8 kHz, log steps |
+| `3` / `4` | resonance down / up | 0 to self-oscillation edge |
+| `5` / `6` | envelope mod down / up | 0 to 100% |
+| `7` / `8` | decay down / up | 50 ms to 2 s |
+| `9` / `0` | accent amount down / up | 0 to 100% |
+
+- **Why:** the 303 is the canonical acid sound and a hard test of filter
+  quality, slides and live control.
+- **Verify:** measure, listen
+
+## Effects
+
+### BM-FX-01: Delay throw
+A single clap at bar 4 is sent to a tempo-synced dotted-1/8 delay with 45%
+feedback. Hear: the clap echoes off-beat about 5 times, each quieter and darker
+(low-pass in the feedback loop). The echoes stop cleanly, and nothing else is delayed.
+- **Why:** tests sends, tempo sync and automation of a send for one hit.
+- **Verify:** measure, listen
+
+### BM-FX-02: Filter build
+8 bars of BM-DRUM-01. A high-pass filter on the drum bus sweeps from 20 Hz to
+1 kHz over bars 1 to 7, then snaps back at bar 8. Hear: the kick thins out and
+the beat gets more tense, then the full weight slams back on the downbeat.
+- **Why:** tests smooth automation (no zipper noise) and the "drop".
+- **Verify:** measure, listen
+
+### BM-FX-03: Reverb wash
+A stab with a long hall (4 s decay), with the reverb return automated from
+-inf to 0 dB over 2 bars. Hear: the stab grows a tail that swells into a wash,
+with no metallic ringing.
+- **Why:** tests reverb quality and return automation.
+- **Verify:** measure, listen
+
+### BM-FX-04: Beat repeat
+Bar 4 of BM-DRUM-02 repeats its last 1/8 note at 1/16, then 1/32. Hear: a
+stutter roll that tightens into the next bar, landing exactly on beat 1.
+- **Why:** tests buffer FX, and that timing re-locks to the grid.
+- **Verify:** measure, listen
+
+## Sidechain
+
+### BM-SC-01: Kick-triggered ducking
+BM-DRUM-01 plus a sustained pad and the acid bass, both sidechained to the kick.
+Expected envelope on the pad: ducks 6 dB (±1 dB) within 5 ms of each kick,
+recovers to full level by the next 8th note (230 ms at 130 BPM), using a
+smooth release curve.
+Hear: the pad and bass "breathe" with the kick. They pump, rising between
+kicks and dipping as each kick lands. The kick punches through cleanly, with
+no low-end smear. At 0 dB depth (bypass), the kick sounds buried, which
+proves the effect.
+- **Why:** sidechain is the backbone of club mix clarity. The measurement
+  checks depth and timing, and the bypass A/B checks Dean's ear.
+- **Verify:** measure, listen
+
+## Vocals
+
+### BM-VOX-01: Local vocal fitted
+The catalogue search finds a vocal loop from the local library (e.g. Phonk
+Hip Hop or Maximum EDM vocals) whose BPM and key suit 124 BPM in A minor.
+It's time-stretched only if more than 2% off, and placed on the bar grid over
+BM-DRUM-02. Processing: high-pass at 120 Hz, gentle compression (3:1), de-ess,
+and a send to BM-FX-01's delay. It's kept at its native sample rate (REQ-AUD-01).
+Hear: the vocal sits on the beat, on top of the mix but not detached from it,
+with no pitch wobble or stretch artefacts. Consonants are clear.
+- **Why:** proves catalogue search, fit and vocal chain on material Dean owns.
+- **Verify:** measure, listen
+
+### BM-VOX-02: Spoken word from an archive
+A public domain spoken word recording is downloaded from Internet Archive or
+LibriVox. Demucs separates it if there's music under it. It's trimmed to
+phrases at silences, and three phrases are placed over 16 bars of BM-DRUM-07.
+Hear: an old, characterful voice (room tone is fine) delivering clear
+phrases, each starting on a downbeat, with no music bleed and no chopped words.
+Marked `licence:clear` only if every ingredient is publishable.
+- **Why:** track 1 fuses spoken word with techno, and the library has none.
+  Tests download, licence tracking, separation and phrase detection.
+- **Verify:** measure, listen
+
+## Delivery and professional QA
+
+### BM-MST-01: Mastered delivery
+A 2-minute mini-arrangement of BM-DRUM-02, BM-BASS-01, BM-SC-01 and BM-VOX-01,
+mastered and delivered. Measurements:
+- integrated loudness within ±0.5 LU of `master.target_lufs_integrated` (default -8 LUFS),
+- true peak at or below `master.max_true_peak_dbtp` (default -1.0 dBTP, 4x oversampled),
+- no clipped samples, DC offset under -60 dBFS,
+- low end mono: inter-channel correlation above 0.9 below 120 Hz,
+- file is 48 kHz / 24-bit AIFF and lead-in is 10 ms or less (REQ-AUD-06),
+- loudness range (LRA) reported, not gated.
+Hear: loud and punchy but not squashed. The kick still has transient snap,
+and nothing distorts on a big system.
+- **Why:** club systems punish phasey sub and clipped masters. These are the
+  numbers mastering engineers check.
+- **Verify:** measure, listen
+
+### BM-MST-02: Render determinism
+BM-MST-01 rendered twice gives bit-identical SuperCollider stems, and the
+Renoise master null-tests below -120 dBFS (REQ-AUD-05).
+- **Why:** without determinism, A/B feedback is meaningless.
+- **Verify:** measure
+
+### BM-MST-03: Delivery path comparison
+The same Renoise song delivered two ways: (a) Renoise renders 96 kHz float,
+then libsoxr SRC plus TPDF dither (ADR-0003), and (b) Renoise renders 48 kHz /
+24-bit directly. Report the null difference and spectra, and Dean does a
+blind A/B.
+- **Why:** ADR-0003 is a reasoned bet. This benchmark settles it with evidence.
+- **Verify:** measure, listen

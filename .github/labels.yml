@@ -1,0 +1,29 @@
+# Labels are code (REQ-PRC-04). Synced by .github/workflows/labels.yml.
+# Meaning of each group: spec/process/agent-workflow.md
+- {name: "type:spec", color: "5319e7", description: "Change to the spec (source of truth)"}
+- {name: "type:dev", color: "1d76db", description: "Implementation work"}
+- {name: "type:qa", color: "0e8a16", description: "Tests, benchmarks, measurements"}
+- {name: "type:infra", color: "bfd4f2", description: "CI, tooling, repo setup"}
+- {name: "type:feedback", color: "fbca04", description: "Dean's listening verdict on a render"}
+- {name: "type:bug", color: "d73a4a", description: "Something behaves differently from the spec"}
+- {name: "type:research", color: "c5def5", description: "Investigate before deciding"}
+- {name: "area:config", color: "ededed", description: "Config and secrets"}
+- {name: "area:doctor", color: "ededed", description: "Doctor, status, installers"}
+- {name: "area:catalogue", color: "ededed", description: "Sample catalogue and search"}
+- {name: "area:synthesis", color: "ededed", description: "SuperCollider / Tidal"}
+- {name: "area:vocals", color: "ededed", description: "Vocal sourcing, separation, fitting"}
+- {name: "area:renoise", color: "ededed", description: "Renoise bridge and template"}
+- {name: "area:mastering", color: "ededed", description: "Mastering and delivery"}
+- {name: "area:benchmarks", color: "ededed", description: "Benchmark kit and feedback page"}
+- {name: "area:ai", color: "ededed", description: "AI reviewers and agent workflow"}
+- {name: "step:1-skeleton", color: "006b75", description: "Plan step 1"}
+- {name: "step:2-catalogue", color: "006b75", description: "Plan step 2"}
+- {name: "step:3-benchmarks", color: "006b75", description: "Plan step 3"}
+- {name: "step:4-renoise", color: "006b75", description: "Plan step 4"}
+- {name: "p0", color: "b60205", description: "Now"}
+- {name: "p1", color: "d93f0b", description: "Next"}
+- {name: "p2", color: "fef2c0", description: "Later"}
+- {name: "needs:decision", color: "e99695", description: "Waiting on a decision from Dean"}
+- {name: "needs:listening", color: "e99695", description: "Waiting on Dean's ears"}
+- {name: "blocked", color: "000000", description: "Blocked by something else"}
+- {name: "licence:clear", color: "0e8a16", description: "RESERVED: every ingredient is publishable"}

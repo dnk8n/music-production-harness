@@ -1,0 +1,36 @@
+# Built-in defaults. Spec: spec/components/config.md
+# Override in ~/.config/mph/config.toml (or the file named by $MPH_CONFIG).
+# Never put secrets here; see `mph secrets --help`.
+
+[paths]
+# Read-write home for the catalogue DB, downloads, cache, stashes and renders.
+data_dir = "~/Library/Application Support/mph"
+
+[audio]
+# Rate used for synthesis and intermediate stems (32-bit float).
+production_sample_rate = 96000
+# Final deliverable. The only point where SRC and dither happen (ADR-0003).
+delivery_sample_rate = 48000
+delivery_bit_depth = 24
+delivery_format = "aiff"
+
+[master]
+target_lufs_integrated = -8.0
+max_true_peak_dbtp = -1.0
+
+[secrets]
+# macOS Keychain service name under which all secrets are stored.
+keychain_service = "mph"
+
+[llm]
+# Advisory reviewers, tried in order; the first one that is reachable wins.
+providers = ["gemini", "ollama"]
+ollama_model = "gemma3:4b"
+
+# Read-only sample sources. Add more [[sources]] tables as needed.
+# Example (put real paths in your user config, not here):
+# [[sources]]
+# id = "dj-samples"
+# kind = "local"
+# path = "/Users/you/dj/samples"
+# license = "commercial-pack"

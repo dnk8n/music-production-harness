@@ -1,0 +1,11 @@
+# Copy to ~/.config/mph/config.toml and adjust. Spec: spec/components/config.md
+# Secrets never go here: use `mph secrets set <name>`.
+
+[paths]
+data_dir = "~/Library/Application Support/mph"
+
+[[sources]]
+id = "dj-samples"
+kind = "local"
+path = "/Users/dean/dj/samples"   # read-only, never written to (REQ-CAT-01)
+license = "commercial-pack"

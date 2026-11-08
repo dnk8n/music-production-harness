@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
 
+from mph.net import HttpError
 from mph.proc import Result
 
 Handler = Callable[[Sequence[str]], Result]
@@ -70,3 +73,41 @@ class ScriptedPrompter:
     def ask(self, label: str, *, secret: bool) -> str:
         self.asked.append((label, secret))
         return self.answers.pop(0)
+
+
+@dataclass
+class FakeHttp:
+    """Answers from URL-prefix maps; downloads write the mapped bytes."""
+
+    json_by_prefix: dict[str, Any] = field(default_factory=dict)
+    files: dict[str, bytes] = field(default_factory=dict)
+    posts: list[tuple[str, dict[str, str]]] = field(default_factory=list)
+    gets: list[str] = field(default_factory=list)
+    downloads: list[tuple[str, dict[str, str]]] = field(default_factory=list)
+    post_reply: dict[str, str] = field(
+        default_factory=lambda: {"access_token": "acc", "refresh_token": "ref2"}
+    )
+
+    def get_json(self, url: str, headers: Mapping[str, str] | None = None) -> Any:
+        self.gets.append(url)
+        for prefix, reply in self.json_by_prefix.items():
+            if url.startswith(prefix):
+                return reply
+        raise HttpError(f"404 from fake: {url}")
+
+    def post_form(self, url: str, form: Mapping[str, str]) -> Any:
+        self.posts.append((url, dict(form)))
+        return self.post_reply
+
+    def download(
+        self, url: str, dest: Path, *, max_bytes: int, headers: Mapping[str, str] | None = None
+    ) -> int:
+        self.downloads.append((url, dict(headers or {})))
+        if url not in self.files:
+            raise HttpError(f"404 from fake: {url}")
+        body = self.files[url]
+        if len(body) > max_bytes:
+            raise HttpError("bigger than the limit")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(body)
+        return len(body)

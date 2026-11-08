@@ -50,3 +50,15 @@ def test_third_party_imports_are_justified_and_contained() -> None:
         rel = path.relative_to(SRC).as_posix()
         for module in imported_modules(path) - allowed:
             assert rel in JUSTIFIED.get(module, set()), f"{rel} imports {module}"
+
+
+@pytest.mark.req("REQ-ENG-03")
+def test_only_net_talks_to_the_network() -> None:
+    network = {"urllib", "http", "socket", "ssl", "requests", "httpx"}
+    allowed = {"net.py", "catalogue/browse.py"}  # browse serves localhost only (REQ-BRW-01)
+    offenders = [
+        p.relative_to(SRC).as_posix()
+        for p in SRC.rglob("*.py")
+        if p.relative_to(SRC).as_posix() not in allowed and imported_modules(p) & network
+    ]
+    assert offenders == []

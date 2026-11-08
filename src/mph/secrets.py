@@ -68,7 +68,7 @@ CREDENTIALS: tuple[Credential, ...] = (
             ),
         ),
         notes="Search and previews work with these. Downloading original-quality files "
-        "also needs a one-time browser sign-in (OAuth2), added with the catalogue in step 2.",
+        "also needs a one-time browser sign-in (OAuth2): `mph catalogue auth freesound`.",
     ),
     Credential(
         "gemini",

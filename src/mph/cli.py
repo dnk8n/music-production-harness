@@ -119,6 +119,17 @@ def _add_provenance(cat_sub: argparse._SubParsersAction[argparse.ArgumentParser]
     cat_sub.add_parser("purge-cache", help="delete cached derivatives (stashes stay)")
     cat_sub.add_parser("refresh", help="rebuild missing derivatives from their recipes")
     cat_sub.add_parser("lineage", help="show how a sound was made").add_argument("sound")
+    get = cat_sub.add_parser("fetch", help="download sounds from a free source, with licences")
+    get.add_argument("connector", choices=["freesound", "archive", "librivox"])
+    get.add_argument("query", nargs="+", help="search words, e.g. djembe solo")
+    get.add_argument("--limit", type=int, default=10)
+    get.add_argument("--clear-only", action="store_true", help="only CC0, public domain, CC-BY")
+    get.add_argument("--previews", action="store_true", help="Freesound MP3 previews, no sign-in")
+    get.add_argument("--max-mb", type=int, default=200, help="skip files bigger than this")
+    cat_sub.add_parser("auth", help="one-time sign-in for original files").add_argument(
+        "connector", choices=["freesound"]
+    )
+    cat_sub.add_parser("credits", help="who made the downloaded sounds, and their licences")
     web = cat_sub.add_parser("browse", help="search, play, layer and trace sounds in a browser")
     web.add_argument("--port", type=int, default=8765)
     web.add_argument("--no-open", action="store_true", help="just print the address")
@@ -153,7 +164,7 @@ def dispatch(
         case "install":
             return cmd_install(components.by_id(args.component), ctx, run=args.yes)
         case "catalogue":
-            return catalogue_commands.dispatch(args, cfg, ctx.runner)
+            return catalogue_commands.dispatch(args, cfg, ctx.runner, store)
         case _:
             return cmd_secrets(store, args.action, getattr(args, "name", None))
 

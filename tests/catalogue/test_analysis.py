@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sqlite3
 from collections.abc import Iterator
 from pathlib import Path
@@ -20,6 +21,8 @@ from mph.catalogue.analysis import (
     refine_loop_bpm,
     tags_from,
 )
+from mph.proc import Result, SubprocessRunner
+from tests.fakes import FakeRunner
 
 SR = 44100
 
@@ -164,7 +167,7 @@ def test_run_caches_by_version_and_tags(conn: sqlite3.Connection, tmp_path: Path
     assert len(first.errors) == 1
     assert first.errors[0].startswith(str(root / "bad.m4a"))
     again = analysis.run(conn, ["h1", "h2"], workers=1, force=False, clock=lambda: "t")
-    assert (again.analysed, again.cached) == (0, 2)
+    assert (again.analysed, again.failed, again.cached) == (0, 1, 1)  # failures retried
     result = json.loads(
         conn.execute("SELECT result_json FROM analysis WHERE asset_hash = 'h1'").fetchone()[0]
     )
@@ -182,3 +185,68 @@ def test_run_caches_by_version_and_tags(conn: sqlite3.Connection, tmp_path: Path
 
 def test_locate_missing_asset(conn: sqlite3.Connection) -> None:
     assert analysis.locate(conn, "nope") is None
+
+
+PROBE_JSON = json.dumps(
+    {
+        "streams": [{"codec_name": "aac", "sample_rate": "8000", "channels": 2}],
+        "format": {"format_name": "mov,mp4,m4a,3gp,3g2,mj2"},
+    }
+)
+
+
+@pytest.mark.req("REQ-CAT-04")
+def test_undecodable_by_libsndfile_falls_back_to_ffmpeg_pipe(tmp_path: Path) -> None:
+    path = tmp_path / "demo.wav"  # really an .m4a with the wrong extension
+    path.write_bytes(b"ftypM4A not riff")
+    pcm = np.array([[0.5, -0.5], [0.25, -0.25], [0.0, 0.0]], dtype="<f4")
+    runner = FakeRunner(
+        on_path={"ffmpeg": "/usr/bin/ffmpeg"},
+        responses={
+            "ffprobe": Result(0, PROBE_JSON),
+            "ffmpeg": Result(0, data=pcm.tobytes() + b"\x00"),  # stray byte is dropped
+        },
+    )
+    samples, rate = analysis.decode(path, runner)
+    assert rate == 8000
+    assert samples.shape == (3, 2)
+    assert samples[0].tolist() == [0.5, -0.5]
+    ffmpeg_argv = next(argv for argv, _ in runner.calls if argv[0] == "ffmpeg")
+    assert "-ar" not in ffmpeg_argv  # native rate: no resampling
+    assert ffmpeg_argv[-1] == "-"  # decoded into a pipe, never a file
+
+
+@pytest.mark.parametrize(
+    ("on_path", "responses", "reason"),
+    [
+        ({}, {}, "Format not recognised"),
+        ({"ffmpeg": "x"}, {"ffprobe": Result(1, stderr="Invalid data")}, "Invalid data"),
+        (
+            {"ffmpeg": "x"},
+            {"ffprobe": Result(0, PROBE_JSON), "ffmpeg": Result(1, stderr="boom")},
+            "boom",
+        ),
+    ],
+)
+def test_decode_failures_explain_themselves(
+    tmp_path: Path, on_path: dict[str, str], responses: dict[str, Result], reason: str
+) -> None:
+    path = tmp_path / "x.m4a"
+    path.write_bytes(b"nope")
+    with pytest.raises(analysis.DecodeError, match=reason):
+        analysis.decode(path, FakeRunner(on_path=on_path, responses=dict(responses)))
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs ffmpeg")
+def test_real_m4a_decodes_through_ffmpeg(tmp_path: Path) -> None:
+    source = tmp_path / "tone.wav"
+    soundfile.write(source, stereo(click_loop(120, 4)), SR)
+    m4a = tmp_path / "tone.m4a"
+    runner = SubprocessRunner(timeout_s=60)
+    made = runner.run(["ffmpeg", "-v", "error", "-i", str(source), "-c:a", "aac", str(m4a)])
+    if not made.ok:
+        pytest.skip("this ffmpeg has no AAC encoder")
+    samples, rate = analysis.decode(m4a, runner)
+    assert rate == SR
+    assert samples.shape[1] == 2
+    assert abs(samples.shape[0] - SR * 2) < SR * 0.1

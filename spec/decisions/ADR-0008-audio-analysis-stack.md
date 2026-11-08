@@ -31,6 +31,8 @@ All of them are deterministic, classic DSP. No neural models are involved.
 ## Consequences
 - Adds numpy, scipy, numba (via librosa), soundfile and soxr to the environment.
   These are mainstream packages with wheels for macOS arm64 and Linux.
-- AAC/M4A (35 files in Dean's library) isn't decodable by libsndfile. Those
-  files are recorded as unsupported until a cache-backed ffmpeg decode lands
-  with the recipe/derivation work (REQ-CAT-06).
+- AAC/M4A (35 files in Dean's library, one of them misnamed .wav) isn't
+  decodable by libsndfile. Those files are decoded by ffmpeg (already a doctor
+  requirement) into a pipe through `mph.proc.Runner`: float32 at the native
+  rate, held in memory only, so no file is written and no resampling happens
+  (REQ-AUD-01). Failed analyses are retried on the next run.

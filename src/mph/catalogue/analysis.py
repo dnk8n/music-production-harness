@@ -25,9 +25,12 @@ import soundfile
 from numpy.typing import NDArray
 
 from mph.catalogue.names import SHARP_NAMES
+from mph.catalogue.probe import probe
+from mph.proc import Runner, SubprocessRunner
 
 ANALYSER = "core"
 VERSION = 2  # v2: Temperley key profiles
+FFMPEG_TIMEOUT_S = 300.0  # a full demo track decodes in seconds; this is a safety net
 ANALYSIS_SR = 22050
 MIN_LUFS_SECONDS = 0.4  # BS.1770 gating needs at least one 400 ms block
 LOOP_BEATS = (1, 2, 4, 8, 16, 32, 64, 128)
@@ -75,13 +78,35 @@ class Features:
     form: str  # oneshot | loop | phrase
 
 
-def decode(path: Path) -> tuple[Signal, int]:
-    """Float32 samples shaped (frames, channels) and the native sample rate."""
+def decode(path: Path, runner: Runner | None = None) -> tuple[Signal, int]:
+    """Float32 samples shaped (frames, channels) and the native sample rate.
+
+    libsndfile reads WAV/AIFF/FLAC/OGG/MP3. Anything else (AAC in .m4a, or an
+    .m4a misnamed .wav) is decoded by ffmpeg into a pipe, still in memory and
+    at its native rate: nothing is written to disk and nothing is resampled.
+    """
     try:
         data, rate = soundfile.read(str(path), dtype="float32", always_2d=True)
     except (soundfile.LibsndfileError, RuntimeError, TypeError) as exc:
-        raise DecodeError(f"cannot decode {path.suffix or 'file'}: {exc}") from exc
+        if runner is None or runner.which("ffmpeg") is None:
+            raise DecodeError(f"cannot decode {path.suffix or 'file'}: {exc}") from exc
+        return decode_with_ffmpeg(path, runner)
     return data, int(rate)
+
+
+def decode_with_ffmpeg(path: Path, runner: Runner) -> tuple[Signal, int]:
+    facts = probe(runner, path)
+    if facts.error or not facts.sample_rate or not facts.channels:
+        raise DecodeError(f"cannot decode {path.suffix or 'file'}: {facts.error or 'no format'}")
+    result = runner.capture(
+        ["ffmpeg", "-nostdin", "-v", "error", "-i", str(path), "-f", "f32le", "-"]
+    )
+    if not result.ok or not result.data:
+        reason = result.stderr.strip()[:300] or f"ffmpeg exit {result.code}"
+        raise DecodeError(f"cannot decode {path.suffix or 'file'}: {reason}")
+    usable = len(result.data) // (4 * facts.channels) * 4 * facts.channels
+    samples = np.frombuffer(result.data[:usable], dtype="<f4").reshape(-1, facts.channels)
+    return samples.astype(np.float32), facts.sample_rate
 
 
 def _db(value: float) -> float:
@@ -216,7 +241,7 @@ def tags_from(features: Features) -> list[tuple[str, str, float]]:
 def analyse_file(path: str) -> tuple[dict[str, object] | None, str | None]:
     """Process-pool entry point: (features, error)."""
     try:
-        samples, rate = decode(Path(path))
+        samples, rate = decode(Path(path), SubprocessRunner(timeout_s=FFMPEG_TIMEOUT_S))
         return asdict(analyse_signal(samples, rate)), None
     except DecodeError as exc:
         return None, str(exc)
@@ -233,7 +258,11 @@ class AnalysisRun:
 def pending(conn: sqlite3.Connection, hashes: Iterable[str], *, force: bool) -> list[str]:
     if force:
         return list(hashes)
-    query = "SELECT 1 FROM analysis WHERE asset_hash = ? AND analyser = ? AND version = ?"
+    # Failures are retried every run: they are few, and a new decoder may now read them.
+    query = (
+        "SELECT 1 FROM analysis WHERE asset_hash = ? AND analyser = ? AND version = ? "
+        "AND error IS NULL"
+    )
     return [h for h in hashes if not conn.execute(query, (h, ANALYSER, VERSION)).fetchone()]
 
 

@@ -28,6 +28,9 @@ class FakeRunner:
         response = self.responses.get(key, Result(0))
         return response(argv) if callable(response) else response
 
+    def capture(self, argv: Sequence[str]) -> Result:
+        return self.run(argv)
+
     def which(self, name: str) -> str | None:
         return self.on_path.get(name)
 

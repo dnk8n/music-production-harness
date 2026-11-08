@@ -121,7 +121,7 @@ form such as `cc0`, `cc-by`, `cc-by-nc`, `public-domain`) and fetch time.
 `mph catalogue credits` prints attribution lines. `mph catalogue refresh`
 fetches a deleted download again and rejects it if the bytes changed.
 
-Freesound originals need a one-time OAuth2 sign-in (`mph catalogue auth
+Freesound originals need a one-time OAuth2 sign-in with PKCE (`mph catalogue auth
 freesound`): Dean opens a link, approves, and pastes the code shown. Only the
 refresh token is stored, in the Keychain beside the API keys (REQ-SEC-01);
 access tokens live in memory. Without sign-in, `--previews` takes the lossy

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sqlite3
 from collections.abc import Iterator
 from pathlib import Path
@@ -169,23 +170,38 @@ def test_freesound_explains_missing_setup(conn: sqlite3.Connection, tmp_path: Pa
 def test_sign_in_stores_only_the_refresh_token() -> None:
     http, store = FakeHttp(), FakeStore(dict(KEYS))
     freesound = Freesound(http, store)
-    assert (
-        freesound.authorize_url() == f"{FS}/oauth2/authorize/?client_id=cid-fake&response_type=code"
-    )
+    url = freesound.authorize_url(verifier="dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk")
+    assert url == (
+        f"{FS}/oauth2/authorize/?client_id=cid-fake&response_type=code"
+        "&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256"
+    )  # the RFC 7636 appendix B example pair
     freesound.sign_in("  the-code \n")
     assert http.posts[0][1]["code"] == "the-code"
+    assert http.posts[0][1]["code_verifier"] == "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
     assert http.posts[0][1]["grant_type"] == "authorization_code"
     assert store.values[remote.REFRESH_ACCOUNT] == "ref2"
     assert "acc" not in store.values.values()  # short-lived token stays in memory
 
 
+def test_fresh_verifiers_are_valid_pkce() -> None:
+    first, second = remote.new_verifier(), remote.new_verifier()
+    assert first != second
+    assert 43 <= len(first) <= 128
+    assert re.fullmatch(r"[A-Za-z0-9_-]+", first)
+
+
 def test_sign_in_failures() -> None:
+    with pytest.raises(RemoteError, match="sign-in link first"):
+        Freesound(FakeHttp(), FakeStore(dict(KEYS))).sign_in("code")
     http = FakeHttp(post_reply={"error": "invalid_grant"})
+    freesound = Freesound(http, FakeStore(dict(KEYS)))
+    freesound.authorize_url()
     with pytest.raises(RemoteError, match="sign-in failed"):
-        Freesound(http, FakeStore(dict(KEYS))).sign_in("bad")
-    store = FakeStore(dict(KEYS), fail_puts=True)
+        freesound.sign_in("bad")
+    freesound = Freesound(FakeHttp(), FakeStore(dict(KEYS), fail_puts=True))
+    freesound.authorize_url()
     with pytest.raises(RemoteError, match="Keychain"):
-        Freesound(FakeHttp(), store).sign_in("ok")
+        freesound.sign_in("ok")
 
 
 @pytest.mark.req("REQ-CAT-07")
@@ -311,6 +327,8 @@ def test_cli_sign_in(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None
     assert commands._sign_in(store, http, ask=lambda _: "code-1") == 0
     out = capsys.readouterr().out
     assert "oauth2/authorize/?client_id=cid-fake" in out
+    assert "code_challenge_method=S256" in out
+    assert "code_verifier" in http.posts[0][1]
     assert store.values[remote.REFRESH_ACCOUNT] == "ref2"
 
 

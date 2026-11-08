@@ -21,6 +21,9 @@ not), which is what the reserved ``licence:clear`` label depends on.
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import os
 import re
 import sqlite3
 from collections.abc import Callable, Mapping, Sequence
@@ -44,6 +47,7 @@ FREESOUND_API = "https://freesound.org/apiv2"
 FREESOUND_FIELDS = "id,name,username,license,type,tags,url,previews,duration"
 FREESOUND_CLEAR_FILTER = 'license:("Creative Commons 0" OR "Attribution")'
 REFRESH_ACCOUNT = "freesound.refresh_token"
+PKCE_VERIFIER_BYTES = 48  # 64 URL-safe characters; RFC 7636 allows 43-128
 ARCHIVE = "https://archive.org"
 # Best first. Matched against archive.org's "format" names.
 ARCHIVE_FORMATS = (
@@ -111,6 +115,15 @@ class Connector(Protocol):
 # --- Freesound -------------------------------------------------------------------
 
 
+def new_verifier() -> str:
+    return base64.urlsafe_b64encode(os.urandom(PKCE_VERIFIER_BYTES)).decode().rstrip("=")
+
+
+def pkce_challenge(verifier: str) -> str:
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    return base64.urlsafe_b64encode(digest).decode().rstrip("=")
+
+
 @dataclass(slots=True)
 class Freesound:
     http: Http
@@ -118,6 +131,7 @@ class Freesound:
     previews: bool = False
     name: str = "freesound"
     _access: str | None = field(default=None, repr=False)
+    _verifier: str | None = field(default=None, repr=False)
 
     def _keys(self) -> dict[str, str]:
         values = secrets.read(self.store, secrets.credential_for("freesound"))
@@ -187,13 +201,23 @@ class Freesound:
         self._remember(tokens)
         return str(tokens["access_token"])
 
-    def authorize_url(self) -> str:
+    def authorize_url(self, verifier: str | None = None) -> str:
+        """The page Dean approves. Freesound requires PKCE (RFC 7636, S256): the
+        link carries a hash of a one-off secret, and ``sign_in`` proves we hold it."""
+        self._verifier = verifier or new_verifier()
         return with_query(
             f"{FREESOUND_API}/oauth2/authorize/",
-            [("client_id", self._keys()["client_id"]), ("response_type", "code")],
+            [
+                ("client_id", self._keys()["client_id"]),
+                ("response_type", "code"),
+                ("code_challenge", pkce_challenge(self._verifier)),
+                ("code_challenge_method", "S256"),
+            ],
         )
 
     def sign_in(self, code: str) -> None:
+        if self._verifier is None:
+            raise RemoteError("open the sign-in link first (`mph catalogue auth freesound`)")
         keys = self._keys()
         tokens = self.http.post_form(
             f"{FREESOUND_API}/oauth2/access_token/",
@@ -202,6 +226,7 @@ class Freesound:
                 "client_secret": keys["client_secret"],
                 "grant_type": "authorization_code",
                 "code": code.strip(),
+                "code_verifier": self._verifier,
             },
         )
         self._remember(tokens)

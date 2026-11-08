@@ -45,6 +45,7 @@ that must match bit for bit) and delivered as a 48 kHz / 24-bit AIFF:
 uv run mph bench list
 uv run mph bench render BM-DRUM-02
 uv run mph bench render --all
+uv run mph bench serve     # listen, compare and give verdicts in the browser
 ```
 
 Store third-party credentials in the macOS Keychain, never in files. Setup asks

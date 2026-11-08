@@ -1,6 +1,7 @@
 # spec/components/benchmarks.md#bm-drum-08: son clave 3-2, shaker humanised +/-10% (seeded)
 id = "BM-DRUM-08"
 title = "Afro house clave"
+hear = "the clave's 3-2 call-and-response sits over a steady kick. Congas answer between the clave hits, and the shaker gives constant motion with natural, uneven velocity (±10% humanisation, seeded)."
 bpm = 122
 bars = 8
 seed = 8

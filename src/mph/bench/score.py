@@ -73,6 +73,7 @@ class Score:
     seed: int = 1
     tail_s: float = DEFAULT_TAIL_S
     title: str = ""
+    hear: str = ""  # the spec's "Hear:" text, for the listening page
 
     @property
     def step_s(self) -> float:
@@ -154,6 +155,7 @@ def parse(raw: dict[str, Any]) -> Score:
             seed=int(raw.get("seed", 1)),
             tail_s=float(raw.get("tail_s", DEFAULT_TAIL_S)),
             title=str(raw.get("title", "")),
+            hear=str(raw.get("hear", "")),
         )
     except (KeyError, TypeError) as exc:
         raise ScoreError(f"score is missing or mistypes {exc}") from exc

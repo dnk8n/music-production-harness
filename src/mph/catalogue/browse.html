@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>mph sample browser</title>
+<title>mph browser</title>
 <style>
   :root {
     --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1f; --dim: #6e6e73; --line: #e2e0da;
@@ -70,11 +70,33 @@
   kbd { font: 11px ui-monospace, monospace; border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; }
   .help { color: var(--dim); font-size: 12px; padding: 10px 12px; }
   .empty { color: var(--dim); padding: 12px; font-size: 13px; }
+  .card { padding: 12px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+  .card h3 { margin: 0; font-size: 14px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .card h3 .id { color: var(--dim); font-weight: 400; }
+  .hear { margin: 0; color: var(--ink); }
+  .hear b { color: var(--dim); font-weight: 500; }
+  .badge { border-radius: 4px; padding: 0 6px; font-size: 12px; font-weight: 500; }
+  .badge.ok { background: #dcfce7; color: #166534; } .badge.bad { background: #fee2e2; color: #991b1b; }
+  .badge.mid { background: #fef3c7; color: #92400e; } .badge.none { background: var(--chip); color: var(--dim); }
+  @media (prefers-color-scheme: dark) {
+    .badge.ok { background: #14532d; color: #bbf7d0; } .badge.bad { background: #7f1d1d; color: #fecaca; }
+    .badge.mid { background: #78350f; color: #fde68a; }
+  }
+  .takes { display: flex; flex-wrap: wrap; gap: 6px; }
+  .takes button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  details { font-size: 13px; } summary { cursor: pointer; color: var(--dim); }
+  .checks { margin: 4px 0 0; padding: 0; list-style: none; }
+  .checks li { padding: 1px 0; } .checks .want { color: var(--dim); }
+  .verdict { display: flex; flex-wrap: wrap; gap: 6px; align-items: start; }
+  .verdict textarea { flex: 1 1 260px; min-height: 52px; font: inherit; padding: 6px 8px; border-radius: 6px;
+                      border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+  .verdict button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .history { color: var(--dim); font-size: 12px; margin: 0; padding-left: 16px; }
 </style>
 </head>
 <body>
 <header>
-  <h1>Sample browser <span>· read-only, on this computer only</span></h1>
+  <h1>Samples and benchmarks <span>· on this computer only</span></h1>
   <form id="find">
     <label>Words <input class="words" name="q" placeholder="open 909" autocomplete="off"></label>
     <label>Role <input class="small" name="role" list="roles" placeholder="hat"></label>
@@ -98,6 +120,7 @@
     <div class="tabs">
       <button id="tab-results" class="on">Results</button>
       <button id="tab-made">Made by mph</button>
+      <button id="tab-bench">Benchmarks</button>
     </div>
     <div class="status" id="status">Search to begin. Tip: press <kbd>/</kbd> to jump to the search box.</div>
     <ol id="list"></ol>
@@ -206,8 +229,7 @@ async function showMade() {
 }
 function showView(name) {
   view = name;
-  $("tab-results").classList.toggle("on", name === "results");
-  $("tab-made").classList.toggle("on", name === "made");
+  for (const tab of ["results", "made", "bench"]) $(`tab-${tab}`).classList.toggle("on", name === tab);
   selected = rows.length ? 0 : -1;
   render();
 }
@@ -230,6 +252,83 @@ function render() {
         el("button", { title: "lineage (l)", onclick: (e) => { e.stopPropagation(); showLineage(item); } }, "lineage")));
   }));
   list.querySelector(".sel")?.scrollIntoView({ block: "nearest" });
+}
+
+// --- benchmarks: listen, compare, give a verdict --------------------------------
+let playingTake = null;    // {id, file} of the benchmark take in the player
+async function showBench() {
+  const data = await (await fetch("/api/bench")).json();
+  rows = []; showView("bench");
+  const rendered = data.filter((b) => b.report).length;
+  $("status").textContent = rendered
+    ? `${rendered} of ${data.length} benchmarks rendered. Switch takes while playing to compare at the same moment.`
+    : "Nothing rendered yet: run `mph bench render --all`, then reload.";
+  $("list").replaceChildren(...data.map(benchCard));
+  history.replaceState(null, "", "#bench");
+}
+function badge(kind, label) { return el("span", { class: `badge ${kind}` }, label); }
+function clock(t) { return `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`; }
+function playTake(b, take, buttons) {
+  stopLayer();
+  const same = playingTake && playingTake.id === b.id;
+  const at = same ? player.currentTime : 0;
+  player.src = `/bench/${b.id}/${b.report.score_hash}/${take.file}`;
+  player.loop = $("q-loop").checked;
+  player.addEventListener("loadedmetadata", () => { player.currentTime = at; }, { once: true });
+  player.play().catch(() => {});
+  playingTake = { id: b.id, file: take.file };
+  $("now").textContent = `▶ ${b.id} ${b.title} · ${take.label}`;
+  buttons.forEach((button) => button.classList.toggle("on", button.dataset.file === take.file));
+}
+function benchCard(b) {
+  const r = b.report;
+  const head = el("h3", {}, b.title, el("span", { class: "id" }, b.id));
+  const card = el("li", { class: "card" }, head, el("p", { class: "hear" }, el("b", {}, "Hear: "), b.hear));
+  if (!r) {
+    head.append(badge("none", "not rendered"));
+    card.append(el("div", { class: "why" }, `Render it with: mph bench render ${b.id}`));
+    return card;
+  }
+  head.append(badge(r.passed ? "ok" : "bad", r.passed ? "measurements pass" : "measurements fail"));
+  const mine = b.verdicts.filter((v) => v.score_hash === r.score_hash);
+  if (mine.length) {
+    const v = mine[0].verdict;
+    head.append(badge(v === "pass" ? "ok" : v === "fail" ? "bad" : "mid", `you said: ${v}`));
+  }
+  const takes = [{ label: "main", file: r.files.delivery },
+                 ...(r.variants || []).map((v) => ({ label: v.name, file: v.file, note: v.note }))];
+  const buttons = takes.map((take) => el("button", { "data-file": take.file, title: take.note || "the render as scored",
+    onclick: () => playTake(b, take, buttons) }, `▶ ${take.label}`));
+  card.append(el("div", { class: "takes" }, ...buttons));
+  const failed = r.measurements.filter((m) => !m.passed).length;
+  const checks = el("details", failed ? { open: "" } : {},
+    el("summary", {}, `Measurements: ${r.measurements.length - failed} pass${failed ? `, ${failed} fail` : ""}`),
+    el("ul", { class: "checks" }, ...r.measurements.map((m) => el("li", {},
+      `${m.passed ? "✓" : "✗"} ${m.name}: ${m.value} `, el("span", { class: "want" }, `(want ${m.limit})${m.note ? ` · ${m.note}` : ""}`)))));
+  const kit = el("details", {}, el("summary", {}, `Sounds used · ${r.licence_marker} · ${r.levels.integrated_lufs} LUFS`),
+    el("ul", { class: "checks" }, ...r.kit.map((k) => el("li", {}, `${k.voice}: ${k.sound} `, el("span", { class: "want" }, `(${k.why})`)))));
+  card.append(checks, kit, verdictForm(b, r, mine));
+  return card;
+}
+function verdictForm(b, r, mine) {
+  let choice = null;
+  const notes = el("textarea", { placeholder: "What you heard, e.g. 0:42 hats too loud" });
+  const choices = ["pass", "close", "fail"].map((v) => el("button", { onclick: () => {
+    choice = v; choices.forEach((c) => c.classList.toggle("on", c.textContent === v)); } }, v));
+  const stamp = el("button", { title: "add the player's current time to the notes", onclick: () => {
+    notes.value += `${notes.value && !notes.value.endsWith("\n") ? "\n" : ""}${clock(player.currentTime)} `; notes.focus(); } }, "+ time");
+  const status = el("span", { class: "why" });
+  const saveButton = el("button", { class: "primary", onclick: async () => {
+    if (!choice) { status.textContent = "Pick pass, close or fail first."; return; }
+    const response = await fetch("/api/verdict", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: b.id, score_hash: r.score_hash, verdict: choice, notes: notes.value }) });
+    status.textContent = response.ok ? "Saved." : await response.text();
+    if (response.ok) showBench();
+  } }, "Save verdict");
+  const box = el("div", {}, el("div", { class: "verdict" }, ...choices, notes, stamp, saveButton, status));
+  if (b.verdicts.length) box.append(el("ul", { class: "history" }, ...b.verdicts.slice(0, 5).map((v) =>
+    el("li", {}, `${v.verdict} · ${v.created_at.slice(0, 16).replace("T", " ")}${v.score_hash === r.score_hash ? "" : " · older render"}${v.notes ? ` · ${v.notes}` : ""}`))));
+  return box;
 }
 
 // --- selection: in order, or layered -------------------------------------------
@@ -291,6 +390,7 @@ async function showLineage(item) {
 $("find").addEventListener("submit", runSearch);
 $("tab-results").addEventListener("click", () => runSearch());
 $("tab-made").addEventListener("click", showMade);
+$("tab-bench").addEventListener("click", showBench);
 $("q-seq").addEventListener("click", () => { if (queue.length) { stopAll(); sequence = 0; play(queue[0]); } });
 $("q-layer").addEventListener("click", playTogether);
 $("q-stop").addEventListener("click", stopAll);
@@ -310,6 +410,7 @@ document.addEventListener("keydown", (e) => {
   if (keys[e.key]) { e.preventDefault(); keys[e.key](); }
 });
 renderQueue();
+if (location.hash === "#bench") showBench();
 </script>
 </body>
 </html>

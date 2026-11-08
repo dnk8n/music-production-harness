@@ -1,6 +1,7 @@
 # spec/components/benchmarks.md#bm-drum-06
 id = "BM-DRUM-06"
 title = "Chicago jack"
+hear = "busy, jacking 909 hats with an open hat cutting through on each offbeat. The open hat is choked (cut short) by the next closed hat."
 bpm = 125
 bars = 8
 

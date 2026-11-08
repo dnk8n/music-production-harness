@@ -1,6 +1,7 @@
 # spec/components/benchmarks.md#bm-drum-01
 id = "BM-DRUM-01"
 title = "Detroit four-to-the-floor"
+hear = "a driving, even pulse. Hats sit exactly between kicks (the offbeat \"tss\"), clap on 2 and 4. Mechanical on purpose, like early Underground Resistance or Jeff Mills."
 bpm = 130
 bars = 8
 

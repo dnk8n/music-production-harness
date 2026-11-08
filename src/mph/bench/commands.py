@@ -7,12 +7,12 @@ first use, so ``mph bench list`` stays instant.
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from contextlib import closing, nullcontext
 from typing import Any
 
-from mph.bench import score
+from mph.bench import feedback, score
+from mph.catalogue import commands as catalogue_commands
 from mph.catalogue import db
 from mph.config import Config
 from mph.proc import Runner
@@ -25,17 +25,15 @@ def dispatch(args: argparse.Namespace, cfg: Config, runner: Runner) -> int:
         return cmd_list(cfg)
     if args.action == "report":
         return cmd_report(cfg, args.id)
+    if args.action == "serve":
+        return catalogue_commands.cmd_browse(
+            cfg, runner, args.port, open_page=not args.no_open, page="bench"
+        )
     return cmd_render(cfg, runner, args.ids, render_all=args.all)
 
 
 def latest_report(cfg: Config, benchmark_id: str) -> dict[str, Any] | None:
-    reports = []
-    for path in (cfg.data_dir / RENDERS / benchmark_id).glob("*/report.json"):
-        try:
-            reports.append(json.loads(path.read_text("utf-8")))
-        except (OSError, ValueError):
-            continue
-    return max(reports, key=lambda r: str(r.get("rendered_at", "")), default=None)
+    return next(iter(feedback.reports(cfg.data_dir / RENDERS, benchmark_id)), None)
 
 
 def cmd_list(cfg: Config) -> int:
@@ -94,4 +92,5 @@ def cmd_render(cfg: Config, runner: Runner, ids: list[str], *, render_all: bool)
             print_report(outcome.report)
             print(f"  files  {outcome.folder}")
             failed += not outcome.passed
+    print("\nlisten and give verdicts: mph bench serve")
     return 1 if failed else 0

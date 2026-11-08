@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sqlite3
 import sys
 from contextlib import closing
 from pathlib import Path
 
-from mph.catalogue import agreement, db, stats
+from mph.catalogue import agreement, db, search, stats
 from mph.catalogue.scanner import Scanner, SourceError, utc_now
 from mph.config import Config
 from mph.proc import Runner
@@ -21,6 +22,8 @@ def dispatch(args: argparse.Namespace, cfg: Config, runner: Runner) -> int:
         return cmd_scan(cfg, runner, args.source, args.workers)
     if args.action == "analyse":
         return cmd_analyse(cfg, args.role, args.pack, args.limit, args.workers, force=args.force)
+    if args.action == "search":
+        return cmd_search(cfg, args)
     return cmd_stats(cfg)
 
 
@@ -136,3 +139,58 @@ def cmd_stats(cfg: Config) -> int:
         for label, count in pairs[:15]:
             print(f"  {count:>6}  {label}")
     return 0
+
+
+def query_from(args: argparse.Namespace) -> search.Query:
+    return search.Query(
+        roles=tuple(args.role),
+        bpm=args.bpm,
+        bpm_tolerance=args.bpm_tolerance / 100,
+        key=search.parse_key_query(args.key) if args.key else None,
+        form=args.form,
+        min_lufs=args.min_lufs,
+        max_lufs=args.max_lufs,
+        min_seconds=args.min_seconds,
+        max_seconds=args.max_seconds,
+        licence=args.licence,
+        text=tuple(args.text),
+        limit=args.limit,
+    )
+
+
+def cmd_search(cfg: Config, args: argparse.Namespace) -> int:
+    path = db_path(cfg)
+    if not path.exists():
+        print("no catalogue yet: run `mph catalogue scan`", file=sys.stderr)
+        return 1
+    try:
+        query = query_from(args)
+    except search.QueryError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    with closing(db.connect(path)) as conn:
+        result = search.search(conn, query)
+    if args.json:
+        print(json.dumps([hit.to_dict() for hit in result.hits], indent=2))
+        return 0
+    print(render_search(result, query))
+    return 0 if result.hits else 1
+
+
+def render_search(result: search.Result, query: search.Query) -> str:
+    lines = [f"{result.matched} matches" + (f", best {len(result.hits)}:" if result.hits else "")]
+    for rank, hit in enumerate(result.hits, start=1):
+        length = f"{hit.duration_s:.1f}s" if hit.duration_s is not None else "?s"
+        loud = f"{hit.lufs:.1f} LUFS" if hit.lufs is not None else "not analysed"
+        lines.append(f"{rank:>3}. {hit.path}")
+        lines.append(f"     score {hit.score:g} | {length} | {loud}")
+        if hit.reasons:
+            lines.append(f"     why: {'; '.join(hit.reasons)}")
+    if result.unanalysed_skipped:
+        lines.append(
+            f"note: {result.unanalysed_skipped} sounds have no loudness yet and were left out; "
+            "run `mph catalogue analyse` to include them"
+        )
+    if not result.hits and (query.bpm or query.key):
+        lines.append("tip: widen --bpm-tolerance, or drop --key to see more")
+    return "\n".join(lines)

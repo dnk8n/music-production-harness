@@ -90,6 +90,11 @@ MIGRATIONS: tuple[str, ...] = (
     """
     CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     """,
+    # 4: early scans labelled M4A files "mov" (ffprobe's first alias for the family);
+    # rescans skip unchanged files, so relabel them here.
+    """
+    UPDATE asset SET container = 'm4a' WHERE container = 'mov';
+    """,
 )
 
 

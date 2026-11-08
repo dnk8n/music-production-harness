@@ -72,12 +72,37 @@ def build_parser() -> argparse.ArgumentParser:
     ana.add_argument("--workers", type=int, default=4, choices=range(1, 17), metavar="1-16")
     ana.add_argument("--force", action="store_true", help="re-analyse even if cached")
 
+    _add_search(cat_sub)
+
     spec = sub.add_parser("spec", help="spec tooling")
     spec_sub = spec.add_subparsers(dest="action", required=True)
     chk = spec_sub.add_parser("check", help="deterministic spec gate")
     chk.add_argument("--repo", type=Path, default=Path.cwd())
     chk.add_argument("--strict", action="store_true", help="untested requirements are errors")
     return parser
+
+
+def _add_search(cat_sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    find = cat_sub.add_parser(
+        "search",
+        help="find sounds by role, tempo, key, loudness, length or words",
+        description="e.g. mph catalogue search --role hat --bpm 128 open",
+    )
+    find.add_argument("text", nargs="*", help="words that must appear in the path or tags")
+    find.add_argument(
+        "--role", action="append", default=[], help="kick, hat, bass ... (repeatable)"
+    )
+    find.add_argument("--bpm", type=float, help="target tempo; half and double time also match")
+    find.add_argument("--bpm-tolerance", type=float, default=3.0, help="percent (default 3)")
+    find.add_argument("--key", help="target key, e.g. Dm, F#, 'Ab minor'; neighbours also match")
+    find.add_argument("--form", choices=["oneshot", "loop", "phrase"])
+    find.add_argument("--min-lufs", type=float, help="quietest integrated loudness")
+    find.add_argument("--max-lufs", type=float, help="loudest integrated loudness")
+    find.add_argument("--min-seconds", type=float)
+    find.add_argument("--max-seconds", type=float)
+    find.add_argument("--licence", help="e.g. commercial-pack, cc0")
+    find.add_argument("--limit", type=int, default=20)
+    find.add_argument("--json", action="store_true", help="machine-readable output")
 
 
 def main(argv: Sequence[str] | None = None) -> int:

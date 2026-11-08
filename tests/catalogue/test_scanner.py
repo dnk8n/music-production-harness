@@ -254,3 +254,15 @@ def test_new_name_rules_retag_everything(
     scanner(conn).scan(source(library))
     assert count(conn, "tag") > 0
     assert db.get_meta(conn, "name_priors_version") == "999"
+
+
+def test_old_mov_labels_become_m4a(tmp_path: Path) -> None:
+    path = tmp_path / "c.sqlite"
+    with closing(db.connect(path)) as conn:
+        conn.execute("PRAGMA user_version = 3")
+        conn.execute(
+            "INSERT INTO asset (hash, bytes, container, origin) VALUES ('a', 1, 'mov', 'source')"
+        )
+        conn.commit()
+    with closing(db.connect(path)) as conn:
+        assert conn.execute("SELECT container FROM asset").fetchone()[0] == "m4a"

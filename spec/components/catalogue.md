@@ -1,6 +1,6 @@
 # Catalogue
 
-**Status:** draft (being built in step 2: REQ-CAT-01, 02, 03, 04, 08 done)
+**Status:** draft (being built in step 2: REQ-CAT-01, 02, 03, 04, 05, 08 done)
 
 A local search engine over every sound the harness can use, with full
 provenance. The first source is `/Users/dean/dj/samples` (about 4,000 files,
@@ -78,7 +78,11 @@ instrument class) runs on demand and is cached per analyser version.
 
 ### REQ-CAT-05: Search
 `mph catalogue search` filters by role, BPM range, key (with compatible
-keys), loudness, duration, licence and free text, ranked by fit.
+keys), loudness, duration, licence and free text, ranked by fit. Filters are
+hard; fit is a sum of confidence-weighted matches, and each result lists the
+reasons behind its score. Tempo matches allow half and double time; one-shots
+and sounds with no key pass tempo and key filters without gaining score.
+`--json` gives the same results for other tools.
 - **Why:** track construction starts with "find me a dry 909 open hat near
   128 BPM", and picking samples has to be explainable.
 - **Verify:** test

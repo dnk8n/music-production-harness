@@ -14,7 +14,7 @@ from enum import StrEnum
 
 from mph.components import Component, Context, Stage, select
 from mph.config import Config, Source
-from mph.secrets import KNOWN_SECRETS, SecretStore
+from mph.secrets import CREDENTIALS, SecretStore, missing_fields
 
 
 class Status(StrEnum):
@@ -101,14 +101,20 @@ def check_data_dir(config: Config) -> Finding:
 
 
 def check_secrets(store: SecretStore) -> Iterable[Finding]:
-    for spec in KNOWN_SECRETS:
-        check = f"secret:{spec.name}"
-        if store.exists(spec.name):
-            yield Finding(check, Status.OK, "present in Keychain")
-        else:
-            status = Status.FAIL if spec.required else Status.WARN
-            fix = f"get a key at {spec.signup_url}, then: mph secrets set {spec.name}"
-            yield Finding(check, status, f"missing: {spec.purpose}", fix)
+    for credential in CREDENTIALS:
+        check = f"secret:{credential.name}"
+        missing = missing_fields(store, credential)
+        if not missing:
+            yield Finding(check, Status.OK, f"{credential.provider}: all fields in Keychain")
+            continue
+        status = Status.FAIL if credential.required else Status.WARN
+        what = ", ".join(f.label for f in missing)
+        yield Finding(
+            check,
+            status,
+            f"{credential.provider} missing {what} ({credential.purpose})",
+            f"mph secrets set {credential.name}  (keys: {credential.signup_url})",
+        )
 
 
 def run(

@@ -17,9 +17,13 @@ class FakeRunner:
     on_path: dict[str, str] = field(default_factory=dict)
     responses: dict[str, Result | Handler] = field(default_factory=dict)
     calls: list[tuple[tuple[str, ...], bool]] = field(default_factory=list)
+    stdins: list[str | None] = field(default_factory=list)
 
-    def run(self, argv: Sequence[str], *, interactive: bool = False) -> Result:
+    def run(
+        self, argv: Sequence[str], *, interactive: bool = False, stdin: str | None = None
+    ) -> Result:
         self.calls.append((tuple(argv), interactive))
+        self.stdins.append(stdin)
         key = argv[0].rsplit("/", 1)[-1]
         response = self.responses.get(key, Result(0))
         return response(argv) if callable(response) else response
@@ -30,19 +34,36 @@ class FakeRunner:
 
 @dataclass
 class FakeStore:
-    present: set[str] = field(default_factory=set)
+    values: dict[str, str] = field(default_factory=dict)
+    fail_puts: bool = False
 
-    def get(self, name: str) -> str | None:
-        return "value" if name in self.present else None
+    def get(self, account: str) -> str | None:
+        return self.values.get(account)
 
-    def exists(self, name: str) -> bool:
-        return name in self.present
+    def exists(self, account: str) -> bool:
+        return account in self.values
 
-    def set_interactive(self, name: str) -> bool:
-        self.present.add(name)
+    def put(self, account: str, value: str) -> bool:
+        if self.fail_puts:
+            return False
+        self.values[account] = value
         return True
 
-    def delete(self, name: str) -> bool:
-        existed = name in self.present
-        self.present.discard(name)
-        return existed
+    def delete(self, account: str) -> bool:
+        return self.values.pop(account, None) is not None
+
+
+@dataclass
+class ScriptedPrompter:
+    """Answers prompts from a list; records everything said and asked."""
+
+    answers: list[str]
+    said: list[str] = field(default_factory=list)
+    asked: list[tuple[str, bool]] = field(default_factory=list)
+
+    def say(self, text: str) -> None:
+        self.said.append(text)
+
+    def ask(self, label: str, *, secret: bool) -> str:
+        self.asked.append((label, secret))
+        return self.answers.pop(0)

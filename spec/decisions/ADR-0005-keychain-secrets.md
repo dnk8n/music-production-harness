@@ -7,8 +7,10 @@
 Dean asked for the Apple password system, and secrets must never touch the repo.
 
 ## Decision
-Use `/usr/bin/security` generic-password items under one service. Values
-are set through `security`'s own TTY prompt and read only at point of use.
+Use `/usr/bin/security` generic-password items under one service, one item
+per credential field. `mph secrets set` collects every field through a guided
+prompt (hidden input) and hands values to `security -i` over stdin, never
+argv. Values are read only at point of use.
 There are no `.env` files and no environment variable fallback.
 
 ## Consequences

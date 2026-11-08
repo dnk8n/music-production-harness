@@ -30,11 +30,13 @@ path = "/Users/you/dj/samples"   # read-only: never written to
 license = "commercial-pack"
 ```
 
-Store API keys in the macOS Keychain, never in files:
+Store third-party credentials in the macOS Keychain, never in files. Setup asks
+for every field and says where to find it:
 
 ```sh
 uv run mph secrets list
-uv run mph secrets set freesound_api_key   # prompts securely
+uv run mph secrets set freesound   # client ID + client secret
+uv run mph secrets set gemini      # API key
 ```
 
 ## Plan

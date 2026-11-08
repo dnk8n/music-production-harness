@@ -25,7 +25,9 @@ class Result:
 
 
 class Runner(Protocol):
-    def run(self, argv: Sequence[str], *, interactive: bool = False) -> Result: ...
+    def run(
+        self, argv: Sequence[str], *, interactive: bool = False, stdin: str | None = None
+    ) -> Result: ...
 
     def which(self, name: str) -> str | None: ...
 
@@ -36,10 +38,12 @@ class SubprocessRunner:
     def __init__(self, timeout_s: float = 30.0) -> None:
         self._timeout_s = timeout_s
 
-    def run(self, argv: Sequence[str], *, interactive: bool = False) -> Result:
+    def run(
+        self, argv: Sequence[str], *, interactive: bool = False, stdin: str | None = None
+    ) -> Result:
+        """``interactive`` inherits the terminal (installers); ``stdin`` feeds input
+        privately, e.g. secrets to ``security -i``, never via argv."""
         if interactive:
-            # Inherit the terminal so tools like `security` can prompt the user
-            # directly; secrets then never pass through our memory or argv.
             return Result(subprocess.run(list(argv), check=False).returncode)
         try:
             completed = subprocess.run(
@@ -47,6 +51,7 @@ class SubprocessRunner:
                 check=False,
                 capture_output=True,
                 text=True,
+                input=stdin,
                 timeout=self._timeout_s,
             )
         except FileNotFoundError:

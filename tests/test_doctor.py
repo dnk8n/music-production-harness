@@ -37,7 +37,7 @@ def test_doctor_reports_sources_data_dir_components_secrets(tmp_path: Path, mac_
     cfg = cfg_with_source(tmp_path, tmp_path / "samples")
     report = doctor.run(cfg, Context(FakeRunner(), mac_host), FakeStore())
     checks = {f.check for f in report.findings}
-    assert {"data_dir", "source:dj", "component:renoise", "secret:freesound_api_key"} <= checks
+    assert {"data_dir", "source:dj", "component:renoise", "secret:freesound"} <= checks
     assert by_check(report, "source:dj").status is Status.OK
     assert by_check(report, "data_dir").status is Status.OK
 
@@ -64,7 +64,7 @@ def test_missing_required_fails_missing_optional_warns(tmp_path: Path, mac_host:
     report = doctor.run(config.load(), Context(FakeRunner(), mac_host), FakeStore())
     assert by_check(report, "component:renoise").status is Status.FAIL
     assert by_check(report, "component:uvr").status is Status.WARN
-    assert by_check(report, "secret:gemini_api_key").status is Status.WARN
+    assert by_check(report, "secret:gemini").status is Status.WARN
     assert not report.healthy
 
 
@@ -125,7 +125,11 @@ def test_remote_source_ok() -> None:
 
 
 def test_present_secret_ok(mac_host: Host) -> None:
-    findings = list(doctor.check_secrets(FakeStore({"freesound_api_key"})))
+    findings = list(
+        doctor.check_secrets(
+            FakeStore({"freesound.client_id": "a", "freesound.client_secret": "b"})
+        )
+    )
     assert findings[0].status is Status.OK
 
 

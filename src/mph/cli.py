@@ -7,16 +7,16 @@ business logic lives here.
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from mph import __version__, components, config, doctor, speccheck
+from mph import __version__, components, config, doctor, secrets, speccheck
 from mph.components import Context, Stage
 from mph.platform_info import current_host
 from mph.proc import SubprocessRunner
-from mph.secrets import KNOWN_SECRETS, KeychainStore, SecretStore, UnknownSecretError
 
 SYMBOL = {
     doctor.Status.OK: "✓",
@@ -42,11 +42,14 @@ def build_parser() -> argparse.ArgumentParser:
     inst.add_argument("component", choices=[c.id for c in components.REGISTRY])
     inst.add_argument("--yes", action="store_true", help="run the automatable steps")
 
-    sec = sub.add_parser("secrets", help="manage Keychain secrets")
+    sec = sub.add_parser("secrets", help="manage third-party credentials in the Keychain")
     sec_sub = sec.add_subparsers(dest="action", required=True)
-    sec_sub.add_parser("list")
-    for action in ("set", "delete"):
-        sec_sub.add_parser(action).add_argument("name", choices=[s.name for s in KNOWN_SECRETS])
+    sec_sub.add_parser("list", help="show which credentials are set (never their values)")
+    names = [c.name for c in secrets.CREDENTIALS]
+    sec_sub.add_parser("set", help="guided entry of every field").add_argument(
+        "name", choices=names
+    )
+    sec_sub.add_parser("delete", help="remove all fields").add_argument("name", choices=names)
 
     spec = sub.add_parser("spec", help="spec tooling")
     spec_sub = spec.add_subparsers(dest="action", required=True)
@@ -67,8 +70,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     runner = SubprocessRunner()
     host = current_host()
-    store: SecretStore | None = (
-        KeychainStore(runner, cfg.keychain_service) if host.is_macos else None
+    store: secrets.SecretStore | None = (
+        secrets.KeychainStore(runner, cfg.keychain_service) if host.is_macos else None
     )
     ctx = Context(runner, host)
     match args.command:
@@ -83,7 +86,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return cmd_secrets(store, args.action, getattr(args, "name", None))
 
 
-def cmd_status(cfg: config.Config, ctx: Context, store: SecretStore | None) -> int:
+def cmd_status(cfg: config.Config, ctx: Context, store: secrets.SecretStore | None) -> int:
     report = doctor.run(cfg, ctx, store)
     a = cfg.audio
     files = ", ".join(map(str, cfg.loaded_from)) or "built-in defaults only"
@@ -113,7 +116,7 @@ def cmd_status(cfg: config.Config, ctx: Context, store: SecretStore | None) -> i
 def cmd_doctor(
     cfg: config.Config,
     ctx: Context,
-    store: SecretStore | None,
+    store: secrets.SecretStore | None,
     stages: Sequence[Stage],
     *,
     as_json: bool,
@@ -154,22 +157,47 @@ def cmd_install(component: components.Component, ctx: Context, *, run: bool) -> 
     return 0
 
 
-def cmd_secrets(store: SecretStore | None, action: str, name: str | None) -> int:
+class TerminalPrompter:
+    """Prompts on the terminal; secret fields are not echoed."""
+
+    def say(self, text: str) -> None:
+        print(text)
+
+    def ask(self, label: str, *, secret: bool) -> str:
+        return getpass.getpass(f"  {label}: ") if secret else input(f"  {label}: ")
+
+
+def cmd_secrets(
+    store: secrets.SecretStore | None,
+    action: str,
+    name: str | None,
+    prompter: secrets.Prompter | None = None,
+) -> int:
     if store is None:
         print("secrets need the macOS Keychain", file=sys.stderr)
         return 2
+    if action == "list":
+        for credential in secrets.CREDENTIALS:
+            missing = secrets.missing_fields(store, credential)
+            state = (
+                "set"
+                if not missing
+                else "missing"
+                if len(missing) == len(credential.fields)
+                else "partial"
+            )
+            print(f"{credential.name:<12} {state:<8} {credential.provider}: {credential.purpose}")
+        return 0
     try:
-        if action == "list":
-            for spec in KNOWN_SECRETS:
-                state = "present" if store.exists(spec.name) else "missing"
-                print(f"{spec.name:<20} {state:<8} {spec.purpose}")
-            return 0
-        assert name is not None  # argparse guarantees a name for set/delete  # noqa: S101
-        ok = store.set_interactive(name) if action == "set" else store.delete(name)
-    except UnknownSecretError as exc:
+        credential = secrets.credential_for(name or "")
+    except secrets.UnknownCredentialError as exc:
         print(exc, file=sys.stderr)
         return 2
-    print(f"{action} {name}: {'done' if ok else 'failed'}")
+    if action == "set":
+        ok = secrets.setup(store, credential, prompter or TerminalPrompter())
+    else:
+        ok = secrets.remove(store, credential)
+        print(f"{'removed' if ok else 'nothing to remove for'} {credential.name}")
     return 0 if ok else 1
 
 

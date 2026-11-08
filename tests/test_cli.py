@@ -9,9 +9,8 @@ from mph import cli, components, config
 from mph.components import Context
 from mph.platform_info import Host
 from mph.proc import Result
-from mph.secrets import KeychainStore
 from tests.conftest import make_bundle
-from tests.fakes import FakeRunner, FakeStore
+from tests.fakes import FakeRunner, FakeStore, ScriptedPrompter
 
 
 @pytest.mark.req("REQ-CLI-01")
@@ -89,13 +88,21 @@ def test_install_skips_when_present(capsys: pytest.CaptureFixture[str], mac_host
     assert "already installed (3.5.4)" in capsys.readouterr().out
 
 
+@pytest.mark.req("REQ-SEC-05")
 def test_secrets_list_set_delete(capsys: pytest.CaptureFixture[str]) -> None:
     store = FakeStore()
-    assert cli.cmd_secrets(store, "set", "freesound_api_key") == 0
+    prompter = ScriptedPrompter(["AbCdEf123456", "SecretValue123"])
+    assert cli.cmd_secrets(store, "set", "freesound", prompter) == 0
     assert cli.cmd_secrets(store, "list", None) == 0
-    assert "freesound_api_key    present" in capsys.readouterr().out
-    assert cli.cmd_secrets(store, "delete", "freesound_api_key") == 0
-    assert cli.cmd_secrets(store, "delete", "freesound_api_key") == 1
+    out = capsys.readouterr().out
+    assert "freesound    set" in out
+    assert "gemini       missing" in out
+    assert "SecretValue123" not in out
+    del store.values["freesound.client_id"]
+    cli.cmd_secrets(store, "list", None)
+    assert "freesound    partial" in capsys.readouterr().out
+    assert cli.cmd_secrets(store, "delete", "freesound") == 0
+    assert cli.cmd_secrets(store, "delete", "freesound") == 1
 
 
 def test_secrets_need_keychain() -> None:
@@ -103,7 +110,15 @@ def test_secrets_need_keychain() -> None:
 
 
 def test_secrets_unknown_name() -> None:
-    assert cli.cmd_secrets(KeychainStore(FakeRunner(), "mph"), "set", "aws") == 2
+    assert cli.cmd_secrets(FakeStore(), "set", "aws") == 2
+
+
+def test_terminal_prompter_hides_secret_fields(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("getpass.getpass", lambda prompt: "hidden")
+    monkeypatch.setattr("builtins.input", lambda prompt: "shown")
+    prompter = cli.TerminalPrompter()
+    assert prompter.ask("Key", secret=True) == "hidden"
+    assert prompter.ask("ID", secret=False) == "shown"
 
 
 def test_spec_check_on_this_repo() -> None:

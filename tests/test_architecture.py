@@ -27,7 +27,8 @@ def test_only_proc_spawns_processes() -> None:
     offenders = [
         p.name
         for p in SRC.rglob("*.py")
-        if p.name != "proc.py" and imported_modules(p) & {"subprocess", "os.system", "pty"}
+        if p.name != "proc.py"
+        and imported_modules(p) & {"subprocess", "os.system", "pty", "webbrowser"}
     ]
     assert offenders == []
 

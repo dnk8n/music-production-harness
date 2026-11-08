@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mph sample browser</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1f; --dim: #6e6e73; --line: #e2e0da;
+    --accent: #c2410c; --accent-ink: #ffffff; --chip: #f1efe9; --sel: #fff1e8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141414; --panel: #1d1d1f; --ink: #f2f2f2; --dim: #9a9a9f; --line: #2e2e31;
+      --accent: #fb923c; --accent-ink: #141414; --chip: #2a2a2d; --sel: #2b1f17;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  header { padding: 14px 16px; border-bottom: 1px solid var(--line); background: var(--panel);
+           position: sticky; top: 0; z-index: 2; }
+  h1 { font-size: 15px; margin: 0 0 10px; font-weight: 600; }
+  h1 span { color: var(--dim); font-weight: 400; }
+  form { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+  label { display: flex; flex-direction: column; font-size: 11px; color: var(--dim); gap: 2px; }
+  input, select { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
+                  background: var(--bg); color: var(--ink); min-width: 0; }
+  input.words { width: 220px; } input.small { width: 74px; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+           border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: default; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; padding: 16px;
+         padding-bottom: 96px; }
+  @media (max-width: 860px) { main { grid-template-columns: minmax(0, 1fr); } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+  .tabs { display: flex; gap: 4px; padding: 8px 8px 0; border-bottom: 1px solid var(--line); }
+  .tabs button { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: none; }
+  .tabs button.on { border-bottom-color: var(--accent); font-weight: 600; }
+  .status { color: var(--dim); padding: 8px 12px; font-size: 12px; }
+  ol { list-style: none; margin: 0; padding: 0; }
+  .row { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 8px; align-items: center;
+         padding: 8px 12px; border-top: 1px solid var(--line); }
+  .row.sel { background: var(--sel); }
+  .row.playing .play { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .play { width: 30px; height: 30px; padding: 0; border-radius: 50%; }
+  .name { overflow-wrap: anywhere; }
+  .pack { color: var(--dim); }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+  .chip { background: var(--chip); border-radius: 4px; padding: 0 6px; font-size: 12px; }
+  .why { color: var(--dim); font-size: 12px; margin-top: 2px; }
+  .actions { display: flex; gap: 4px; }
+  aside { display: flex; flex-direction: column; gap: 16px; }
+  aside h2 { font-size: 13px; margin: 0; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  .qrow { display: grid; grid-template-columns: minmax(0, 1fr) 80px 24px; gap: 6px; align-items: center;
+          padding: 6px 12px; border-top: 1px solid var(--line); font-size: 13px; }
+  .qrow:first-child { border-top: none; }
+  .qrow input[type=range] { width: 80px; padding: 0; accent-color: var(--accent); }
+  .qbar { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px; border-top: 1px solid var(--line); }
+  .tree { padding: 8px 12px; font-size: 13px; }
+  .node { display: flex; gap: 6px; align-items: center; padding: 3px 0; }
+  .node .play { width: 24px; height: 24px; font-size: 11px; }
+  .kind { color: var(--dim); font-size: 11px; }
+  footer { position: fixed; left: 0; right: 0; bottom: 0; background: var(--panel);
+           border-top: 1px solid var(--line); padding: 10px 16px; display: flex; gap: 12px;
+           align-items: center; z-index: 2; }
+  footer audio { flex: 1; min-width: 0; height: 36px; }
+  #now { max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  kbd { font: 11px ui-monospace, monospace; border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; }
+  .help { color: var(--dim); font-size: 12px; padding: 10px 12px; }
+  .empty { color: var(--dim); padding: 12px; font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Sample browser <span>· read-only, on this computer only</span></h1>
+  <form id="find">
+    <label>Words <input class="words" name="q" placeholder="open 909" autocomplete="off"></label>
+    <label>Role <input class="small" name="role" list="roles" placeholder="hat"></label>
+    <label>BPM <input class="small" name="bpm" inputmode="decimal" placeholder="128"></label>
+    <label>Key <input class="small" name="key" placeholder="Dm"></label>
+    <label>Form <select name="form"><option value="">any</option><option>oneshot</option>
+      <option>loop</option><option>phrase</option></select></label>
+    <label>Max s <input class="small" name="max_seconds" inputmode="decimal"></label>
+    <button class="primary">Search</button>
+  </form>
+  <datalist id="roles">
+    <option>kick</option><option>snare</option><option>clap</option><option>hat</option>
+    <option>hat_open</option><option>perc</option><option>conga</option><option>bongo</option>
+    <option>djembe</option><option>break</option><option>drums</option><option>bass</option>
+    <option>pad</option><option>chord</option><option>stab</option><option>melodic</option>
+    <option>fx</option><option>vocal</option>
+  </datalist>
+</header>
+<main>
+  <section>
+    <div class="tabs">
+      <button id="tab-results" class="on">Results</button>
+      <button id="tab-made">Made by mph</button>
+    </div>
+    <div class="status" id="status">Search to begin. Tip: press <kbd>/</kbd> to jump to the search box.</div>
+    <ol id="list"></ol>
+  </section>
+  <aside>
+    <section>
+      <h2>Selection</h2>
+      <div id="queue"><div class="empty">Add sounds with + or <kbd>a</kbd>.</div></div>
+      <div class="qbar">
+        <button id="q-seq">Play in order</button>
+        <button id="q-layer">Play together</button>
+        <label style="flex-direction:row;align-items:center;gap:4px;color:var(--ink);font-size:13px">
+          <input type="checkbox" id="q-loop"> loop</label>
+        <button id="q-stop">Stop</button>
+        <button id="q-clear">Clear</button>
+      </div>
+    </section>
+    <section>
+      <h2>Lineage</h2>
+      <div class="tree" id="tree"><div class="empty">Pick a sound and press "lineage" or <kbd>l</kbd>.</div></div>
+    </section>
+    <section class="help">
+      <kbd>↑</kbd><kbd>↓</kbd> move · <kbd>space</kbd> play/stop · <kbd>a</kbd> add to selection ·
+      <kbd>l</kbd> lineage · <kbd>esc</kbd> stop everything
+    </section>
+  </aside>
+</main>
+<footer>
+  <span id="now">Nothing playing</span>
+  <audio id="player" controls preload="none"></audio>
+</footer>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const player = $("player");
+let rows = [], selected = -1, view = "results";
+let queue = load("mph.queue", []);
+let layer = null;          // {ctx, sources} while playing together
+let sequence = null;       // index into queue while playing in order
+
+function load(key, fallback) {
+  try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
+}
+function save(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch {} }
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k.startsWith("on")) node.addEventListener(k.slice(2), v); else node.setAttribute(k, v);
+  }
+  for (const child of children) node.append(child);
+  return node;
+}
+function splitPath(path) {
+  const cut = path.lastIndexOf("/");
+  return cut < 0 ? ["", path] : [path.slice(0, cut + 1), path.slice(cut + 1)];
+}
+function seconds(s) { return s == null ? "" : `${s.toFixed(1)}s`; }
+
+// --- playing one sound ---------------------------------------------------------
+function play(item) {
+  stopLayer();
+  player.src = `/audio/${item.hash}`;
+  player.loop = $("q-loop").checked && sequence === null;
+  player.play().catch(() => {});
+  $("now").textContent = `▶ ${item.label || item.path}`;
+  markPlaying(item.hash);
+}
+function stopAll() {
+  sequence = null; stopLayer(); player.pause(); player.removeAttribute("src"); player.load();
+  $("now").textContent = "Nothing playing"; markPlaying(null);
+}
+function markPlaying(hash) {
+  document.querySelectorAll(".row").forEach((r) => r.classList.toggle("playing", r.dataset.hash === hash));
+}
+player.addEventListener("ended", () => {
+  if (sequence === null) { markPlaying(null); return; }
+  sequence += 1;
+  if (sequence >= queue.length) {
+    if (!$("q-loop").checked) { sequence = null; markPlaying(null); return; }
+    sequence = 0;
+  }
+  play(queue[sequence]);
+});
+
+// --- results ---------------------------------------------------------------------
+async function runSearch(event) {
+  event?.preventDefault();
+  const params = new URLSearchParams(new FormData($("find")));
+  for (const [k, v] of [...params]) if (!v) params.delete(k);
+  $("status").textContent = "Searching…";
+  const response = await fetch(`/api/search?${params}`);
+  if (!response.ok) { $("status").textContent = await response.text(); return; }
+  const data = await response.json();
+  rows = data.hits.map((h) => ({ ...h, label: h.path }));
+  let note = `${data.matched} ${data.matched === 1 ? "match" : "matches"}${data.hits.length < data.matched ? `, showing the best ${data.hits.length}` : ""}.`;
+  if (data.unanalysed_skipped) note += ` ${data.unanalysed_skipped} sounds have no loudness yet.`;
+  $("status").textContent = note;
+  showView("results");
+}
+async function showMade() {
+  const data = await (await fetch("/api/derivatives")).json();
+  rows = data.map((d) => ({ ...d, path: d.label, reasons: d.stashes ? [`stashed in ${d.stashes}`] : [], facts: {} }));
+  $("status").textContent = rows.length ? `${rows.length} ${rows.length === 1 ? "sound" : "sounds"} made by mph, newest first.`
+                                        : "Nothing made yet: try `mph catalogue derive`.";
+  showView("made");
+}
+function showView(name) {
+  view = name;
+  $("tab-results").classList.toggle("on", name === "results");
+  $("tab-made").classList.toggle("on", name === "made");
+  selected = rows.length ? 0 : -1;
+  render();
+}
+function render() {
+  const list = $("list");
+  list.replaceChildren(...rows.map((item, i) => {
+    const [pack, name] = splitPath(item.path);
+    const chips = Object.entries(item.facts || {}).map(([k, v]) => el("span", { class: "chip", title: k }, v));
+    if (item.duration_s != null) chips.push(el("span", { class: "chip" }, seconds(item.duration_s)));
+    if (item.lufs != null) chips.push(el("span", { class: "chip" }, `${item.lufs.toFixed(1)} LUFS`));
+    return el("li", { class: `row${i === selected ? " sel" : ""}`, "data-hash": item.hash,
+                      onclick: () => { selected = i; render(); } },
+      el("button", { class: "play", title: "play (space)", onclick: (e) => { e.stopPropagation(); play(item); } }, "▶"),
+      el("div", {},
+        el("div", { class: "name" }, el("span", { class: "pack" }, pack), name),
+        el("div", { class: "chips" }, ...chips),
+        item.reasons?.length ? el("div", { class: "why" }, `why: ${item.reasons.join("; ")}`) : ""),
+      el("div", { class: "actions" },
+        el("button", { title: "add to selection (a)", onclick: (e) => { e.stopPropagation(); enqueue(item); } }, "+"),
+        el("button", { title: "lineage (l)", onclick: (e) => { e.stopPropagation(); showLineage(item); } }, "lineage")));
+  }));
+  list.querySelector(".sel")?.scrollIntoView({ block: "nearest" });
+}
+
+// --- selection: in order, or layered -------------------------------------------
+function enqueue(item) {
+  if (queue.some((q) => q.hash === item.hash)) return;
+  queue.push({ hash: item.hash, label: splitPath(item.path)[1] || item.path, gain: 0.8 });
+  renderQueue();
+}
+function renderQueue() {
+  save("mph.queue", queue);
+  const box = $("queue");
+  if (!queue.length) { box.replaceChildren(el("div", { class: "empty" }, "Add sounds with + or ", el("kbd", {}, "a"), ".")); return; }
+  box.replaceChildren(...queue.map((q, i) => {
+    const slider = el("input", { type: "range", min: "0", max: "1", step: "0.05", title: "level when layered",
+      oninput: (e) => { q.gain = Number(e.target.value); save("mph.queue", queue);
+                        if (layer) layer.gains[i].gain.value = q.gain; } });
+    slider.value = q.gain;
+    return el("div", { class: "qrow" },
+      el("button", { style: "text-align:left;border:none;padding:0;background:none", title: "play this one",
+                     onclick: () => { sequence = null; play(q); } }, q.label),
+      slider,
+      el("button", { style: "padding:0 6px", title: "remove",
+                     onclick: () => { queue.splice(i, 1); renderQueue(); } }, "×"));
+  }));
+}
+async function playTogether() {
+  if (!queue.length) return;
+  stopAll();
+  $("now").textContent = `Loading ${queue.length} sounds…`;
+  const ctx = new AudioContext();
+  const buffers = await Promise.all(queue.map(async (q) =>
+    ctx.decodeAudioData(await (await fetch(`/audio/${q.hash}`)).arrayBuffer())));
+  const start = ctx.currentTime + 0.1;   // a common start time keeps the layers in sync
+  const gains = [], sources = [];
+  buffers.forEach((buffer, i) => {
+    const source = ctx.createBufferSource(), gain = ctx.createGain();
+    source.buffer = buffer; source.loop = $("q-loop").checked; gain.gain.value = queue[i].gain;
+    source.connect(gain).connect(ctx.destination); source.start(start);
+    gains.push(gain); sources.push(source);
+  });
+  layer = { ctx, gains, sources };
+  $("now").textContent = `▶ ${queue.length} sounds together${$("q-loop").checked ? ", looping" : ""}`;
+}
+function stopLayer() { if (layer) { layer.ctx.close(); layer = null; } }
+
+// --- lineage ---------------------------------------------------------------------
+async function showLineage(item) {
+  const tree = await (await fetch(`/api/lineage/${item.hash}`)).json();
+  const draw = (node, depth) => [
+    el("div", { class: "node", style: `padding-left:${depth * 16}px` },
+      node.kind === "missing" ? "" : el("button", { class: "play", onclick: () => play({ hash: node.hash, label: node.label }) }, "▶"),
+      el("span", {}, node.label), el("span", { class: "kind" }, node.kind)),
+    ...node.inputs.flatMap((child) => draw(child, depth + 1)),
+  ];
+  $("tree").replaceChildren(...draw(tree, 0));
+}
+
+// --- wiring ----------------------------------------------------------------------
+$("find").addEventListener("submit", runSearch);
+$("tab-results").addEventListener("click", () => runSearch());
+$("tab-made").addEventListener("click", showMade);
+$("q-seq").addEventListener("click", () => { if (queue.length) { stopAll(); sequence = 0; play(queue[0]); } });
+$("q-layer").addEventListener("click", playTogether);
+$("q-stop").addEventListener("click", stopAll);
+$("q-clear").addEventListener("click", () => { queue = []; renderQueue(); });
+document.addEventListener("keydown", (e) => {
+  if (e.target.matches("input, select")) { if (e.key === "Escape") e.target.blur(); return; }
+  const item = rows[selected];
+  const keys = {
+    "/": () => document.querySelector("input[name=q]").focus(),
+    ArrowDown: () => { selected = Math.min(selected + 1, rows.length - 1); render(); },
+    ArrowUp: () => { selected = Math.max(selected - 1, 0); render(); },
+    " ": () => item && (player.paused || player.src.indexOf(item.hash) < 0 ? play(item) : stopAll()),
+    a: () => item && enqueue(item),
+    l: () => item && showLineage(item),
+    Escape: stopAll,
+  };
+  if (keys[e.key]) { e.preventDefault(); keys[e.key](); }
+});
+renderQueue();
+</script>
+</body>
+</html>

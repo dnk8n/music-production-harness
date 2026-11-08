@@ -73,6 +73,18 @@ MIGRATIONS: tuple[str, ...] = (
         skipped INTEGER NOT NULL DEFAULT 0
     );
     """,
+    # 2: cached, versioned analysis results (REQ-CAT-04)
+    """
+    CREATE TABLE analysis (
+        asset_hash TEXT NOT NULL REFERENCES asset (hash) ON DELETE CASCADE,
+        analyser TEXT NOT NULL,
+        version INTEGER NOT NULL,
+        analysed_at TEXT NOT NULL,
+        result_json TEXT NOT NULL,           -- feature name -> value
+        error TEXT,
+        PRIMARY KEY (asset_hash, analyser, version)
+    );
+    """,
 )
 
 

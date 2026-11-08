@@ -5,7 +5,12 @@ description = "Music Production Harness: spec-driven, deterministic music produc
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "librosa>=1.0.0",
+    "numpy>=2.5.4",
+    "pyloudnorm>=0.2.0",
+    "soundfile>=0.14.0",
+]
 
 [project.scripts]
 mph = "mph.cli:main"
@@ -48,6 +53,10 @@ max-complexity = 8
 strict = true
 python_version = "3.12"
 files = ["src", "tests"]
+
+[[tool.mypy.overrides]]
+module = ["pyloudnorm", "soundfile"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

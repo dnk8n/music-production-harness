@@ -65,6 +65,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="parallel hashing/probing (default 4)",
     )
     cat_sub.add_parser("stats", help="summarise what's in the catalogue")
+    ana = cat_sub.add_parser("analyse", help="measure BPM, key, loudness... (cached)")
+    ana.add_argument("--role", action="append", default=[], help="only this role (repeatable)")
+    ana.add_argument("--pack", action="append", default=[], help="only this pack (repeatable)")
+    ana.add_argument("--limit", type=int, help="at most this many sounds")
+    ana.add_argument("--workers", type=int, default=4, choices=range(1, 17), metavar="1-16")
+    ana.add_argument("--force", action="store_true", help="re-analyse even if cached")
 
     spec = sub.add_parser("spec", help="spec tooling")
     spec_sub = spec.add_subparsers(dest="action", required=True)
@@ -102,10 +108,8 @@ def dispatch(
             return cmd_doctor(cfg, ctx, store, stages, as_json=args.json)
         case "install":
             return cmd_install(components.by_id(args.component), ctx, run=args.yes)
-        case "catalogue" if args.action == "scan":
-            return catalogue_commands.cmd_scan(cfg, ctx.runner, args.source, args.workers)
         case "catalogue":
-            return catalogue_commands.cmd_stats(cfg)
+            return catalogue_commands.dispatch(args, cfg, ctx.runner)
         case _:
             return cmd_secrets(store, args.action, getattr(args, "name", None))
 

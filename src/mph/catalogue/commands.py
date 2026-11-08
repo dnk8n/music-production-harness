@@ -2,15 +2,26 @@
 
 from __future__ import annotations
 
+import argparse
+import sqlite3
 import sys
+from contextlib import closing
 from pathlib import Path
 
 from mph.catalogue import db, stats
-from mph.catalogue.scanner import Scanner, SourceError
+from mph.catalogue.scanner import Scanner, SourceError, utc_now
 from mph.config import Config
 from mph.proc import Runner
 
 MAX_ERRORS_SHOWN = 10
+
+
+def dispatch(args: argparse.Namespace, cfg: Config, runner: Runner) -> int:
+    if args.action == "scan":
+        return cmd_scan(cfg, runner, args.source, args.workers)
+    if args.action == "analyse":
+        return cmd_analyse(cfg, args.role, args.pack, args.limit, args.workers, force=args.force)
+    return cmd_stats(cfg)
 
 
 def db_path(cfg: Config) -> Path:
@@ -51,6 +62,46 @@ def cmd_scan(cfg: Config, runner: Runner, source_ids: list[str], workers: int) -
             )
     conn.close()
     return code
+
+
+def select_assets(
+    conn: sqlite3.Connection, roles: list[str], packs: list[str], limit: int | None
+) -> list[str]:
+    """Asset hashes matching every given filter (role/pack tags of any origin)."""
+    sql = "SELECT hash FROM asset a WHERE probe_error IS NULL"
+    params: list[object] = []
+    exists = "SELECT 1 FROM tag t WHERE t.asset_hash = a.hash AND t.name = ? AND t.value IN "
+    for name, values in (("role", roles), ("pack", packs)):
+        if values:
+            placeholders = "(" + ", ".join("?" * len(values)) + ")"  # only "?" is interpolated
+            sql += f" AND EXISTS ({exists}{placeholders})"
+            params.extend([name, *values])
+    sql += " ORDER BY hash"
+    if limit is not None:
+        sql += " LIMIT ?"
+        params.append(limit)
+    return [row[0] for row in conn.execute(sql, params)]
+
+
+def cmd_analyse(
+    cfg: Config, roles: list[str], packs: list[str], limit: int | None, workers: int, *, force: bool
+) -> int:
+    path = db_path(cfg)
+    if not path.exists():
+        print("no catalogue yet: run `mph catalogue scan`", file=sys.stderr)
+        return 1
+    # Imported here so commands that don't analyse stay fast to start (librosa is heavy).
+    from mph.catalogue import analysis  # noqa: PLC0415
+
+    with closing(db.connect(path)) as conn:
+        hashes = select_assets(conn, roles, packs, limit)
+        print(f"analysing up to {len(hashes)} sounds with {workers} workers ...")
+        result = analysis.run(conn, hashes, workers=workers, force=force, clock=utc_now)
+    print(
+        f"  {result.analysed} analysed, {result.cached} already up to date, "
+        f"{result.failed} could not be decoded"
+    )
+    return 0
 
 
 def cmd_stats(cfg: Config) -> int:

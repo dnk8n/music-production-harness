@@ -3,12 +3,13 @@ from __future__ import annotations
 import shutil
 import struct
 import wave
+from contextlib import closing
 from pathlib import Path
 
 import pytest
 
 from mph import config
-from mph.catalogue import commands
+from mph.catalogue import commands, db
 from mph.proc import SubprocessRunner
 from tests.fakes import FakeRunner
 
@@ -67,3 +68,29 @@ def test_scan_and_stats_with_real_ffprobe(
     assert "wav 44.1k/16b" in out
     assert "wav 48.0k/16b" in out
     assert "kick" in out
+
+
+def test_analyse_before_any_scan(tmp_path: Path) -> None:
+    assert (
+        commands.cmd_analyse(cfg_for(tmp_path, tmp_path / "s"), [], [], None, 1, force=False) == 1
+    )
+
+
+@pytest.mark.req("REQ-CAT-04")
+@pytest.mark.skipif(shutil.which("ffprobe") is None, reason="needs ffprobe")
+def test_scan_then_analyse_selected_role(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "samples"
+    tone(root / "Pack/Kicks/Kick 1.wav")
+    tone(root / "Pack/Pads/Pad 1.wav", frames=44100)
+    cfg = cfg_for(tmp_path, root)
+    commands.cmd_scan(cfg, SubprocessRunner(), [], 1)
+    with closing(db.connect(commands.db_path(cfg))) as conn:
+        assert len(commands.select_assets(conn, ["kick"], [], None)) == 1
+        assert len(commands.select_assets(conn, [], ["Pack"], 1)) == 1
+        assert commands.select_assets(conn, ["kick"], ["Other"], None) == []
+    assert commands.cmd_analyse(cfg, ["kick"], [], None, 1, force=False) == 0
+    assert "1 analysed" in capsys.readouterr().out
+    assert commands.cmd_analyse(cfg, [], [], None, 1, force=False) == 0
+    assert "1 analysed, 1 already up to date" in capsys.readouterr().out

@@ -1,6 +1,6 @@
 # Catalogue
 
-**Status:** draft (being built in step 2: REQ-CAT-01, 02, 03 (names), 08 done)
+**Status:** draft (being built in step 2: REQ-CAT-01, 02, 03, 04, 08 done)
 
 A local search engine over every sound the harness can use, with full
 provenance. The first source is `/Users/dean/dj/samples` (about 4,000 files,
@@ -10,11 +10,12 @@ provenance. The first source is `/Users/dean/dj/samples` (about 4,000 files,
 
 - `mph catalogue scan [--source ID] [--workers N]`: read-only, incremental indexing.
 - `mph catalogue stats`: counts by pack, format and role.
-- Later in step 2: `mph catalogue search`, `analyse`, `refresh`, `stash`, `fetch`.
+- `mph catalogue analyse [--role R] [--pack P] [--limit N] [--workers N] [--force]`: measure on demand, cached per analyser version (ADR-0008).
+- Later in step 2: `mph catalogue search`, `refresh`, `stash`, `fetch`.
 
 ## Data model
 
-Built so far (migration 1, `src/mph/catalogue/db.py`):
+Built so far (migrations 1 and 2, `src/mph/catalogue/db.py`):
 
 ```
 source(id, kind, location, licence, last_scan_at)
@@ -25,9 +26,18 @@ document(source_id, rel_path, kind, scan_id)                            -- licen
 tag(asset_hash, name, value, origin: folder|filename|analysis|human, confidence)
 scan(id, source_id, started_at, finished_at, files_seen, hashed, new_assets, moved, removed,
      skipped)
+analysis(asset_hash, analyser, version, analysed_at, result_json, error)
 ```
 
-Still to come (later migrations): `analysis`, `recipe`, `derivation`, `stash`, FTS5 text index.
+Analysis features (analyser `core` v1): duration, peak/RMS dBFS, integrated
+LUFS (sounds of 0.4 s or more), onset count, BPM with confidence (loops, snapped
+to a whole number of beats in the loop length), key with confidence
+(Krumhansl-Schmuckler on chroma of the harmonic part), spectral centroid, share
+of energy below 150 Hz, percussive share (HPSS), and form (one-shot, loop or
+phrase). Tags `bpm`, `key`, `form` and `character` are added with
+`origin=analysis`, next to the name priors.
+
+Still to come (later migrations): `recipe`, `derivation`, `stash`, FTS5 text index.
 
 One asset can live at several paths (duplicates across packs). Name-derived
 tags are rebuilt from all current paths whenever an asset's paths change.

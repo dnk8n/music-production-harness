@@ -8,7 +8,7 @@ import sys
 from contextlib import closing
 from pathlib import Path
 
-from mph.catalogue import db, stats
+from mph.catalogue import agreement, db, stats
 from mph.catalogue.scanner import Scanner, SourceError, utc_now
 from mph.config import Config
 from mph.proc import Runner
@@ -97,10 +97,17 @@ def cmd_analyse(
         hashes = select_assets(conn, roles, packs, limit)
         print(f"analysing up to {len(hashes)} sounds with {workers} workers ...")
         result = analysis.run(conn, hashes, workers=workers, force=force, clock=utc_now)
+        agreements = agreement.measure(conn, hashes)
     print(
         f"  {result.analysed} analysed, {result.cached} already up to date, "
         f"{result.failed} could not be decoded"
     )
+    for item in agreements:
+        if item.compared:
+            print(
+                f"  {item.field}: analysis agrees with names on {item.agreed}/{item.compared} "
+                f"({item.rate:.0%})"
+            )
     return 0
 
 

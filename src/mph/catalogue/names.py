@@ -120,6 +120,11 @@ def _component_priors(text: str, origin: str, confidence: float) -> set[Prior]:
     return priors
 
 
+def priors_from_text(text: str, confidence: float = FILENAME_CONFIDENCE) -> list[Prior]:
+    """Priors from free text such as a downloaded sound's title and tags."""
+    return sorted(_component_priors(text, "filename", confidence))
+
+
 def folder_confidence(depth_from_file: int) -> float:
     """The folder holding the file says most; each level further up says less."""
     return round(max(FOLDER_CONFIDENCE - FOLDER_DECAY * (depth_from_file - 1), FOLDER_FLOOR), 3)

@@ -1,6 +1,6 @@
 # Catalogue
 
-**Status:** draft (being built in step 2: REQ-CAT-01, 02, 03, 04, 05, 06, 08 done)
+**Status:** built (step 2: REQ-CAT-01 to 08)
 
 A local search engine over every sound the harness can use, with full
 provenance. The first source is `/Users/dean/dj/samples` (about 4,000 files,
@@ -30,6 +30,8 @@ analysis(asset_hash, analyser, version, analysed_at, result_json, error)
 recipe(id, kind, version, params_json)                -- id = hash of the canonical recipe
 derivation(output_hash, recipe_id, inputs_json, created_at)
 stash(name, asset_hash, created_at)
+download(source_id, remote_id, asset_hash, rel_path, url, page_url, title, creator,
+         licence, licence_url, fetched_at)
 ```
 
 Derivatives live in `data_dir/cache/<hh>/<hash>.wav` (purgeable) and, when
@@ -109,6 +111,23 @@ them, refresh reports it instead of silently swapping the sound.
 Remote connectors (Freesound, Internet Archive, LibriVox) download into
 `data_dir/downloads/`, recording URL, licence and attribution. Local packs
 default to `licence = "commercial-pack"`.
+
+`mph catalogue fetch <connector> <words>` searches and downloads; each file
+becomes a catalogued sound (searchable, analysable, playable in the browser)
+with a `download` row: source URL, page URL, title, creator, licence (short
+form such as `cc0`, `cc-by`, `cc-by-nc`, `public-domain`) and fetch time.
+`--clear-only` keeps to licences that allow publishing (`cc0`,
+`public-domain`, `cc-by`): the set the `licence:clear` label depends on.
+`mph catalogue credits` prints attribution lines. `mph catalogue refresh`
+fetches a deleted download again and rejects it if the bytes changed.
+
+Freesound originals need a one-time OAuth2 sign-in with PKCE (`mph catalogue auth
+freesound`): Dean opens a link, approves, and pastes the code shown. Only the
+refresh token is stored, in the Keychain beside the API keys (REQ-SEC-01);
+access tokens live in memory. Without sign-in, `--previews` takes the lossy
+MP3 previews. Internet Archive items yield one file each, the best quality on
+offer (FLAC, then WAV or AIFF, then the highest-bitrate MP3). All network
+access goes through `mph.net.Http`, so tests never reach the internet.
 - **Why:** the library has no spoken word and little African percussion, so
   downloads are needed. Licence data drives the `licence:clear` marker.
 - **Verify:** test

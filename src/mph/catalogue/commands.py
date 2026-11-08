@@ -8,30 +8,41 @@ import sqlite3
 import sys
 from collections.abc import Callable
 from contextlib import closing
-from http.server import ThreadingHTTPServer
 from pathlib import Path
 
-from mph.catalogue import agreement, browse, db, provenance, search, stats
+from mph import secrets
+from mph.catalogue import agreement, browse, db, provenance, remote, search, stats
 from mph.catalogue.scanner import Scanner, SourceError, utc_now
 from mph.config import Config
+from mph.net import Http, UrllibHttp
 from mph.proc import Runner
 
 MAX_ERRORS_SHOWN = 10
+REMOTE_ACTIONS = frozenset({"fetch", "auth", "credits", "refresh"})
 PROVENANCE_ACTIONS = frozenset({"derive", "stash", "purge-cache", "refresh", "lineage"})
 
 
-def dispatch(args: argparse.Namespace, cfg: Config, runner: Runner) -> int:
-    if args.action == "scan":
-        return cmd_scan(cfg, runner, args.source, args.workers)
-    if args.action == "analyse":
-        return cmd_analyse(cfg, args.role, args.pack, args.limit, args.workers, force=args.force)
-    if args.action == "search":
-        return cmd_search(cfg, args)
+def dispatch(
+    args: argparse.Namespace,
+    cfg: Config,
+    runner: Runner,
+    store: secrets.SecretStore | None = None,
+    http: Http | None = None,
+) -> int:
+    handlers: dict[str, Callable[[], int]] = {
+        "scan": lambda: cmd_scan(cfg, runner, args.source, args.workers),
+        "analyse": lambda: cmd_analyse(
+            cfg, args.role, args.pack, args.limit, args.workers, force=args.force
+        ),
+        "search": lambda: cmd_search(cfg, args),
+        "browse": lambda: cmd_browse(cfg, runner, args.port, open_page=not args.no_open),
+        "stats": lambda: cmd_stats(cfg),
+    }
+    if args.action in REMOTE_ACTIONS:
+        return cmd_remote(cfg, runner, store, http or UrllibHttp(), args)
     if args.action in PROVENANCE_ACTIONS:
         return cmd_provenance(cfg, runner, args)
-    if args.action == "browse":
-        return cmd_browse(cfg, runner, args.port, open_page=not args.no_open)
-    return cmd_stats(cfg)
+    return handlers[args.action]()
 
 
 def db_path(cfg: Config) -> Path:
@@ -253,7 +264,7 @@ def cmd_browse(
     port: int,
     *,
     open_page: bool,
-    serve: Callable[[browse.App, int], ThreadingHTTPServer] = browse.serve,
+    serve: Callable[[browse.App, int], browse.Server] = browse.serve,
 ) -> int:
     path = db_path(cfg)
     if not path.exists():
@@ -275,3 +286,99 @@ def cmd_browse(
         except KeyboardInterrupt:
             print("\nstopped")
     return 0
+
+
+def connectors(
+    http: Http, store: secrets.SecretStore | None, *, previews: bool = False
+) -> dict[str, remote.Connector]:
+    found: dict[str, remote.Connector] = {
+        "archive": remote.Archive(http),
+        "librivox": remote.librivox(http),
+    }
+    if store is not None:
+        found["freesound"] = remote.Freesound(http, store, previews=previews)
+    return found
+
+
+def cmd_remote(
+    cfg: Config,
+    runner: Runner,
+    store: secrets.SecretStore | None,
+    http: Http,
+    args: argparse.Namespace,
+) -> int:
+    with closing(db.connect(db_path(cfg))) as conn:
+        try:
+            if args.action == "credits":
+                hashes = [r[0] for r in conn.execute("SELECT asset_hash FROM download ORDER BY 1")]
+                print("\n".join(remote.attribution(conn, hashes)) or "nothing downloaded yet")
+                return 0
+            if args.action == "auth":
+                return _sign_in(store, http)
+            if args.action == "refresh":
+                fetcher = remote.Fetcher(conn, runner, http, cfg.data_dir)
+                return _refresh(fetcher, cfg, runner, connectors(http, store), args)
+            fetcher = remote.Fetcher(conn, runner, http, cfg.data_dir)
+            return _fetch(fetcher, connectors(http, store, previews=args.previews), args)
+        except remote.RemoteError as exc:
+            print(exc, file=sys.stderr)
+            return 2
+
+
+def _sign_in(
+    store: secrets.SecretStore | None, http: Http, ask: Callable[[str], str] = input
+) -> int:
+    if store is None:
+        print("Freesound sign-in is kept in the macOS Keychain", file=sys.stderr)
+        return 2
+    freesound = remote.Freesound(http, store)
+    print("1. Open this page, sign in to Freesound and press Authorize:")
+    print(f"   {freesound.authorize_url()}")
+    print("2. Freesound then shows a code. Paste it here.")
+    freesound.sign_in(ask("   code: "))
+    print("Signed in. Original-quality downloads now work, and you won't need to do this again.")
+    return 0
+
+
+def _refresh(
+    fetcher: remote.Fetcher,
+    cfg: Config,
+    runner: Runner,
+    available: dict[str, remote.Connector],
+    args: argparse.Namespace,
+) -> int:
+    report = fetcher.refresh(available)
+    print(
+        f"downloads: {report.already} present, {len(report.fetched)} fetched again, "
+        f"{len(report.failed)} failed"
+    )
+    for line in report.failed[:MAX_ERRORS_SHOWN]:
+        print(f"  ! {line}")
+    derived = cmd_provenance(cfg, runner, args)
+    return 1 if report.failed else derived
+
+
+def _fetch(
+    fetcher: remote.Fetcher, available: dict[str, remote.Connector], args: argparse.Namespace
+) -> int:
+    if args.connector not in available:
+        print("Freesound needs the macOS Keychain for its keys", file=sys.stderr)
+        return 2
+    query = " ".join(args.query)
+    print(f"searching {args.connector} for {query!r} ...")
+    report = fetcher.fetch(
+        available[args.connector],
+        query,
+        args.limit,
+        clear_only=args.clear_only,
+        max_bytes=args.max_mb * 1_000_000,
+    )
+    for line in report.fetched:
+        print(f"  + {line}")
+    for line in report.failed[:MAX_ERRORS_SHOWN]:
+        print(f"  ! {line}")
+    print(
+        f"{len(report.fetched)} downloaded, {report.already} already here, "
+        f"{len(report.failed)} failed. Listen with `mph catalogue browse`."
+    )
+    return 1 if report.failed and not report.fetched else 0

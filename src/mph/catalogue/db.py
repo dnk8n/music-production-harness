@@ -119,6 +119,26 @@ MIGRATIONS: tuple[str, ...] = (
         PRIMARY KEY (name, asset_hash)
     );
     """,
+    # 6: where downloaded sounds came from and under what licence (REQ-CAT-07). The
+    # file itself is recorded like any other in source_file, under a 'remote' source
+    # whose location is its folder in data_dir/downloads.
+    """
+    CREATE TABLE download (
+        source_id TEXT NOT NULL REFERENCES source (id) ON DELETE CASCADE,
+        remote_id TEXT NOT NULL,             -- Freesound sound id, archive.org item/file
+        asset_hash TEXT NOT NULL REFERENCES asset (hash) ON DELETE CASCADE,
+        rel_path TEXT NOT NULL,              -- under the source's download folder
+        url TEXT NOT NULL,                   -- where the bytes came from (for refresh)
+        page_url TEXT NOT NULL,              -- the human page, for attribution
+        title TEXT NOT NULL,
+        creator TEXT NOT NULL,
+        licence TEXT NOT NULL,               -- short form: cc0, cc-by, public-domain, ...
+        licence_url TEXT NOT NULL,
+        fetched_at TEXT NOT NULL,
+        PRIMARY KEY (source_id, remote_id)
+    );
+    CREATE INDEX download_asset ON download (asset_hash);
+    """,
 )
 
 

@@ -256,5 +256,8 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
     return Handler
 
 
-def serve(app: App, port: int) -> ThreadingHTTPServer:
+Server = ThreadingHTTPServer  # so callers needn't import http.server themselves
+
+
+def serve(app: App, port: int) -> Server:
     return ThreadingHTTPServer((HOST, port), make_handler(app))

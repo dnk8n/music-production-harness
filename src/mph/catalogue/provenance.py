@@ -144,7 +144,7 @@ def locate(conn: sqlite3.Connection, data_dir: Path, digest: str) -> Path | None
     """Where an asset's bytes are right now: a local source, a stash, or the cache."""
     row = conn.execute(
         "SELECT s.location, f.rel_path FROM source_file f JOIN source s ON s.id = f.source_id "
-        "WHERE f.asset_hash = ? AND s.kind = 'local' ORDER BY f.rel_path LIMIT 1",
+        "WHERE f.asset_hash = ? ORDER BY s.kind = 'local' DESC, f.rel_path LIMIT 1",
         (digest,),
     ).fetchone()
     if row:

@@ -269,7 +269,7 @@ def pending(conn: sqlite3.Connection, hashes: Iterable[str], *, force: bool) -> 
 def locate(conn: sqlite3.Connection, digest: str) -> Path | None:
     row = conn.execute(
         "SELECT s.location, f.rel_path FROM source_file f JOIN source s ON s.id = f.source_id "
-        "WHERE f.asset_hash = ? AND s.kind = 'local' ORDER BY f.rel_path LIMIT 1",
+        "WHERE f.asset_hash = ? ORDER BY s.kind = 'local' DESC, f.rel_path LIMIT 1",
         (digest,),
     ).fetchone()
     return Path(row[0]).expanduser() / row[1] if row else None

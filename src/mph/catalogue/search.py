@@ -128,6 +128,9 @@ def load(conn: sqlite3.Connection) -> dict[str, Candidate]:
         item = candidates.setdefault(row[0], Candidate(row[0], duration_s=row[1]))
         item.paths.append(row[2])
         item.licences.add(row[3])
+    for digest, licence in conn.execute("SELECT asset_hash, licence FROM download"):
+        if digest in candidates:  # a download's own licence, not its source's 'varies'
+            candidates[digest].licences.add(licence)
     for digest, name, value, origin, confidence in conn.execute(
         "SELECT asset_hash, name, value, origin, confidence FROM tag"
     ):

@@ -91,13 +91,13 @@ def test_install_skips_when_present(capsys: pytest.CaptureFixture[str], mac_host
 @pytest.mark.req("REQ-SEC-05")
 def test_secrets_list_set_delete(capsys: pytest.CaptureFixture[str]) -> None:
     store = FakeStore()
-    prompter = ScriptedPrompter(["AbCdEf123456", "SecretValue123"])
+    prompter = ScriptedPrompter(["fake-id-0000", "fake-value-0000"])
     assert cli.cmd_secrets(store, "set", "freesound", prompter) == 0
     assert cli.cmd_secrets(store, "list", None) == 0
     out = capsys.readouterr().out
     assert "freesound    set" in out
     assert "gemini       missing" in out
-    assert "SecretValue123" not in out
+    assert "fake-value-0000" not in out
     del store.values["freesound.client_id"]
     cli.cmd_secrets(store, "list", None)
     assert "freesound    partial" in capsys.readouterr().out

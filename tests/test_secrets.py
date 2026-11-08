@@ -10,7 +10,8 @@ from mph.secrets import SECURITY, KeychainStore, credential_for
 from tests.fakes import FakeRunner, FakeStore, ScriptedPrompter
 
 FREESOUND = credential_for("freesound")
-GOOD_ID, GOOD_SECRET = "AbCdEf123456", "s3cr3tKeyValue_with-dots.ok"
+# Deliberately low-entropy fakes so secret scanners never mistake them for keys.
+GOOD_ID, GOOD_SECRET = "fake-id-0000", "fake-secret-0000.x_y"
 
 
 @pytest.mark.req("REQ-SEC-01")

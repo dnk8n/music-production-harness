@@ -18,6 +18,7 @@ class Result:
     code: int
     stdout: str = ""
     stderr: str = ""
+    data: bytes = b""  # raw stdout, filled only by ``capture``
 
     @property
     def ok(self) -> bool:
@@ -28,6 +29,10 @@ class Runner(Protocol):
     def run(
         self, argv: Sequence[str], *, interactive: bool = False, stdin: str | None = None
     ) -> Result: ...
+
+    def capture(self, argv: Sequence[str]) -> Result:
+        """Run and keep stdout as raw bytes in ``Result.data`` (e.g. decoded audio)."""
+        ...
 
     def which(self, name: str) -> str | None: ...
 
@@ -59,6 +64,18 @@ class SubprocessRunner:
         except subprocess.TimeoutExpired:
             return Result(124, stderr=f"timed out after {self._timeout_s}s: {argv[0]}")
         return Result(completed.returncode, completed.stdout, completed.stderr)
+
+    def capture(self, argv: Sequence[str]) -> Result:
+        try:
+            completed = subprocess.run(
+                list(argv), check=False, capture_output=True, timeout=self._timeout_s
+            )
+        except FileNotFoundError:
+            return Result(127, stderr=f"not found: {argv[0]}")
+        except subprocess.TimeoutExpired:
+            return Result(124, stderr=f"timed out after {self._timeout_s}s: {argv[0]}")
+        stderr = completed.stderr.decode("utf-8", "replace")
+        return Result(completed.returncode, stderr=stderr, data=completed.stdout)
 
     def which(self, name: str) -> str | None:
         return shutil.which(name)

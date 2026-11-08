@@ -26,14 +26,26 @@ def imported_modules(path: Path) -> set[str]:
 def test_only_proc_spawns_processes() -> None:
     offenders = [
         p.name
-        for p in SRC.glob("*.py")
+        for p in SRC.rglob("*.py")
         if p.name != "proc.py" and imported_modules(p) & {"subprocess", "os.system", "pty"}
     ]
     assert offenders == []
 
 
+# Third-party runtime imports, each justified by an ADR (REQ-ENG-05), and the
+# only modules allowed to use them, so heavy dependencies stay contained.
+JUSTIFIED = {
+    "librosa": {"catalogue/analysis.py"},  # ADR-0008
+    "numpy": {"catalogue/analysis.py"},  # ADR-0008
+    "pyloudnorm": {"catalogue/analysis.py"},  # ADR-0008
+    "soundfile": {"catalogue/analysis.py"},  # ADR-0008
+}
+
+
 @pytest.mark.req("REQ-ENG-05")
-def test_core_has_no_third_party_runtime_imports() -> None:
+def test_third_party_imports_are_justified_and_contained() -> None:
     allowed = set(sys.stdlib_module_names) | {"mph", "__future__"}
-    for path in SRC.glob("*.py"):
-        assert imported_modules(path) <= allowed, path.name
+    for path in SRC.rglob("*.py"):
+        rel = path.relative_to(SRC).as_posix()
+        for module in imported_modules(path) - allowed:
+            assert rel in JUSTIFIED.get(module, set()), f"{rel} imports {module}"

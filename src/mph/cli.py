@@ -14,6 +14,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from mph import __version__, components, config, doctor, secrets, speccheck
+from mph.catalogue import commands as catalogue_commands
 from mph.components import Context, Stage
 from mph.platform_info import current_host
 from mph.proc import SubprocessRunner
@@ -51,12 +52,57 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sec_sub.add_parser("delete", help="remove all fields").add_argument("name", choices=names)
 
+    cat = sub.add_parser("catalogue", help="sample catalogue")
+    cat_sub = cat.add_subparsers(dest="action", required=True)
+    scan = cat_sub.add_parser("scan", help="index local sources (read-only, incremental)")
+    scan.add_argument("--source", action="append", default=[], help="source id (repeatable)")
+    scan.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        choices=range(1, 17),
+        metavar="1-16",
+        help="parallel hashing/probing (default 4)",
+    )
+    cat_sub.add_parser("stats", help="summarise what's in the catalogue")
+    ana = cat_sub.add_parser("analyse", help="measure BPM, key, loudness... (cached)")
+    ana.add_argument("--role", action="append", default=[], help="only this role (repeatable)")
+    ana.add_argument("--pack", action="append", default=[], help="only this pack (repeatable)")
+    ana.add_argument("--limit", type=int, help="at most this many sounds")
+    ana.add_argument("--workers", type=int, default=4, choices=range(1, 17), metavar="1-16")
+    ana.add_argument("--force", action="store_true", help="re-analyse even if cached")
+
+    _add_search(cat_sub)
+
     spec = sub.add_parser("spec", help="spec tooling")
     spec_sub = spec.add_subparsers(dest="action", required=True)
     chk = spec_sub.add_parser("check", help="deterministic spec gate")
     chk.add_argument("--repo", type=Path, default=Path.cwd())
     chk.add_argument("--strict", action="store_true", help="untested requirements are errors")
     return parser
+
+
+def _add_search(cat_sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    find = cat_sub.add_parser(
+        "search",
+        help="find sounds by role, tempo, key, loudness, length or words",
+        description="e.g. mph catalogue search --role hat --bpm 128 open",
+    )
+    find.add_argument("text", nargs="*", help="words that must appear in the path or tags")
+    find.add_argument(
+        "--role", action="append", default=[], help="kick, hat, bass ... (repeatable)"
+    )
+    find.add_argument("--bpm", type=float, help="target tempo; half and double time also match")
+    find.add_argument("--bpm-tolerance", type=float, default=3.0, help="percent (default 3)")
+    find.add_argument("--key", help="target key, e.g. Dm, F#, 'Ab minor'; neighbours also match")
+    find.add_argument("--form", choices=["oneshot", "loop", "phrase"])
+    find.add_argument("--min-lufs", type=float, help="quietest integrated loudness")
+    find.add_argument("--max-lufs", type=float, help="loudest integrated loudness")
+    find.add_argument("--min-seconds", type=float)
+    find.add_argument("--max-seconds", type=float)
+    find.add_argument("--licence", help="e.g. commercial-pack, cc0")
+    find.add_argument("--limit", type=int, default=20)
+    find.add_argument("--json", action="store_true", help="machine-readable output")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -73,7 +119,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     store: secrets.SecretStore | None = (
         secrets.KeychainStore(runner, cfg.keychain_service) if host.is_macos else None
     )
-    ctx = Context(runner, host)
+    return dispatch(args, cfg, Context(runner, host), store)
+
+
+def dispatch(
+    args: argparse.Namespace, cfg: config.Config, ctx: Context, store: secrets.SecretStore | None
+) -> int:
     match args.command:
         case "status":
             return cmd_status(cfg, ctx, store)
@@ -82,6 +133,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return cmd_doctor(cfg, ctx, store, stages, as_json=args.json)
         case "install":
             return cmd_install(components.by_id(args.component), ctx, run=args.yes)
+        case "catalogue":
+            return catalogue_commands.dispatch(args, cfg, ctx.runner)
         case _:
             return cmd_secrets(store, args.action, getattr(args, "name", None))
 

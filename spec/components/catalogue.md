@@ -1,23 +1,53 @@
 # Catalogue
 
-**Status:** draft (built in step 2)
+**Status:** draft (being built in step 2: REQ-CAT-01, 02, 03, 04, 05, 08 done)
 
 A local search engine over every sound the harness can use, with full
 provenance. The first source is `/Users/dean/dj/samples` (about 4,000 files,
 7.1 GB, scanned 2026-11-08), configured in Dean's user config, not here.
 
-## Data model (sketch, finalised in step 2)
+## Commands
+
+- `mph catalogue scan [--source ID] [--workers N]`: read-only, incremental indexing.
+- `mph catalogue stats`: counts by pack, format and role.
+- `mph catalogue analyse [--role R] [--pack P] [--limit N] [--workers N] [--force]`: measure on demand, cached per analyser version (ADR-0008).
+- Later in step 2: `mph catalogue search`, `refresh`, `stash`, `fetch`.
+
+## Data model
+
+Built so far (migrations 1 and 2, `src/mph/catalogue/db.py`):
 
 ```
 source(id, kind, location, licence, last_scan_at)
-asset(hash PK, source_id?, rel_path?, url?, format, sample_rate, bit_depth,
-      channels, frames, bytes, mtime, licence, origin: source|download|derivative)
-analysis(asset_hash, analyser, analyser_version, key, value_json)   -- JIT, cached
-tag(asset_hash, tag, origin: filename|folder|analysis|human, confidence)
-recipe(hash PK, tool, tool_version, params_json)
-derivation(output_hash, recipe_hash, input_hash, input_role)
-stash(asset_hash, name, note, created_at)
+asset(hash PK, bytes, container, codec, sample_rate, bit_depth, channels, duration_s,
+      origin: source|download|derivative, probe_error)
+source_file(source_id, rel_path, size, mtime_ns, asset_hash, scan_id)   -- where content lives
+document(source_id, rel_path, kind, scan_id)                            -- licence evidence
+tag(asset_hash, name, value, origin: folder|filename|analysis|human, confidence)
+scan(id, source_id, started_at, finished_at, files_seen, hashed, new_assets, moved, removed,
+     skipped)
+analysis(asset_hash, analyser, version, analysed_at, result_json, error)
 ```
+
+Analysis features (analyser `core` v2): duration, peak/RMS dBFS, integrated
+LUFS (sounds of 0.4 s or more), onset count, BPM with confidence (loops, snapped
+to a whole number of beats in the loop length), key with confidence
+(Temperley key profiles on chroma of the harmonic part), spectral centroid, share
+of energy below 150 Hz, percussive share (HPSS), and form (one-shot, loop or
+phrase). Tags `bpm`, `key`, `form` and `character` are added with
+`origin=analysis`, next to the name priors.
+
+A single loop often doesn't spell out its pack's key: a riff in D minor may
+only play F, A and C. So an analysed key is a hint, and where a pack labels its
+key, the label wins. `mph catalogue analyse` reports agreement three ways (BPM
+within 2%, key or its relative, and key or a neighbouring key one step round
+the circle of fifths), always against the most confident name hint. Search
+treats neighbouring keys as compatible.
+
+Still to come (later migrations): `recipe`, `derivation`, `stash`, FTS5 text index.
+
+One asset can live at several paths (duplicates across packs). Name-derived
+tags are rebuilt from all current paths whenever an asset's paths change.
 
 ### REQ-CAT-01: Sources are read-only
 The catalogue opens source files read-only and never creates, modifies or
@@ -26,8 +56,9 @@ deletes anything under a local source path.
 - **Verify:** test
 
 ### REQ-CAT-02: Incremental, content-addressed scanning
-Assets are identified by content hash (BLAKE2b). Re-scans skip files whose
-size and mtime haven't changed, and detect moves and renames by hash.
+Assets are identified by content hash (BLAKE2b-256). Re-scans skip files
+whose size and mtime haven't changed, and detect moves and renames by hash.
+Hashing and probing run on a bounded worker pool (`--workers`, default 4).
 - **Why:** a 7 GB library should rescan in seconds, and renaming folders
   shouldn't lose analysis.
 - **Verify:** test
@@ -47,7 +78,11 @@ instrument class) runs on demand and is cached per analyser version.
 
 ### REQ-CAT-05: Search
 `mph catalogue search` filters by role, BPM range, key (with compatible
-keys), loudness, duration, licence and free text, ranked by fit.
+keys), loudness, duration, licence and free text, ranked by fit. Filters are
+hard; fit is a sum of confidence-weighted matches, and each result lists the
+reasons behind its score. Tempo matches allow half and double time; one-shots
+and sounds with no key pass tempo and key filters without gaining score.
+`--json` gives the same results for other tools.
 - **Why:** track construction starts with "find me a dry 909 open hat near
   128 BPM", and picking samples has to be explainable.
 - **Verify:** test

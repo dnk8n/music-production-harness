@@ -24,6 +24,8 @@ HASH = "0123456789abcdef"
 def fake_render(data: Path, benchmark_id: str = "BM-DRUM-02") -> Path:
     folder = data / "renders" / benchmark_id / HASH
     (folder / "variants").mkdir(parents=True)
+    (folder / "stems").mkdir()
+    (folder / "stems" / "kick.wav").write_bytes(b"RIFF....stem")
     (folder / f"{benchmark_id}.aiff").write_bytes(b"FORM....aiff")
     (folder / "variants" / "x-low.wav").write_bytes(b"RIFF....wav")
     (folder / "secret.txt").write_text("not listed")
@@ -32,7 +34,7 @@ def fake_render(data: Path, benchmark_id: str = "BM-DRUM-02") -> Path:
         "score_hash": HASH,
         "rendered_at": "2026-11-08T21:00:00Z",
         "passed": True,
-        "files": {"delivery": f"{benchmark_id}.aiff"},
+        "files": {"delivery": f"{benchmark_id}.aiff", "stems": ["stems/kick.wav"]},
         "variants": [{"name": "low", "file": "variants/x-low.wav"}],
     }
     (folder / "report.json").write_text(json.dumps(report))
@@ -70,6 +72,8 @@ def test_only_listed_render_files_are_served(app: browse.App) -> None:
         f"/bench/BM-DRUM-02/{HASH}/variants/x-low.wav", {**LOCAL, "Range": "bytes=0-3"}
     )
     assert variant.status == HTTPStatus.PARTIAL_CONTENT and variant.body == b"RIFF"
+    stem = app.handle(f"/bench/BM-DRUM-02/{HASH}/stems/kick.wav", LOCAL)
+    assert stem.status == HTTPStatus.OK and stem.body == b"RIFF....stem"
     for path in (
         f"/bench/BM-DRUM-02/{HASH}/secret.txt",
         f"/bench/BM-DRUM-02/{HASH}/report.json",

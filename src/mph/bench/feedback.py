@@ -77,7 +77,12 @@ def playable(renders: Path, benchmark_id: str, render_hash: str, name: str) -> P
         report = json.loads((folder / "report.json").read_text("utf-8"))
     except (OSError, ValueError):
         return None
-    listed = {report["files"]["delivery"], *(v["file"] for v in report.get("variants", []))}
+    files = report["files"]
+    listed = {
+        files["delivery"],
+        *files.get("stems", []),
+        *(v["file"] for v in report.get("variants", [])),
+    }
     if name not in listed:
         return None
     path = folder / name

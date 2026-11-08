@@ -11,7 +11,8 @@ its description, measurements (pass/fail with numbers), a player, and an
 A/B toggle where the benchmark defines one (e.g. sidechain bypass). It is the
 Benchmarks tab of the sample browser (REQ-BRW-01), so sounds and renders are
 in one place. Switching takes while playing keeps the playhead, so A/B
-compares the same moment.
+compares the same moment. Each sound the render used can be played
+inline: the catalogue sample on its own, and that voice's stem from the render.
 - **Why:** Dean needs to judge output without looking at code.
 - **Verify:** test
 

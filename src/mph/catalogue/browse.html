@@ -146,7 +146,7 @@
     </section>
     <section class="help">
       <kbd>↑</kbd><kbd>↓</kbd> move · <kbd>space</kbd> play/stop · <kbd>a</kbd> add to selection ·
-      <kbd>l</kbd> lineage · <kbd>esc</kbd> stop everything
+      <kbd>l</kbd> lineage · <kbd>esc</kbd> stop everything. Shortcuts pause while you type in a box.
     </section>
   </aside>
 </main>
@@ -411,7 +411,13 @@ $("q-layer").addEventListener("click", playTogether);
 $("q-stop").addEventListener("click", stopAll);
 $("q-clear").addEventListener("click", () => { queue = []; renderQueue(); });
 document.addEventListener("keydown", (e) => {
-  if (e.target.matches("input, select")) { if (e.key === "Escape") e.target.blur(); return; }
+  // While typing anywhere (search boxes, verdict notes), every key goes to the text:
+  // shortcuts pause until Esc or a click elsewhere. Shortcuts never take modified keys.
+  if (e.target.closest("input, select, textarea, [contenteditable]")) {
+    if (e.key === "Escape") e.target.blur();
+    return;
+  }
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
   const item = rows[selected];
   const keys = {
     "/": () => document.querySelector("input[name=q]").focus(),

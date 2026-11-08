@@ -95,6 +95,30 @@ MIGRATIONS: tuple[str, ...] = (
     """
     UPDATE asset SET container = 'm4a' WHERE container = 'mov';
     """,
+    # 5: provenance (REQ-CAT-06). A recipe is a named, versioned transform with fixed
+    # parameters; a derivation says which recipe turned which inputs into an asset.
+    # Stashed assets are kept outside the cache and survive purges.
+    """
+    CREATE TABLE recipe (
+        id TEXT PRIMARY KEY,                 -- BLAKE2b of the canonical recipe JSON
+        kind TEXT NOT NULL,                  -- trim, ...
+        version INTEGER NOT NULL,
+        params_json TEXT NOT NULL
+    );
+    CREATE TABLE derivation (
+        output_hash TEXT PRIMARY KEY REFERENCES asset (hash) ON DELETE CASCADE,
+        recipe_id TEXT NOT NULL REFERENCES recipe (id),
+        inputs_json TEXT NOT NULL,           -- ordered list of input asset hashes
+        created_at TEXT NOT NULL
+    );
+    CREATE INDEX derivation_recipe ON derivation (recipe_id, inputs_json);
+    CREATE TABLE stash (
+        name TEXT NOT NULL,
+        asset_hash TEXT NOT NULL REFERENCES asset (hash) ON DELETE CASCADE,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (name, asset_hash)
+    );
+    """,
 )
 
 

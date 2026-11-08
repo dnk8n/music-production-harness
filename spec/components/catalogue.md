@@ -1,6 +1,6 @@
 # Catalogue
 
-**Status:** draft (being built in step 2: REQ-CAT-01, 02, 03, 04, 05, 08 done)
+**Status:** draft (being built in step 2: REQ-CAT-01, 02, 03, 04, 05, 06, 08 done)
 
 A local search engine over every sound the harness can use, with full
 provenance. The first source is `/Users/dean/dj/samples` (about 4,000 files,
@@ -27,7 +27,16 @@ tag(asset_hash, name, value, origin: folder|filename|analysis|human, confidence)
 scan(id, source_id, started_at, finished_at, files_seen, hashed, new_assets, moved, removed,
      skipped)
 analysis(asset_hash, analyser, version, analysed_at, result_json, error)
+recipe(id, kind, version, params_json)                -- id = hash of the canonical recipe
+derivation(output_hash, recipe_id, inputs_json, created_at)
+stash(name, asset_hash, created_at)
 ```
+
+Derivatives live in `data_dir/cache/<hh>/<hash>.wav` (purgeable) and, when
+stashed, in `data_dir/stash/<name>/<hash>.wav` (kept). Recipes run ffmpeg with
+`-bitexact` and write 32-bit float WAV at the input's own rate. The first
+recipe is `trim`; stem separation and others join as the benchmarks need them.
+Commands: `derive`, `stash`, `purge-cache`, `refresh`, `lineage`.
 
 Analysis features (analyser `core` v2): duration, peak/RMS dBFS, integrated
 LUFS (sounds of 0.4 s or more), onset count, BPM with confidence (loops, snapped
@@ -44,7 +53,7 @@ within 2%, key or its relative, and key or a neighbouring key one step round
 the circle of fifths), always against the most confident name hint. Search
 treats neighbouring keys as compatible.
 
-Still to come (later migrations): `recipe`, `derivation`, `stash`, FTS5 text index.
+Still to come: an FTS5 text index, if plain substring search gets slow.
 
 One asset can live at several paths (duplicates across packs). Name-derived
 tags are rebuilt from all current paths whenever an asset's paths change.
@@ -89,7 +98,9 @@ and sounds with no key pass tempo and key filters without gaining score.
 
 ### REQ-CAT-06: Provenance and non-destructive refresh
 Every derivative records its recipe and inputs. `mph catalogue refresh` can
-rebuild any cache entry from source, and stashes survive cache purges.
+rebuild any cache entry from source, and stashes survive cache purges. A
+rebuild must reproduce the recorded bytes exactly; if a tool upgrade changes
+them, refresh reports it instead of silently swapping the sound.
 - **Why:** the DB models sources, then downloads, then cache and stashes, and
   can always rebuild from source.
 - **Verify:** test

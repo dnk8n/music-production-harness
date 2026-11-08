@@ -9,12 +9,13 @@ import sys
 from contextlib import closing
 from pathlib import Path
 
-from mph.catalogue import agreement, db, search, stats
+from mph.catalogue import agreement, db, provenance, search, stats
 from mph.catalogue.scanner import Scanner, SourceError, utc_now
 from mph.config import Config
 from mph.proc import Runner
 
 MAX_ERRORS_SHOWN = 10
+PROVENANCE_ACTIONS = frozenset({"derive", "stash", "purge-cache", "refresh", "lineage"})
 
 
 def dispatch(args: argparse.Namespace, cfg: Config, runner: Runner) -> int:
@@ -24,6 +25,8 @@ def dispatch(args: argparse.Namespace, cfg: Config, runner: Runner) -> int:
         return cmd_analyse(cfg, args.role, args.pack, args.limit, args.workers, force=args.force)
     if args.action == "search":
         return cmd_search(cfg, args)
+    if args.action in PROVENANCE_ACTIONS:
+        return cmd_provenance(cfg, runner, args)
     return cmd_stats(cfg)
 
 
@@ -194,3 +197,47 @@ def render_search(result: search.Result, query: search.Query) -> str:
     if not result.hits and (query.bpm or query.key):
         lines.append("tip: widen --bpm-tolerance, or drop --key to see more")
     return "\n".join(lines)
+
+
+def cmd_provenance(cfg: Config, runner: Runner, args: argparse.Namespace) -> int:
+    if args.action == "purge-cache":
+        print(f"removed {provenance.purge_cache(cfg.data_dir)} cached files; stashes kept")
+        return 0
+    path = db_path(cfg)
+    if not path.exists():
+        print("no catalogue yet: run `mph catalogue scan`", file=sys.stderr)
+        return 1
+    with closing(db.connect(path)) as conn:
+        try:
+            return _provenance_action(conn, cfg.data_dir, runner, args)
+        except provenance.ProvenanceError as exc:
+            print(exc, file=sys.stderr)
+            return 2
+
+
+def _provenance_action(
+    conn: sqlite3.Connection, data_dir: Path, runner: Runner, args: argparse.Namespace
+) -> int:
+    workshop = provenance.Workshop(conn, runner, data_dir)
+    if args.action == "refresh":
+        report = provenance.refresh(workshop, conn, data_dir)
+        print(
+            f"{report.present} present, {len(report.rebuilt)} rebuilt, {len(report.failed)} failed"
+        )
+        for line in report.failed[:MAX_ERRORS_SHOWN]:
+            print(f"  ! {line}")
+        return 1 if report.failed else 0
+    digest = provenance.resolve(conn, args.sound)
+    if args.action == "lineage":
+        print("\n".join(provenance.lineage(conn, digest)))
+        return 0
+    if args.action == "stash":
+        print(f"stashed: {provenance.stash(conn, data_dir, digest, args.name)}")
+        return 0
+    made = workshop.derive(
+        provenance.recipe(args.recipe, {"start": args.start, "end": args.end}), [digest]
+    )
+    print(f"{'reused' if made.reused else 'made'} {made.digest[:12]}: {made.path}")
+    if args.stash:
+        print(f"stashed: {provenance.stash(conn, data_dir, made.digest, args.stash)}")
+    return 0

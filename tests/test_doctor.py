@@ -190,3 +190,11 @@ def test_parse_version(text: str, expected: tuple[int, ...]) -> None:
 def test_unknown_version_passes_minimum() -> None:
     component = Component("x", "X", Stage.CORE, "p", Binary("x"), min_version="2.0")
     assert component.version_ok(components.Detection(True, None))
+
+
+@pytest.mark.parametrize("placeholder", ["0.0.0", "0", ""])
+def test_placeholder_bundle_version_is_unknown(mac_host: Host, placeholder: str) -> None:
+    make_bundle(mac_host.roots[0], "/Applications/Ultimate Vocal Remover.app", placeholder)
+    found = components.by_id("uvr").detector.detect(Context(FakeRunner(), mac_host))
+    assert found.found
+    assert found.version is None

@@ -49,7 +49,10 @@ def bundle_version(bundle: Path) -> str | None:
             value = plistlib.load(fh).get("CFBundleShortVersionString")
     except (OSError, plistlib.InvalidFileException):
         return None
-    return str(value) if value else None
+    # Some bundles (e.g. Ultimate Vocal Remover) ship a 0.0.0 placeholder.
+    if not value or not any(parse_version(str(value))):
+        return None
+    return str(value)
 
 
 def parse_version(text: str) -> tuple[int, ...]:

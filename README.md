@@ -30,6 +30,13 @@ path = "/Users/you/dj/samples"   # read-only: never written to
 license = "commercial-pack"
 ```
 
+Index your samples (read-only; the source folder is never written to):
+
+```sh
+uv run mph catalogue scan
+uv run mph catalogue stats
+```
+
 Store third-party credentials in the macOS Keychain, never in files. Setup asks
 for every field and says where to find it:
 
@@ -43,8 +50,8 @@ uv run mph secrets set gemini      # API key
 
 | Step | Outcome | Status |
 |---|---|---|
-| 1 | Spec, config, Keychain secrets, doctor and installers, CI | this PR |
-| 2 | Sample catalogue and search engine | next |
+| 1 | Spec, config, Keychain secrets, doctor and installers, CI | done |
+| 2 | Sample catalogue and search engine | in progress |
 | 3 | Benchmark kit and listening/feedback page | |
 | 4 | Renoise bridge and mastering | |
 

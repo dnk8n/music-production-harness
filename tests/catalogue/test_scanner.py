@@ -4,7 +4,8 @@ import hashlib
 import json
 import os
 import sqlite3
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -51,8 +52,10 @@ def library(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def conn(tmp_path: Path) -> sqlite3.Connection:
-    return db.connect(tmp_path / "data" / db.FILENAME)
+def conn(tmp_path: Path) -> Iterator[sqlite3.Connection]:
+    connection = db.connect(tmp_path / "data" / db.FILENAME)
+    yield connection
+    connection.close()
 
 
 def source(root: Path) -> Source:
@@ -234,5 +237,5 @@ def test_missing_source_directory(conn: sqlite3.Connection, tmp_path: Path) -> N
 def test_migrations_are_idempotent(tmp_path: Path) -> None:
     path = tmp_path / "c.sqlite"
     db.connect(path).close()
-    conn = db.connect(path)
-    assert db.schema_version(conn) == len(db.MIGRATIONS)
+    with closing(db.connect(path)) as conn:
+        assert db.schema_version(conn) == len(db.MIGRATIONS)

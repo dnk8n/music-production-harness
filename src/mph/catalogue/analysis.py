@@ -14,7 +14,7 @@ import sqlite3
 import warnings
 from collections.abc import Callable, Iterable
 from concurrent.futures import ProcessPoolExecutor
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from multiprocessing import get_context
 from pathlib import Path
 
@@ -27,7 +27,7 @@ from numpy.typing import NDArray
 from mph.catalogue.names import SHARP_NAMES
 
 ANALYSER = "core"
-VERSION = 1
+VERSION = 2  # v2: Temperley key profiles
 ANALYSIS_SR = 22050
 MIN_LUFS_SECONDS = 0.4  # BS.1770 gating needs at least one 400 ms block
 LOOP_BEATS = (1, 2, 4, 8, 16, 32, 64, 128)
@@ -45,9 +45,11 @@ PERCUSSIVE_SPLIT = 0.5
 BPM_TAG_MIN_CONFIDENCE = 0.6
 KEY_TAG_MIN_MARGIN = 0.05
 
-# Krumhansl-Kessler key profiles, index 0 = tonic.
-MAJOR_PROFILE = np.array([6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88])
-MINOR_PROFILE = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17])
+# Temperley (Kostka-Payne) key profiles, index 0 = tonic. On 50 labelled loops
+# from Dean's library they matched the pack's key (or its relative) on 25,
+# against 18 for the Krumhansl-Kessler profiles used in v1.
+MAJOR_PROFILE = np.array([5.0, 2.0, 3.5, 2.0, 4.5, 4.0, 2.0, 4.5, 2.0, 3.5, 1.5, 4.0])
+MINOR_PROFILE = np.array([5.0, 2.0, 3.5, 4.5, 2.0, 4.0, 2.0, 4.5, 3.5, 2.0, 1.5, 4.0])
 
 Signal = NDArray[np.float32]
 
@@ -225,6 +227,7 @@ class AnalysisRun:
     analysed: int = 0
     failed: int = 0
     cached: int = 0
+    errors: list[str] = field(default_factory=list)  # "path: reason" per failure
 
 
 def pending(conn: sqlite3.Connection, hashes: Iterable[str], *, force: bool) -> list[str]:
@@ -257,10 +260,12 @@ def run(
     # spawn, not fork: librosa/numba start threads, and macOS defaults to spawn anyway.
     with ProcessPoolExecutor(max_workers=workers, mp_context=get_context("spawn")) as pool:
         results = pool.map(analyse_file, [str(p) for _, p in located], chunksize=4)
-        for (digest, _), (features, error) in zip(located, results, strict=True):
+        for (digest, path), (features, error) in zip(located, results, strict=True):
             _store(conn, digest, features, error, clock())
             report.analysed += features is not None
-            report.failed += error is not None
+            if error is not None:
+                report.failed += 1
+                report.errors.append(f"{path}: {error}")
     return report
 
 

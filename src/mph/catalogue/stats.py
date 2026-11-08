@@ -58,9 +58,5 @@ def summarise(conn: sqlite3.Connection) -> Summary:
             "COALESCE(bit_depth, '?') || 'b', COUNT(*) FROM asset "
             "GROUP BY 1 ORDER BY 2 DESC, 1",
         ),
-        by_role=_pairs(
-            conn,
-            "SELECT value, COUNT(DISTINCT asset_hash) FROM tag "
-            "WHERE name = 'role' GROUP BY value ORDER BY 2 DESC, 1",
-        ),
+        by_role=_pairs(conn, BEST_ROLE_COUNTS),
     )

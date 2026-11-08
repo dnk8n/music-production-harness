@@ -29,13 +29,20 @@ scan(id, source_id, started_at, finished_at, files_seen, hashed, new_assets, mov
 analysis(asset_hash, analyser, version, analysed_at, result_json, error)
 ```
 
-Analysis features (analyser `core` v1): duration, peak/RMS dBFS, integrated
+Analysis features (analyser `core` v2): duration, peak/RMS dBFS, integrated
 LUFS (sounds of 0.4 s or more), onset count, BPM with confidence (loops, snapped
 to a whole number of beats in the loop length), key with confidence
-(Krumhansl-Schmuckler on chroma of the harmonic part), spectral centroid, share
+(Temperley key profiles on chroma of the harmonic part), spectral centroid, share
 of energy below 150 Hz, percussive share (HPSS), and form (one-shot, loop or
 phrase). Tags `bpm`, `key`, `form` and `character` are added with
 `origin=analysis`, next to the name priors.
+
+A single loop often doesn't spell out its pack's key: a riff in D minor may
+only play F, A and C. So an analysed key is a hint, and where a pack labels its
+key, the label wins. `mph catalogue analyse` reports agreement three ways (BPM
+within 2%, key or its relative, and key or a neighbouring key one step round
+the circle of fifths), always against the most confident name hint. Search
+treats neighbouring keys as compatible.
 
 Still to come (later migrations): `recipe`, `derivation`, `stash`, FTS5 text index.
 

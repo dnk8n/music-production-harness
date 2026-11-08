@@ -161,6 +161,8 @@ def test_run_caches_by_version_and_tags(conn: sqlite3.Connection, tmp_path: Path
     seed(conn, root, "bad.m4a", "h2")
     first = analysis.run(conn, ["h1", "h2"], workers=1, force=False, clock=lambda: "t")
     assert (first.analysed, first.failed, first.cached) == (1, 1, 0)
+    assert len(first.errors) == 1
+    assert first.errors[0].startswith(str(root / "bad.m4a"))
     again = analysis.run(conn, ["h1", "h2"], workers=1, force=False, clock=lambda: "t")
     assert (again.analysed, again.cached) == (0, 2)
     result = json.loads(

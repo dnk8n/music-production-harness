@@ -11,8 +11,12 @@ demand on a 16 GB M1 Pro. REQ-ENG-05 requires runtime dependencies to be justifi
 - **soundfile** (BSD, libsndfile) decodes WAV, AIFF, FLAC, OGG and MP3 into
   float32 in memory. Nothing is written to disk (REQ-AUD-01).
 - **librosa** (ISC) provides onsets, beat tracking, chroma, HPSS and spectral
-  features. Key is estimated from mean chroma with Krumhansl-Schmuckler
-  profiles, implemented here in a few lines so it's easy to read.
+  features. Key is estimated from mean chroma by correlating with key
+  profiles, implemented here in a few lines so it's easy to read. Temperley's
+  profiles replaced Krumhansl-Kessler in analyser v2 after a check on 50
+  labelled loops from the Novation Anniversary 3rd Drop: key or relative
+  matched the label on 25 against 18, and key or a neighbouring key on 36
+  against 32. EDM-specific profiles (Faraldo's "edma") scored 18 and 31.
 - **pyloudnorm** (MIT) measures integrated loudness (ITU-R BS.1770-4).
 - **numpy** for the glue.
 

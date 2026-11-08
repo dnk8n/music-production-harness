@@ -102,6 +102,10 @@ def cmd_analyse(
         f"  {result.analysed} analysed, {result.cached} already up to date, "
         f"{result.failed} could not be decoded"
     )
+    for line in result.errors[:MAX_ERRORS_SHOWN]:
+        print(f"    {line}")
+    if len(result.errors) > MAX_ERRORS_SHOWN:
+        print(f"    ... and {len(result.errors) - MAX_ERRORS_SHOWN} more")
     for item in agreements:
         if item.compared:
             print(

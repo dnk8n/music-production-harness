@@ -1,0 +1,25 @@
+# spec/components/benchmarks.md#bm-drum-10: snare ramps 60% to 100% at the end of every 4th bar
+id = "BM-DRUM-10"
+title = "Speed garage drive"
+bpm = 130
+bars = 8
+swing = 0.55
+
+[voices.kick]
+grid = "X . . . X . . . X . . . X . . ."
+sound = { role = "kick" }
+
+[voices.snare]
+grid = ". . . . x . . . . . . . x . x x"
+sound = { role = "snare" }
+ramp = { every_bars = 4, steps = 4, start = 0.6, end = 1.0 }
+
+[voices.chh]
+grid = "x x x x x x x x x x x x x x x x"
+sound = { role = "hat" }
+chokes = ["ohh"]
+seconds = 0.25
+
+[voices.ohh]
+grid = ". . o . . . o . . . o . . . o ."
+sound = { role = "hat_open" }

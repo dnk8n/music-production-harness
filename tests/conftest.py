@@ -30,3 +30,16 @@ def make_bundle(root: Path, relative: str, version: str | None) -> Path:
 def _isolate_user_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Never read Dean's real ~/.config/mph during tests."""
     monkeypatch.setenv("MPH_CONFIG", str(tmp_path / "absent.toml"))
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """``tools`` tests need SuperCollider; skip them quietly where it isn't installed."""
+    from mph.bench.sc import find_tools  # noqa: PLC0415 - only when collecting
+    from mph.proc import SubprocessRunner  # noqa: PLC0415
+
+    if find_tools(SubprocessRunner()) is not None:
+        return
+    skip = pytest.mark.skip(reason="SuperCollider isn't installed")
+    for item in items:
+        if "tools" in item.keywords:
+            item.add_marker(skip)

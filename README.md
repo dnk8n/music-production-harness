@@ -37,6 +37,16 @@ uv run mph catalogue scan
 uv run mph catalogue stats
 ```
 
+Render the benchmarks with SuperCollider (`mph install supercollider` first).
+Each one is measured (timing to the millisecond, swing, chokes, a second render
+that must match bit for bit) and delivered as a 48 kHz / 24-bit AIFF:
+
+```sh
+uv run mph bench list
+uv run mph bench render BM-DRUM-02
+uv run mph bench render --all
+```
+
 Store third-party credentials in the macOS Keychain, never in files. Setup asks
 for every field and says where to find it:
 
@@ -51,8 +61,8 @@ uv run mph secrets set gemini      # API key
 | Step | Outcome | Status |
 |---|---|---|
 | 1 | Spec, config, Keychain secrets, doctor and installers, CI | done |
-| 2 | Sample catalogue and search engine | in progress |
-| 3 | Benchmark kit and listening/feedback page | |
+| 2 | Sample catalogue and search engine | done |
+| 3 | Benchmark kit and listening/feedback page | in progress |
 | 4 | Renoise bridge and mastering | |
 
 Once Dean signs off the benchmarks, the first track gets its own spec.

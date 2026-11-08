@@ -736,6 +736,7 @@ dependencies = [
     { name = "numpy" },
     { name = "pyloudnorm" },
     { name = "soundfile" },
+    { name = "soxr" },
 ]
 
 [package.dev-dependencies]
@@ -753,6 +754,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.5.4" },
     { name = "pyloudnorm", specifier = ">=0.2.0" },
     { name = "soundfile", specifier = ">=0.14.0" },
+    { name = "soxr", specifier = ">=1.1.0" },
 ]
 
 [package.metadata.requires-dev]

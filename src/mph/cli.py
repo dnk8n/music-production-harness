@@ -14,10 +14,13 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from mph import __version__, components, config, doctor, secrets, speccheck
+from mph.bench import commands as bench_commands
 from mph.catalogue import commands as catalogue_commands
 from mph.components import Context, Stage
 from mph.platform_info import current_host
 from mph.proc import SubprocessRunner
+
+RENDER_TIMEOUT_S = 900.0
 
 SYMBOL = {
     doctor.Status.OK: "✓",
@@ -74,6 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     _add_search(cat_sub)
     _add_provenance(cat_sub)
+    _add_bench(sub)
 
     spec = sub.add_parser("spec", help="spec tooling")
     spec_sub = spec.add_subparsers(dest="action", required=True)
@@ -135,6 +139,18 @@ def _add_provenance(cat_sub: argparse._SubParsersAction[argparse.ArgumentParser]
     web.add_argument("--no-open", action="store_true", help="just print the address")
 
 
+def _add_bench(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    bench = sub.add_parser("bench", help="render and check the benchmarks")
+    bench_sub = bench.add_subparsers(dest="action", required=True)
+    bench_sub.add_parser("list", help="every benchmark and its latest result")
+    render = bench_sub.add_parser("render", help="render, measure and deliver benchmarks")
+    render.add_argument("ids", nargs="*", metavar="BM-ID", help="e.g. BM-DRUM-02")
+    render.add_argument("--all", action="store_true", help="every benchmark with a score")
+    bench_sub.add_parser("report", help="the latest result for one benchmark").add_argument(
+        "id", metavar="BM-ID"
+    )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "spec":
@@ -144,7 +160,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     except config.ConfigError as exc:
         print(exc, file=sys.stderr)
         return 2
-    runner = SubprocessRunner()
+    # Renders and synth compiles can take minutes; everything else should be quick.
+    runner = SubprocessRunner(RENDER_TIMEOUT_S if args.command == "bench" else 30.0)
     host = current_host()
     store: secrets.SecretStore | None = (
         secrets.KeychainStore(runner, cfg.keychain_service) if host.is_macos else None
@@ -165,6 +182,8 @@ def dispatch(
             return cmd_install(components.by_id(args.component), ctx, run=args.yes)
         case "catalogue":
             return catalogue_commands.dispatch(args, cfg, ctx.runner, store)
+        case "bench":
+            return bench_commands.dispatch(args, cfg, ctx.runner)
         case _:
             return cmd_secrets(store, args.action, getattr(args, "name", None))
 

@@ -1,0 +1,18 @@
+# spec/components/benchmarks.md#bm-drum-01
+id = "BM-DRUM-01"
+title = "Detroit four-to-the-floor"
+bpm = 130
+bars = 8
+
+[voices.kick]
+grid = "X . . . X . . . X . . . X . . ."
+sound = { role = "kick", words = ["909"] }
+
+[voices.clap]
+grid = ". . . . x . . . . . . . x . . ."
+sound = { role = "clap", words = ["909"] }
+
+[voices.chh]
+grid = ". . x . . . x . . . x . . . x ."
+sound = { role = "hat", words = ["909"] }
+seconds = 0.25

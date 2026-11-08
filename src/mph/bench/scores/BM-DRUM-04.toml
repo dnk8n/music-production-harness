@@ -1,0 +1,17 @@
+# spec/components/benchmarks.md#bm-drum-04 (synth: 808-style from SuperCollider)
+id = "BM-DRUM-04"
+title = "Electro syncopation"
+bpm = 128
+bars = 8
+
+[voices.kick]
+grid = "X . . x . . x . . . X . . x . ."
+sound = { synth = "mph_kick" }
+
+[voices.snare]
+grid = ". . . . X . . . . . . . X . . ."
+sound = { synth = "mph_snare" }
+
+[voices.chh]
+grid = "x . x . x . x . x . x . x . x ."
+sound = { synth = "mph_hat" }

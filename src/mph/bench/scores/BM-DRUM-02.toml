@@ -1,0 +1,24 @@
+# spec/components/benchmarks.md#bm-drum-02
+id = "BM-DRUM-02"
+title = "Jersey garage shuffle"
+bpm = 122
+bars = 8
+swing = 0.58
+
+[voices.kick]
+grid = "X . . . X . . . X . . . X . . ."
+sound = { role = "kick" }
+
+[voices.clap]
+grid = ". . . . x . . . . . . . x . . ."
+sound = { role = "clap" }
+
+[voices.chh]
+grid = "x x x x x x x x x x x x x x x x"
+sound = { role = "hat" }
+chokes = ["ohh"]
+seconds = 0.25
+
+[voices.ohh]
+grid = ". . o . . . o . . . o . . . o ."
+sound = { role = "hat_open" }

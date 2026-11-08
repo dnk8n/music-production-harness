@@ -36,3 +36,8 @@ All of them are deterministic, classic DSP. No neural models are involved.
   requirement) into a pipe through `mph.proc.Runner`: float32 at the native
   rate, held in memory only, so no file is written and no resampling happens
   (REQ-AUD-01). Failed analyses are retried on the next run.
+- Benchmark measurement (`mph.bench.audio`, step 3) reuses soundfile, numpy
+  and pyloudnorm: matching hits in stems, loudness and true peak. Stems are
+  written by a few lines of code rather than soundfile, because libsndfile
+  stamps float WAVs with the time of writing, and identical renders must be
+  identical files (REQ-AUD-05).

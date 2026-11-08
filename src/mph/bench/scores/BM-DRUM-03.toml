@@ -1,0 +1,19 @@
+# spec/components/benchmarks.md#bm-drum-03
+id = "BM-DRUM-03"
+title = "UK garage 2-step"
+bpm = 132
+bars = 8
+swing = 0.62
+
+[voices.kick]
+grid = "X . . . . . . . . . x . . . . ."
+sound = { role = "kick" }
+
+[voices.snare]
+grid = ". . . . X . . . . . . . X . . ."
+sound = { role = "snare" }
+
+[voices.chh]
+grid = "x . x x x . x x x . x x x . x x"
+sound = { role = "hat" }
+seconds = 0.25

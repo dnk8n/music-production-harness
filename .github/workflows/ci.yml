@@ -31,7 +31,7 @@ jobs:
       - name: Types
         run: uv run mypy
       - name: Tests (macOS-only tests deselected)
-        run: uv run pytest -m "not macos" --cov=mph --cov-report=term-missing
+        run: uv run pytest -m "not macos and not tools" --cov=mph --cov-report=term-missing
       - name: Spec gate (REQ-PRC-01, REQ-PRC-02)
         run: uv run mph spec check
 

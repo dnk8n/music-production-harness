@@ -119,6 +119,9 @@ def _add_provenance(cat_sub: argparse._SubParsersAction[argparse.ArgumentParser]
     cat_sub.add_parser("purge-cache", help="delete cached derivatives (stashes stay)")
     cat_sub.add_parser("refresh", help="rebuild missing derivatives from their recipes")
     cat_sub.add_parser("lineage", help="show how a sound was made").add_argument("sound")
+    web = cat_sub.add_parser("browse", help="search, play, layer and trace sounds in a browser")
+    web.add_argument("--port", type=int, default=8765)
+    web.add_argument("--no-open", action="store_true", help="just print the address")
 
 
 def main(argv: Sequence[str] | None = None) -> int:

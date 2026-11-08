@@ -6,10 +6,12 @@ import argparse
 import json
 import sqlite3
 import sys
+from collections.abc import Callable
 from contextlib import closing
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 
-from mph.catalogue import agreement, db, provenance, search, stats
+from mph.catalogue import agreement, browse, db, provenance, search, stats
 from mph.catalogue.scanner import Scanner, SourceError, utc_now
 from mph.config import Config
 from mph.proc import Runner
@@ -27,6 +29,8 @@ def dispatch(args: argparse.Namespace, cfg: Config, runner: Runner) -> int:
         return cmd_search(cfg, args)
     if args.action in PROVENANCE_ACTIONS:
         return cmd_provenance(cfg, runner, args)
+    if args.action == "browse":
+        return cmd_browse(cfg, runner, args.port, open_page=not args.no_open)
     return cmd_stats(cfg)
 
 
@@ -240,4 +244,34 @@ def _provenance_action(
     print(f"{'reused' if made.reused else 'made'} {made.digest[:12]}: {made.path}")
     if args.stash:
         print(f"stashed: {provenance.stash(conn, data_dir, made.digest, args.stash)}")
+    return 0
+
+
+def cmd_browse(
+    cfg: Config,
+    runner: Runner,
+    port: int,
+    *,
+    open_page: bool,
+    serve: Callable[[browse.App, int], ThreadingHTTPServer] = browse.serve,
+) -> int:
+    path = db_path(cfg)
+    if not path.exists():
+        print("no catalogue yet: run `mph catalogue scan`", file=sys.stderr)
+        return 1
+    try:
+        server = serve(browse.App(path, cfg.data_dir, runner, port), port)
+    except OSError as exc:
+        print(f"cannot listen on port {port}: {exc}. Try --port 8766", file=sys.stderr)
+        return 1
+    url = f"http://{browse.HOST}:{port}/"
+    print(f"sample browser at {url}  (Ctrl-C to stop)")
+    opener = next((name for name in ("open", "xdg-open") if runner.which(name)), None)
+    if open_page and opener:
+        runner.run([opener, url])
+    with server:
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            print("\nstopped")
     return 0

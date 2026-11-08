@@ -334,29 +334,51 @@ def stash(conn: sqlite3.Connection, data_dir: Path, digest: str, name: str) -> P
     return target
 
 
+@dataclass(frozen=True, slots=True)
+class Node:
+    """One step in a sound's history: a source file, or a recipe and its inputs."""
+
+    digest: str
+    label: str  # "dj:Pack/Bass1.wav" or "trim(start=0, end=2)"
+    kind: str  # source | derivative | missing
+    inputs: tuple[Node, ...] = ()
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "hash": self.digest,
+            "label": self.label,
+            "kind": self.kind,
+            "inputs": [node.to_dict() for node in self.inputs],
+        }
+
+
+def lineage_tree(conn: sqlite3.Connection, digest: str) -> Node:
+    row = conn.execute(
+        "SELECT r.kind, r.params_json, d.inputs_json FROM derivation d "
+        "JOIN recipe r ON r.id = d.recipe_id WHERE d.output_hash = ?",
+        (digest,),
+    ).fetchone()
+    if row is None:
+        path = conn.execute(
+            "SELECT source_id || ':' || rel_path FROM source_file WHERE asset_hash = ? "
+            "ORDER BY rel_path LIMIT 1",
+            (digest,),
+        ).fetchone()
+        return Node(digest, path[0] if path else "(gone)", "source" if path else "missing")
+    params = ", ".join(f"{k}={v:g}" for k, v in json.loads(row[1]).items())
+    parents = tuple(lineage_tree(conn, parent) for parent in json.loads(row[2]))
+    return Node(digest, f"{row[0]}({params})", "derivative", parents)
+
+
 def lineage(conn: sqlite3.Connection, digest: str) -> list[str]:
     """Human-readable chain from a derivative back to its sources."""
     lines: list[str] = []
 
-    def walk(item: str, depth: int) -> None:
-        pad = "  " * depth
-        row = conn.execute(
-            "SELECT r.kind, r.params_json, d.inputs_json FROM derivation d "
-            "JOIN recipe r ON r.id = d.recipe_id WHERE d.output_hash = ?",
-            (item,),
-        ).fetchone()
-        if row is None:
-            path = conn.execute(
-                "SELECT source_id || ':' || rel_path FROM source_file WHERE asset_hash = ? "
-                "ORDER BY rel_path LIMIT 1",
-                (item,),
-            ).fetchone()
-            lines.append(f"{pad}{item[:12]} source {path[0] if path else '(gone)'}")
-            return
-        params = ", ".join(f"{k}={v:g}" for k, v in json.loads(row[1]).items())
-        lines.append(f"{pad}{item[:12]} {row[0]}({params})")
-        for parent in json.loads(row[2]):
+    def walk(node: Node, depth: int) -> None:
+        kind = "source " if node.kind != "derivative" else ""
+        lines.append(f"{'  ' * depth}{node.digest[:12]} {kind}{node.label}")
+        for parent in node.inputs:
             walk(parent, depth + 1)
 
-    walk(digest, 0)
+    walk(lineage_tree(conn, digest), 0)
     return lines

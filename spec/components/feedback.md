@@ -8,7 +8,11 @@ verdicts into spec or code changes. No code reading needed.
 ### REQ-FBK-01: Local listening page
 `mph bench serve` opens a page on `localhost` listing benchmarks. Each shows
 its description, measurements (pass/fail with numbers), a player, and an
-A/B toggle where the benchmark defines one (e.g. sidechain bypass).
+A/B toggle where the benchmark defines one (e.g. sidechain bypass). It is the
+Benchmarks tab of the sample browser (REQ-BRW-01), so sounds and renders are
+in one place. Switching takes while playing keeps the playhead, so A/B
+compares the same moment. Each sound the render used can be played
+inline: the catalogue sample on its own, and that voice's stem from the render.
 - **Why:** Dean needs to judge output without looking at code.
 - **Verify:** test
 
@@ -35,7 +39,9 @@ change, or a parameter tweak, as an issue comment. It never edits on its own.
 - **Verify:** inspect
 
 ### REQ-FBK-05: Local only
-The page binds to 127.0.0.1, serves only files under `data_dir/renders`, and
-has no remote access.
+The page binds to 127.0.0.1 and has no remote access. Of the renders, it
+serves only the files a render's own `report.json` lists, under
+`data_dir/renders`. Saving a verdict needs JSON from the page's own origin,
+so another website can't post one.
 - **Why:** standard security. Nothing on the LAN should be able to read the library.
 - **Verify:** test

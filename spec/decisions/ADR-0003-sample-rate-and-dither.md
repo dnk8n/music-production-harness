@@ -26,3 +26,9 @@ Dean: no pointless conversions, higher quality during production, and
 More CPU and disk during production (fine on the M1 Pro for 13-minute
 tracks). BM-MST-03 compares both delivery paths by null test and blind A/B,
 and this ADR becomes `accepted` or `superseded` from the evidence.
+
+The delivery step is `mph.deliver`: the `soxr` Python binding of libsoxr
+(LGPL, already installed with librosa) at its VHQ setting, then seeded TPDF
+dither in numpy, written by soundfile. Step 3 benchmarks are the first users.
+SuperCollider plays catalogue samples at their native rate (`BufRateScale`),
+which, like Renoise, is one unavoidable resampling on playback, never on disk.

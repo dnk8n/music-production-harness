@@ -1,0 +1,24 @@
+# spec/components/benchmarks.md#bm-drum-06
+id = "BM-DRUM-06"
+title = "Chicago jack"
+hear = "busy, jacking 909 hats with an open hat cutting through on each offbeat. The open hat is choked (cut short) by the next closed hat."
+bpm = 125
+bars = 8
+
+[voices.kick]
+grid = "X . . . X . . . X . . . X . . ."
+sound = { role = "kick", words = ["909"] }
+
+[voices.clap]
+grid = ". . . . x . . . . . . . x . . ."
+sound = { role = "clap", words = ["909"] }
+
+[voices.chh]
+grid = "x x . x x x . x x x . x x x . x"
+sound = { role = "hat", words = ["909"] }
+chokes = ["ohh"]
+seconds = 0.25
+
+[voices.ohh]
+grid = ". . o . . . o . . . o . . . o ."
+sound = { role = "hat_open", words = ["909"] }

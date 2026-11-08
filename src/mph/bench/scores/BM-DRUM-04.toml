@@ -1,0 +1,18 @@
+# spec/components/benchmarks.md#bm-drum-04 (synth: 808-style from SuperCollider)
+id = "BM-DRUM-04"
+title = "Electro syncopation"
+hear = "a funky, robotic kick that dodges the beat (Drexciya, Cybotron). The snare holds 2 and 4 steady while the kick pushes and pulls around it."
+bpm = 128
+bars = 8
+
+[voices.kick]
+grid = "X . . x . . x . . . X . . x . ."
+sound = { synth = "mph_kick" }
+
+[voices.snare]
+grid = ". . . . X . . . . . . . X . . ."
+sound = { synth = "mph_snare" }
+
+[voices.chh]
+grid = "x . x . x . x . x . x . x . x ."
+sound = { synth = "mph_hat" }

@@ -33,10 +33,39 @@ versions, measurements with pass/fail, loudness, true peak, and the licence mark
 - **Why:** the feedback page and the AI reviewer read the report, not the code.
 - **Verify:** test
 
+### REQ-BEN-04: Scores are data checked against this file
+Each benchmark's score is a TOML file in `src/mph/bench/scores/`: tempo,
+swing, bars, voices with their grids, velocity rules and a humanisation seed.
+A test checks every score's tempo, swing and bar-1 grid against the grid
+written here, so the score can't drift from the description.
+- **Why:** this file stays the source of truth (ADR-0001), and the renderer
+  reads plain data, not prose.
+- **Verify:** test
+
+### REQ-BEN-05: Kits come from the catalogue, with synth fallback
+A voice asks the catalogue for a sound by role and words (e.g. a `kick`
+one-shot matching "909"), and takes the best match. A voice with no match,
+or one the score marks as synth, uses a SuperCollider drum voice instead. The
+report names every sound used, with its hash and licence, and the score hash
+covers those choices.
+- **Why:** benchmarks should use Dean's own sounds, but still render on a
+  machine without his library (CI, a fresh install).
+- **Verify:** test
+
+### REQ-BEN-06: Render layout
+`mph bench render BM-...` writes to `data_dir/renders/<id>/<score hash>/`:
+one stem per voice and a summed `master.wav` (32-bit float at the production
+rate, REQ-AUD-02), the delivered `<id>.aiff` (48 kHz / 24-bit through the
+single SRC and dither, REQ-AUD-03) and `report.json`.
+- **Why:** the feedback page and the AI reviewer find everything for one
+  render in one folder, keyed by exactly what was rendered.
+- **Verify:** test
+
 ## Drum patterns
 
-Grid notation: 16 steps per bar, `x` hit, `X` accent, `.` rest,
-`o` open hat. Kits come from the catalogue (909/808-style hits from the
+Grid notation: 16 steps per bar, `x` hit (80% velocity), `X` accent (100%),
+`.` rest, `o` open hat (80%). Swing delays every second 16th: at 58%, it lands
+58% of the way through its 8th note instead of 50%. Kits come from the catalogue (909/808-style hits from the
 Loopmasters techno packs, Photek hits) unless a pattern says "synth".
 
 ### BM-DRUM-01: Detroit four-to-the-floor

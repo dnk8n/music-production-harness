@@ -35,11 +35,13 @@ def test_only_proc_spawns_processes() -> None:
 
 # Third-party runtime imports, each justified by an ADR (REQ-ENG-05), and the
 # only modules allowed to use them, so heavy dependencies stay contained.
+AUDIO_IO = {"catalogue/analysis.py", "bench/audio.py", "deliver.py"}
 JUSTIFIED = {
     "librosa": {"catalogue/analysis.py"},  # ADR-0008
-    "numpy": {"catalogue/analysis.py"},  # ADR-0008
-    "pyloudnorm": {"catalogue/analysis.py"},  # ADR-0008
-    "soundfile": {"catalogue/analysis.py"},  # ADR-0008
+    "numpy": AUDIO_IO | {"bench/render.py"},  # ADR-0008
+    "pyloudnorm": {"catalogue/analysis.py", "bench/audio.py"},  # ADR-0008
+    "soundfile": AUDIO_IO,  # ADR-0008
+    "soxr": {"bench/audio.py", "deliver.py"},  # ADR-0003: libsoxr does the one SRC
 }
 
 

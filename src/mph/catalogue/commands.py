@@ -265,9 +265,12 @@ def cmd_browse(
     *,
     open_page: bool,
     serve: Callable[[browse.App, int], browse.Server] = browse.serve,
+    page: str = "",
 ) -> int:
+    """``page`` is a tab to open on, e.g. "bench"; the benchmarks tab works
+    without a scanned catalogue."""
     path = db_path(cfg)
-    if not path.exists():
+    if not path.exists() and not page:
         print("no catalogue yet: run `mph catalogue scan`", file=sys.stderr)
         return 1
     try:
@@ -275,8 +278,8 @@ def cmd_browse(
     except OSError as exc:
         print(f"cannot listen on port {port}: {exc}. Try --port 8766", file=sys.stderr)
         return 1
-    url = f"http://{browse.HOST}:{port}/"
-    print(f"sample browser at {url}  (Ctrl-C to stop)")
+    url = f"http://{browse.HOST}:{port}/" + (f"#{page}" if page else "")
+    print(f"{'listening page' if page else 'sample browser'} at {url}  (Ctrl-C to stop)")
     opener = next((name for name in ("open", "xdg-open") if runner.which(name)), None)
     if open_page and opener:
         runner.run([opener, url])

@@ -1,0 +1,10 @@
+# spec/components/benchmarks.md#bm-drum-09: a catalogued break, 8 slices per bar
+id = "BM-DRUM-09"
+title = "Breakbeat chop"
+hear = "the original break's feel, with a repeated slice in bar 2 creating a stutter. No clicks at slice boundaries."
+bpm = 130
+bars = 8
+
+[voices.break]
+slices = [1, 2, 3, 4, 1, 2, 7, 8, 1, 2, 3, 4, 5, 5, 7, 8]
+sound = { role = "break", words = ["photek"] }

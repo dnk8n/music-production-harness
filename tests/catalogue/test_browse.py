@@ -67,7 +67,7 @@ def test_page_and_search(setup: tuple[App, FakeRunner, Path]) -> None:
     app, _, _ = setup
     home = get(app, "/")
     assert home.status == HTTPStatus.OK
-    assert b"Sample browser" in home.body
+    assert b"Samples and benchmarks" in home.body
     found = json.loads(get(app, "/api/search?role=kick&q=kick").body)
     assert found["matched"] == 1
     assert found["hits"][0]["facts"] == {"role": "kick"}
@@ -231,6 +231,15 @@ def test_real_server_answers(setup: tuple[App, FakeRunner, Path]) -> None:
         response = client.getresponse()
         assert (response.status, response.read()) == (206, b"RIFF")
         assert response.getheader("Accept-Ranges") == "bytes"
+        origin = {"Origin": f"http://127.0.0.1:{port}", "Content-Type": "application/json"}
+        client.request("POST", "/api/verdict", body=b"{}", headers=origin)
+        refused = client.getresponse()
+        assert (refused.status, refused.read()) == (
+            400,
+            b"verdict must be one of pass, close, fail",
+        )
+        client.request("POST", "/api/verdict", body=b"x" * (browse.MAX_BODY + 1), headers=origin)
+        assert client.getresponse().status == 413
         client.close()
     finally:
         server.shutdown()

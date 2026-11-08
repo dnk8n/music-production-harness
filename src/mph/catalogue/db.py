@@ -139,6 +139,18 @@ MIGRATIONS: tuple[str, ...] = (
     );
     CREATE INDEX download_asset ON download (asset_hash);
     """,
+    # 7: Dean's verdicts on benchmark renders, tied to the exact render (REQ-FBK-02).
+    """
+    CREATE TABLE verdict (
+        id INTEGER PRIMARY KEY,
+        benchmark TEXT NOT NULL,             -- BM-DRUM-02, ...
+        score_hash TEXT NOT NULL,            -- the render folder it judged
+        verdict TEXT NOT NULL CHECK (verdict IN ('pass', 'close', 'fail')),
+        notes TEXT NOT NULL,                 -- free text, may hold times like "0:42 ..."
+        created_at TEXT NOT NULL
+    );
+    CREATE INDEX verdict_render ON verdict (benchmark, score_hash);
+    """,
 )
 
 

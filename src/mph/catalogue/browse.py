@@ -1,10 +1,14 @@
 """Local listening page for the catalogue (spec/components/browser.md).
 
 ``mph catalogue browse`` serves one page on 127.0.0.1: search, play, queue,
-layer, and walk a sound's lineage. It is read-only (REQ-BRW-01): audio is
-streamed from wherever the catalogue says it lives, and only sounds the
-catalogue knows by hash can be requested, so no path from the browser ever
-reaches the filesystem. Formats a browser can't play (AIFF) are decoded by
+layer, and walk a sound's lineage. Its Benchmarks tab is the listening page
+for renders (spec/components/feedback.md, ``mph bench serve``).
+
+It is read-only (REQ-BRW-01), apart from saving verdicts to the catalogue
+DB. Audio is streamed from wherever the catalogue says it lives, and only
+sounds the catalogue knows by hash, or files a render's report lists, can be
+requested, so no path from the browser ever reaches the filesystem.
+Formats a browser can't play (AIFF) are decoded by
 ffmpeg into memory, never to disk (REQ-BRW-03, REQ-AUD-01).
 
 The request handling is a plain function from (path, headers) to a response,
@@ -17,7 +21,7 @@ import json
 import re
 import sqlite3
 from collections import OrderedDict
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from contextlib import closing
 from dataclasses import dataclass, field
 from http import HTTPStatus
@@ -26,6 +30,7 @@ from importlib import resources
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
+from mph.bench import feedback
 from mph.catalogue import db, provenance, search
 from mph.proc import Runner
 
@@ -41,6 +46,7 @@ NATIVE = {
 }
 DECODED_CACHE_ITEMS = 8  # recent AIFF decodes kept in memory, for seeking
 MAX_LIMIT = 200
+MAX_BODY = 64 * 1024
 DECODE_TO_WAV = ("-c:a", "pcm_f32le", "-f", "wav", "-")  # float, native rate, to a pipe
 
 
@@ -118,6 +124,8 @@ class App:
         self._data_dir = data_dir
         self._runner = runner
         self._hosts = {f"{HOST}:{port}", f"localhost:{port}"}
+        self._origins = {f"http://{host}" for host in self._hosts}
+        self._renders = data_dir / "renders"
         self._decoded: OrderedDict[str, bytes] = OrderedDict()
 
     def handle(self, target: str, headers: Mapping[str, str]) -> Response:
@@ -131,6 +139,50 @@ class App:
         with closing(db.connect(self._db_file)) as conn:
             return self._route(conn, url.path, parse_qs(url.query), headers)
 
+    def handle_post(self, target: str, headers: Mapping[str, str], body: bytes) -> Response:
+        """Saving a verdict. Besides the Host check, the request must come from
+        this page (Origin) as JSON, so another site can't post one for Dean."""
+        refused = self._refuse_post(target, headers)
+        if refused:
+            return refused
+        try:
+            payload = json.loads(body)
+        except ValueError:
+            payload = None
+        if not isinstance(payload, dict):
+            return text(HTTPStatus.BAD_REQUEST, "send a JSON object")
+        with closing(db.connect(self._db_file)) as conn:
+            try:
+                return as_json(feedback.record(conn, self._renders, payload))
+            except feedback.FeedbackError as exc:
+                return text(HTTPStatus.BAD_REQUEST, str(exc))
+
+    def _refuse_post(self, target: str, headers: Mapping[str, str]) -> Response | None:
+        if headers.get("Host") not in self._hosts:
+            return text(HTTPStatus.FORBIDDEN, "local use only")
+        if headers.get("Origin") not in self._origins:
+            return text(HTTPStatus.FORBIDDEN, "only this page can save verdicts")
+        if not headers.get("Content-Type", "").startswith("application/json"):
+            return text(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, "send JSON")
+        if urlsplit(target).path != "/api/verdict":
+            return text(HTTPStatus.NOT_FOUND, "not found")
+        return None
+
+    def _bench_audio(self, path: str, range_header: str | None) -> Response:
+        parts = path.removeprefix("/bench/").split("/", 2)
+        if len(parts) != 3:  # noqa: PLR2004 - id / render hash / file
+            return text(HTTPStatus.NOT_FOUND, "no such render")
+        found = feedback.playable(self._renders, *parts)
+        if found is None:
+            return text(HTTPStatus.NOT_FOUND, "no such render")
+        mime = NATIVE.get(found.suffix.lstrip(".").lower())
+        if mime is None:
+            body = self._decode(f"bench:{'/'.join(parts)}", found)
+            if body is None:
+                return text(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, "ffmpeg could not decode this")
+            return partial(body, "audio/wav", range_header)
+        return partial(found.read_bytes(), mime, range_header)
+
     def _route(
         self,
         conn: sqlite3.Connection,
@@ -138,18 +190,26 @@ class App:
         params: Mapping[str, list[str]],
         headers: Mapping[str, str],
     ) -> Response:
-        if path == "/api/search":
-            return self._search(conn, params)
-        if path == "/api/derivatives":
-            return as_json(derivatives(conn))
+        exact: dict[str, Callable[[], Response]] = {
+            "/api/search": lambda: self._search(conn, params),
+            "/api/derivatives": lambda: as_json(derivatives(conn)),
+            "/api/bench": lambda: as_json(feedback.listing(self._renders, conn)),
+        }
+        if path in exact:
+            return exact[path]()
+        if path.startswith("/bench/"):
+            return self._bench_audio(path, headers.get("Range"))
         if path.startswith(("/audio/", "/api/lineage/")):
-            digest = path.rsplit("/", 1)[-1]
-            if not HASH.match(digest) or not _known(conn, digest):
-                return text(HTTPStatus.NOT_FOUND, "no such sound")
-            if path.startswith("/api/lineage/"):
-                return as_json(provenance.lineage_tree(conn, digest).to_dict())
-            return self._audio(conn, digest, headers.get("Range"))
+            return self._sound(conn, path, headers)
         return text(HTTPStatus.NOT_FOUND, "not found")
+
+    def _sound(self, conn: sqlite3.Connection, path: str, headers: Mapping[str, str]) -> Response:
+        digest = path.rsplit("/", 1)[-1]
+        if not HASH.match(digest) or not _known(conn, digest):
+            return text(HTTPStatus.NOT_FOUND, "no such sound")
+        if path.startswith("/api/lineage/"):
+            return as_json(provenance.lineage_tree(conn, digest).to_dict())
+        return self._audio(conn, digest, headers.get("Range"))
 
     def _search(self, conn: sqlite3.Connection, params: Mapping[str, list[str]]) -> Response:
         try:
@@ -241,7 +301,17 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
         server_version = "mph-browse"
 
         def do_GET(self) -> None:  # the method name http.server looks for
-            response = app.handle(self.path, dict(self.headers.items()))
+            self._send(app.handle(self.path, dict(self.headers.items())))
+
+        def do_POST(self) -> None:  # the method name http.server looks for
+            length = int(self.headers.get("Content-Length") or 0)
+            if length > MAX_BODY:
+                self._send(text(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "too big"))
+                return
+            body = self.rfile.read(length)
+            self._send(app.handle_post(self.path, dict(self.headers.items()), body))
+
+        def _send(self, response: Response) -> None:
             self.send_response(response.status)
             self.send_header("Content-Type", response.content_type)
             self.send_header("Content-Length", str(len(response.body)))

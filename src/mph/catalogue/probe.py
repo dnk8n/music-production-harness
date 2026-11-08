@@ -54,7 +54,9 @@ def parse(output: str) -> Probe:
     if not streams:
         return Probe(error="no audio stream")
     stream, fmt = streams[0], data.get("format", {})
-    container = (fmt.get("format_name") or "").split(",")[0] or None
+    # ffprobe lists aliases ("mov,mp4,m4a,3gp,3g2,mj2"); prefer the one people recognise.
+    names = (fmt.get("format_name") or "").split(",")
+    container = "m4a" if "m4a" in names else names[0] or None
     return Probe(
         container=container,
         codec=stream.get("codec_name"),

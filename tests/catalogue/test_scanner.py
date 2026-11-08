@@ -239,3 +239,18 @@ def test_migrations_are_idempotent(tmp_path: Path) -> None:
     db.connect(path).close()
     with closing(db.connect(path)) as conn:
         assert db.schema_version(conn) == len(db.MIGRATIONS)
+
+
+@pytest.mark.req("REQ-CAT-03")
+def test_new_name_rules_retag_everything(
+    conn: sqlite3.Connection, library: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scanner(conn).scan(source(library))
+    conn.execute("DELETE FROM tag")
+    conn.commit()
+    scanner(conn).scan(source(library))
+    assert count(conn, "tag") == 0  # nothing changed, nothing retagged
+    monkeypatch.setattr("mph.catalogue.names.VERSION", 999)
+    scanner(conn).scan(source(library))
+    assert count(conn, "tag") > 0
+    assert db.get_meta(conn, "name_priors_version") == "999"

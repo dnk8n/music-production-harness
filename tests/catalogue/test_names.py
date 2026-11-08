@@ -12,8 +12,8 @@ def values(rel: str, name: str) -> set[str]:
 @pytest.mark.req("REQ-CAT-03")
 def test_novation_folder_key_and_bpm() -> None:
     priors = priors_for("Novation 3rd Drop/Acid Techno (Ab, 131bpm)/Drums/Kick 01.wav")
-    assert Prior("bpm", "131", "folder", 0.5) in priors
-    assert Prior("key", "G#:major", "folder", 0.5) in priors
+    assert Prior("bpm", "131", "folder", 0.4) in priors  # two folders up from the file
+    assert Prior("key", "G#:major", "folder", 0.4) in priors
     assert Prior("role", "kick", "filename", 0.6) in priors
     assert Prior("pack", "Novation 3rd Drop", "folder", 1.0) in priors
 
@@ -75,3 +75,23 @@ def test_root_level_file_has_no_pack() -> None:
 def test_priors_are_sorted_and_unique() -> None:
     priors = priors_for("p/Kicks/Kick Kick.wav")
     assert priors == sorted(set(priors), key=lambda p: (p.name, -p.confidence, p.value, p.origin))
+
+
+@pytest.mark.req("REQ-CAT-03")
+def test_folder_confidence_decays_with_distance() -> None:
+    priors = priors_for("Deep Bass Pack/Loops/Kicks/Kick 1.wav")
+    by_value = {(p.value, p.origin): p.confidence for p in priors if p.name == "role"}
+    assert by_value[("kick", "filename")] == 0.6
+    assert by_value[("kick", "folder")] == 0.5  # directly containing folder
+    assert by_value[("bass", "folder")] == 0.3  # pack name, three levels up
+
+
+@pytest.mark.req("REQ-CAT-03")
+def test_folder_listing_several_roles_is_split() -> None:
+    priors = priors_for("LM/DRT_SOUNDS_AND_FX/DRT_Perc_01.wav")
+    fx = next(p for p in priors if p.value == "fx")
+    perc = next(p for p in priors if p.value == "perc" and p.origin == "filename")
+    assert fx.confidence == 0.5  # "sounds" isn't a role, so fx keeps full weight
+    assert perc.confidence == 0.6
+    mixed = priors_for("LM/MXE_DRUM_HITS_&_FX/x.wav")
+    assert {p.confidence for p in mixed if p.name == "role"} == {0.25}

@@ -40,7 +40,7 @@ def test_parse_multi_name_container() -> None:
     out = json.dumps(
         {"streams": [{"codec_name": "aac"}], "format": {"format_name": "mov,mp4,m4a,3gp"}}
     )
-    assert parse(out).container == "mov"
+    assert parse(out).container == "m4a"
 
 
 def test_no_audio_stream() -> None:

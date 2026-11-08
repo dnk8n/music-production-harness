@@ -5,6 +5,17 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 
+# Each sound counts once, under its most confident role (filename beats folder
+# on ties, because a file's own name is the most specific evidence).
+BEST_ROLE_COUNTS = """
+    SELECT value, COUNT(*) FROM (
+        SELECT asset_hash, value, ROW_NUMBER() OVER (
+            PARTITION BY asset_hash
+            ORDER BY confidence DESC, origin = 'filename' DESC, value) AS rank
+        FROM tag WHERE name = 'role')
+    WHERE rank = 1 GROUP BY value ORDER BY 2 DESC, 1
+"""
+
 
 @dataclass(frozen=True, slots=True)
 class Summary:

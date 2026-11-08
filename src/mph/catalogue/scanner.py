@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-from mph.catalogue import names
+from mph.catalogue import db, names
 from mph.catalogue.probe import Probe, probe
 from mph.config import Source
 from mph.proc import Runner
@@ -28,6 +28,7 @@ DOC_SUFFIXES = frozenset({".pdf", ".txt", ".doc", ".docx", ".rtf", ".url", ".md"
 JUNK_SUFFIXES = frozenset({".asd", ".reapeaks", ".pkf"})
 JUNK_NAMES = frozenset({".DS_Store", "Thumbs.db", "desktop.ini"})
 CHUNK = 1 << 20
+PRIORS_KEY = "name_priors_version"
 
 
 class SourceError(ValueError):
@@ -205,8 +206,11 @@ class Scanner:
                 "DELETE FROM asset WHERE origin = 'source' AND hash NOT IN "
                 "(SELECT asset_hash FROM source_file)"
             )
-            for digest in sorted(touched | stale_hashes):
+            stale_rules = db.get_meta(self._conn, PRIORS_KEY) != str(names.VERSION)
+            to_retag = self._all_hashes() if stale_rules else touched | stale_hashes
+            for digest in sorted(to_retag):
                 self._retag(digest)
+        db.set_meta(self._conn, PRIORS_KEY, str(names.VERSION))
 
     def _finish(self, source_id: str, scan_id: int, stats: ScanStats) -> None:
         now = self._clock()
@@ -228,6 +232,9 @@ class Scanner:
             self._conn.execute("UPDATE source SET last_scan_at = ? WHERE id = ?", (now, source_id))
 
     # --- helpers --------------------------------------------------------------
+
+    def _all_hashes(self) -> set[str]:
+        return {row[0] for row in self._conn.execute("SELECT hash FROM asset")}
 
     def _known_hashes(self, hashes: set[str]) -> set[str]:
         query = "SELECT 1 FROM asset WHERE hash = ?"

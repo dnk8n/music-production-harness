@@ -85,6 +85,11 @@ MIGRATIONS: tuple[str, ...] = (
         PRIMARY KEY (asset_hash, analyser, version)
     );
     """,
+    # 3: small key/value store for catalogue-wide state (e.g. which name-parser version
+    # produced the current tags)
+    """
+    CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    """,
 )
 
 
@@ -108,3 +113,13 @@ def migrate(conn: sqlite3.Connection) -> None:
         with conn:
             conn.executescript(MIGRATIONS[version])
             conn.execute(f"PRAGMA user_version = {version + 1}")
+
+
+def get_meta(conn: sqlite3.Connection, key: str) -> str | None:
+    row = conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+    return None if row is None else str(row[0])
+
+
+def set_meta(conn: sqlite3.Connection, key: str, value: str) -> None:
+    with conn:
+        conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", (key, value))

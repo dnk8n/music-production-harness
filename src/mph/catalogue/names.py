@@ -11,7 +11,12 @@ import re
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 
-FOLDER_CONFIDENCE = 0.5
+# Bump when parsing rules change: the next scan rebuilds every name-derived tag.
+VERSION = 2
+
+FOLDER_CONFIDENCE = 0.5  # the folder directly containing the file
+FOLDER_DECAY = 0.1  # per level further up the tree
+FOLDER_FLOOR = 0.2  # pack-level names ("Stab Bass Sample Pack") still count a little
 FILENAME_CONFIDENCE = 0.6
 WEAK = 0.3  # bare numbers that might be a tempo, or might be an index
 
@@ -25,6 +30,7 @@ BPM_BARE = re.compile(r"(?:^|[_\s-])(\d{2,3})(?=[_\s-]|$)")
 TOKENS = re.compile(r"[a-z]+")
 SPLIT = re.compile(r"[\s_()\[\],.-]+")
 BPM_RANGE = range(60, 201)
+BARE_BPM_RANGE = range(70, 181)  # stricter: a bare number is often an index
 
 # word -> (tag name, value). Plurals are handled by stripping a trailing "s".
 VOCAB: dict[str, tuple[str, str]] = {
@@ -81,24 +87,42 @@ def parse_key(tokens: list[str]) -> str | None:
     return None
 
 
-def _component_priors(text: str, origin: str, confidence: float) -> set[Prior]:
-    priors: set[Prior] = set()
+def _tempo_priors(text: str, origin: str, confidence: float) -> set[Prior]:
     explicit = BPM_EXPLICIT.search(text)
     if explicit and int(explicit.group(1)) in BPM_RANGE:
-        priors.add(Prior("bpm", explicit.group(1), origin, confidence))
-    elif origin == "filename":
+        return {Prior("bpm", explicit.group(1), origin, confidence)}
+    if origin == "filename":
         for bare in BPM_BARE.findall(text):
-            if int(bare) in range(70, 181):
-                priors.add(Prior("bpm", bare, origin, WEAK))
-                break
-    key = parse_key([t for t in SPLIT.split(text) if t])
-    if key:
-        priors.add(Prior("key", key, origin, confidence))
+            if int(bare) in BARE_BPM_RANGE:
+                return {Prior("bpm", bare, origin, WEAK)}
+    return set()
+
+
+def _word_priors(text: str, origin: str, confidence: float) -> set[Prior]:
+    hits = set()
     for word in TOKENS.findall(text.lower()):
         hit = VOCAB.get(word) or (VOCAB.get(word[:-1]) if word.endswith("s") else None)
         if hit:
-            priors.add(Prior(hit[0], hit[1], origin, confidence))
+            hits.add(hit)
+    # A name listing several roles ("DRUM_HITS_&_FX") says less about each of them.
+    roles = sum(1 for name, _ in hits if name == "role") or 1
+    return {
+        Prior(name, value, origin, round(confidence / roles if name == "role" else confidence, 3))
+        for name, value in hits
+    }
+
+
+def _component_priors(text: str, origin: str, confidence: float) -> set[Prior]:
+    priors = _tempo_priors(text, origin, confidence) | _word_priors(text, origin, confidence)
+    key = parse_key([t for t in SPLIT.split(text) if t])
+    if key:
+        priors.add(Prior("key", key, origin, confidence))
     return priors
+
+
+def folder_confidence(depth_from_file: int) -> float:
+    """The folder holding the file says most; each level further up says less."""
+    return round(max(FOLDER_CONFIDENCE - FOLDER_DECAY * (depth_from_file - 1), FOLDER_FLOOR), 3)
 
 
 def priors_for(rel_path: str) -> list[Prior]:
@@ -107,7 +131,8 @@ def priors_for(rel_path: str) -> list[Prior]:
     priors: set[Prior] = set()
     if len(path.parts) > 1:
         priors.add(Prior("pack", path.parts[0], "folder", 1.0))
-    for folder in path.parts[:-1]:
-        priors |= _component_priors(folder, "folder", FOLDER_CONFIDENCE)
+    folders = path.parts[:-1]
+    for index, folder in enumerate(folders):
+        priors |= _component_priors(folder, "folder", folder_confidence(len(folders) - index))
     priors |= _component_priors(path.stem, "filename", FILENAME_CONFIDENCE)
     return sorted(priors, key=lambda p: (p.name, -p.confidence, p.value, p.origin))

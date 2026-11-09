@@ -43,6 +43,7 @@
 | benchmarks | Listening tests and measurements | [benchmarks.md](components/benchmarks.md) | 3 |
 | feedback | Local web page, verdicts to issues, AI loop | [feedback.md](components/feedback.md) | 3 |
 | renoise bridge | Generate, control and render Renoise songs | [renoise.md](components/renoise.md) | 4 |
+| retention | Keep fresh renders, prune the rest, render again on demand | [retention.md](components/retention.md) | 3 |
 | mastering | Loudness, true peak, delivery QA | [mastering.md](components/mastering.md) | 4 |
 
 ## Boundaries

@@ -24,7 +24,7 @@ from typing import Any
 
 import numpy as np
 
-from mph import __version__
+from mph import __version__, retention
 from mph.bench import audio, checks, kit, levels, sc
 from mph.bench.score import MAIN, Event, Score, events, load, variant_of
 from mph.catalogue.scanner import utc_now
@@ -473,4 +473,5 @@ def run(
         },
     }
     (folder / "report.json").write_text(json.dumps(report, indent=2) + "\n", "utf-8")
+    retention.after_render(cfg.data_dir, folder, cfg.retention)  # REQ-RET-01, REQ-RET-03
     return Outcome(folder, report)

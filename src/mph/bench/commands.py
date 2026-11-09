@@ -13,7 +13,7 @@ from contextlib import closing, nullcontext
 from pathlib import Path
 from typing import Any
 
-from mph.bench import feedback, score
+from mph.bench import feedback, jit, score
 from mph.catalogue import commands as catalogue_commands
 from mph.catalogue import db
 from mph.config import Config
@@ -29,7 +29,12 @@ def dispatch(args: argparse.Namespace, cfg: Config, runner: Runner, home: Path) 
         return cmd_report(cfg, args.id)
     if args.action == "serve":
         return catalogue_commands.cmd_browse(
-            cfg, runner, args.port, open_page=not args.no_open, page="bench"
+            cfg,
+            runner,
+            args.port,
+            open_page=not args.no_open,
+            page="bench",
+            renderer=jit.Renderer(render_on_demand(cfg, runner, home)),
         )
     return cmd_render(
         cfg,
@@ -41,6 +46,22 @@ def dispatch(args: argparse.Namespace, cfg: Config, runner: Runner, home: Path) 
         variants=args.variant,
         every_variant=args.variants,
     )
+
+
+def render_on_demand(cfg: Config, runner: Runner, home: Path) -> jit.RenderOne:
+    """What the listening page calls to make a missing render (REQ-RET-06)."""
+    from mph.renoise import bridge  # noqa: PLC0415
+
+    session = bridge.Session()  # one Renoise, started by mph, for the page's renders
+
+    def render_one(benchmark_id: str, variant: str) -> None:
+        from mph.bench import render  # noqa: PLC0415 - heavy audio imports, on first use
+
+        catalogue = cfg.data_dir / db.FILENAME
+        with closing(db.connect(catalogue)) if catalogue.is_file() else nullcontext() as conn:
+            render.run(benchmark_id, cfg, runner, conn, home=home, variant=variant, session=session)
+
+    return render_one
 
 
 def latest_report(cfg: Config, benchmark_id: str) -> dict[str, Any] | None:

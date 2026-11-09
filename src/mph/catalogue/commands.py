@@ -11,6 +11,7 @@ from contextlib import closing
 from pathlib import Path
 
 from mph import secrets
+from mph.bench import jit
 from mph.catalogue import agreement, browse, db, provenance, remote, search, stats
 from mph.catalogue.scanner import Scanner, SourceError, utc_now
 from mph.config import Config
@@ -266,6 +267,7 @@ def cmd_browse(
     open_page: bool,
     serve: Callable[[browse.App, int], browse.Server] = browse.serve,
     page: str = "",
+    renderer: jit.Renderer | None = None,
 ) -> int:
     """``page`` is a tab to open on, e.g. "bench"; the benchmarks tab works
     without a scanned catalogue."""
@@ -274,7 +276,7 @@ def cmd_browse(
         print("no catalogue yet: run `mph catalogue scan`", file=sys.stderr)
         return 1
     try:
-        server = serve(browse.App(path, cfg.data_dir, runner, port), port)
+        server = serve(browse.App(path, cfg.data_dir, runner, port, renderer), port)
     except OSError as exc:
         print(f"cannot listen on port {port}: {exc}. Try --port 8766", file=sys.stderr)
         return 1

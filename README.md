@@ -54,6 +54,16 @@ uv run mph bench render BM-DRUM-01 --variants   # every variant, to compare and 
 uv run mph bench serve     # listen, compare, give verdicts, open in Renoise
 ```
 
+Renders are deterministic, so mph keeps only the newest of each benchmark
+variant and makes older ones again when needed (spec/components/retention.md).
+The listening page renders a pruned take when you play it.
+
+```sh
+uv run mph prune           # what can be freed; deletes nothing
+uv run mph prune --list    # every item, and why it can go
+uv run mph prune --yes     # delete it
+```
+
 Store third-party credentials in the macOS Keychain, never in files. Setup asks
 for every field and says where to find it:
 

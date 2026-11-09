@@ -56,6 +56,15 @@ class MasterTargets:
 
 
 @dataclass(frozen=True, slots=True)
+class Retention:
+    """What mph keeps of what it can make again (spec/components/retention.md)."""
+
+    keep_renders: int
+    keep_work: bool
+    prune_after_render: bool
+
+
+@dataclass(frozen=True, slots=True)
 class Config:
     data_dir: Path
     audio: AudioPolicy
@@ -64,6 +73,7 @@ class Config:
     llm_providers: tuple[str, ...]
     ollama_model: str
     sources: tuple[Source, ...]
+    retention: Retention
     loaded_from: tuple[Path, ...]
 
 
@@ -107,7 +117,8 @@ def parse(raw: dict[str, Any], loaded_from: tuple[Path, ...] = ()) -> Config:
     sources = tuple(_parse_sources(raw.get("sources", []), problems))
     audio = _table(AudioPolicy, raw, "audio", problems)
     master = _table(MasterTargets, raw, "master", problems)
-    if audio is None or master is None:
+    retention = _table(Retention, raw, "retention", problems)
+    if audio is None or master is None or retention is None:
         raise ConfigError(problems)
     config = Config(
         data_dir=Path(raw["paths"]["data_dir"]).expanduser(),
@@ -117,6 +128,7 @@ def parse(raw: dict[str, Any], loaded_from: tuple[Path, ...] = ()) -> Config:
         llm_providers=tuple(raw["llm"]["providers"]),
         ollama_model=raw["llm"]["ollama_model"],
         sources=sources,
+        retention=retention,
         loaded_from=loaded_from,
     )
     problems.extend(_validate(config))
@@ -147,7 +159,7 @@ def _parse_sources(items: list[dict[str, Any]], problems: list[str]) -> list[Sou
 
 
 def _validate(config: Config) -> list[str]:
-    problems = _validate_audio(config.audio)
+    problems = _validate_audio(config.audio) + _validate_retention(config.retention)
     seen: set[str] = set()
     for source in config.sources:
         if source.id in seen:
@@ -172,6 +184,17 @@ def _validate_audio(audio: AudioPolicy) -> list[str]:
         problems.append("audio.delivery_bit_depth must be 16 or 24")
     if audio.delivery_format not in DELIVERY_FORMATS:
         problems.append(f"audio.delivery_format must be one of {sorted(DELIVERY_FORMATS)}")
+    return problems
+
+
+def _validate_retention(retention: Retention) -> list[str]:
+    problems = []
+    keep = retention.keep_renders
+    if isinstance(keep, bool) or not isinstance(keep, int) or keep < 0:
+        problems.append("retention.keep_renders must be a whole number, 0 or more")
+    for name in ("keep_work", "prune_after_render"):
+        if not isinstance(getattr(retention, name), bool):
+            problems.append(f"retention.{name} must be true or false")
     return problems
 
 

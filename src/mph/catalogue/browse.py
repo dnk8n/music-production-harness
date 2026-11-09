@@ -30,7 +30,7 @@ from importlib import resources
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from mph.bench import feedback
+from mph.bench import feedback, jit
 from mph.catalogue import db, provenance, search
 from mph.proc import Runner
 from mph.renoise import bridge
@@ -48,7 +48,7 @@ NATIVE = {
 DECODED_CACHE_ITEMS = 8  # recent AIFF decodes kept in memory, for seeking
 MAX_LIMIT = 200
 MAX_BODY = 64 * 1024
-POST_PATHS = frozenset({"/api/verdict", "/api/open-project"})
+POST_PATHS = frozenset({"/api/verdict", "/api/open-project", "/api/render"})
 DECODE_TO_WAV = ("-c:a", "pcm_f32le", "-f", "wav", "-")  # float, native rate, to a pipe
 
 
@@ -121,8 +121,16 @@ def byte_range(header: str | None, size: int) -> tuple[int, int] | None:
 
 
 class App:
-    def __init__(self, db_file: Path, data_dir: Path, runner: Runner, port: int) -> None:
+    def __init__(
+        self,
+        db_file: Path,
+        data_dir: Path,
+        runner: Runner,
+        port: int,
+        renderer: jit.Renderer | None = None,
+    ) -> None:
         self._db_file = db_file
+        self._renderer = renderer
         self._data_dir = data_dir
         self._runner = runner
         self._hosts = {f"{HOST}:{port}", f"localhost:{port}"}
@@ -156,6 +164,8 @@ class App:
             return text(HTTPStatus.BAD_REQUEST, "send a JSON object")
         if urlsplit(target).path == "/api/open-project":
             return self._open_project(payload)
+        if urlsplit(target).path == "/api/render":
+            return self._render(payload)
         with closing(db.connect(self._db_file)) as conn:
             try:
                 return as_json(feedback.record(conn, self._renders, payload))
@@ -174,6 +184,23 @@ class App:
         except bridge.BridgeError as exc:
             return text(HTTPStatus.BAD_GATEWAY, str(exc))
         return as_json({"opened": song.name})
+
+    def _render(self, payload: Mapping[str, object]) -> Response:
+        """REQ-RET-06: make a render whose audio is gone, or was never made."""
+        if self._renderer is None:
+            return text(HTTPStatus.NOT_IMPLEMENTED, "rendering isn't available from this page")
+        try:
+            started = self._renderer.start(
+                str(payload.get("id", "")), str(payload.get("variant", "main"))
+            )
+        except jit.JitError as exc:
+            return text(HTTPStatus.CONFLICT, str(exc))
+        return as_json(started.to_dict())
+
+    def _render_status(self) -> Response:
+        if self._renderer is None:
+            return as_json(jit.State().to_dict())
+        return as_json(self._renderer.status().to_dict())
 
     def _refuse_post(self, target: str, headers: Mapping[str, str]) -> Response | None:
         if headers.get("Host") not in self._hosts:
@@ -212,6 +239,7 @@ class App:
             "/api/search": lambda: self._search(conn, params),
             "/api/derivatives": lambda: as_json(derivatives(conn)),
             "/api/bench": lambda: as_json(feedback.listing(self._renders, conn)),
+            "/api/render-status": self._render_status,
         }
         if path in exact:
             return exact[path]()

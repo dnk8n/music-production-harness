@@ -18,6 +18,16 @@ delivery_format = "aiff"
 target_lufs_integrated = -8.0
 max_true_peak_dbtp = -1.0
 
+[retention]
+# Renders are deterministic, so mph keeps only fresh ones and makes the rest
+# again when asked (spec/components/retention.md). `mph prune` shows what goes.
+# Newest renders kept whole per benchmark variant. Older ones keep report.json only.
+keep_renders = 1
+# Keep a render's intermediate files (work/) after it finishes. Only for debugging.
+keep_work = false
+# After a render, prune older renders of the same benchmark variant straight away.
+prune_after_render = true
+
 [secrets]
 # macOS Keychain service name under which all secrets are stored.
 keychain_service = "mph"

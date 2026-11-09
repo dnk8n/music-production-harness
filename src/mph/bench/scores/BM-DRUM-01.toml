@@ -17,3 +17,7 @@ sound = { role = "clap", words = ["909"] }
 grid = ". . x . . . x . . . x . . . x ."
 sound = { role = "hat", words = ["909"] }
 seconds = 0.25
+
+[variants.other-hat]
+title = "the next-best catalogue hat, to compare sound design"
+voices = { chh = { sound = { pick = 2 } } }

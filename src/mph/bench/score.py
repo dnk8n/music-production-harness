@@ -15,7 +15,7 @@ import json
 import random
 import tomllib
 from collections.abc import Iterator
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from importlib import resources
 from typing import Any
 
@@ -23,6 +23,8 @@ STEPS = 16
 VELOCITY = {"X": 1.0, "x": 0.8, "o": 0.8}
 STRAIGHT = 0.5
 DEFAULT_TAIL_S = 1.0
+MAIN = "main"
+ENGINE_NAMES = ("renoise", "supercollider")
 
 
 class ScoreError(ValueError):
@@ -46,7 +48,8 @@ class Sound:
 
     role: str = ""
     words: tuple[str, ...] = ()
-    synth: str = ""  # forces a synth voice, e.g. "mph_kick"
+    synth: str = ""  # forces a synth voice, e.g. "mph_kick"; "auto" picks one by role
+    pick: int = 1  # take the Nth best catalogue match
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +68,18 @@ class Voice:
 
 
 @dataclass(frozen=True, slots=True)
+class Variant:
+    """Another way of making the same benchmark (REQ-BEN-07)."""
+
+    name: str
+    title: str
+    engine: str = ""  # "" = the engine picked for main
+    sounds: tuple[tuple[str, Sound], ...] = ()  # voice -> its replacement sound
+    gains: tuple[tuple[str, float], ...] = ()  # voice -> gain_db
+    every_voice_synth: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class Score:
     id: str
     bpm: float
@@ -75,6 +90,8 @@ class Score:
     tail_s: float = DEFAULT_TAIL_S
     title: str = ""
     hear: str = ""  # the spec's "Hear:" text, for the listening page
+    variants: tuple[Variant, ...] = ()  # declared in the score, besides the standard ones
+    variant: str = MAIN  # which one this is
 
     @property
     def step_s(self) -> float:
@@ -92,7 +109,9 @@ class Score:
 
     def digest(self, extra: dict[str, Any] | None = None) -> str:
         """Hash of the score and anything else that shapes the render."""
-        payload = json.dumps({"score": asdict(self), "extra": extra or {}}, sort_keys=True)
+        shape = asdict(self)
+        shape.pop("variants")  # other variants don't shape this render
+        payload = json.dumps({"score": shape, "extra": extra or {}}, sort_keys=True)
         return hashlib.blake2b(payload.encode(), digest_size=8).hexdigest()
 
 
@@ -120,7 +139,28 @@ def cells(grid: str) -> list[str]:
 
 def _sound(raw: dict[str, Any]) -> Sound:
     words = raw.get("words", ())
-    return Sound(str(raw.get("role", "")), tuple(str(w) for w in words), str(raw.get("synth", "")))
+    return Sound(
+        str(raw.get("role", "")),
+        tuple(str(w) for w in words),
+        str(raw.get("synth", "")),
+        int(raw.get("pick", 1)),
+    )
+
+
+def _variant(name: str, raw: dict[str, Any], voices: dict[str, Voice]) -> Variant:
+    engine = str(raw.get("engine", ""))
+    if engine and engine not in ENGINE_NAMES:
+        raise ScoreError(f"variant {name}: engine must be one of {', '.join(ENGINE_NAMES)}")
+    changes = raw.get("voices", {})
+    if unknown := set(changes) - set(voices):
+        raise ScoreError(f"variant {name} changes unknown voices {sorted(unknown)}")
+    sounds = []
+    for voice, change in changes.items():
+        if "sound" in change:
+            merged = {**asdict(voices[voice].sound), **change["sound"]}
+            sounds.append((voice, _sound(merged)))
+    gains = [(v, float(c["gain_db"])) for v, c in changes.items() if "gain_db" in c]
+    return Variant(name, str(raw.get("title", name)), engine, tuple(sounds), tuple(gains))
 
 
 def _voice(name: str, raw: dict[str, Any]) -> Voice:
@@ -159,6 +199,11 @@ def parse(raw: dict[str, Any]) -> Score:
             title=str(raw.get("title", "")),
             hear=str(raw.get("hear", "")),
         )
+        by_name = {v.name: v for v in voices}
+        declared = tuple(
+            _variant(str(name), table, by_name) for name, table in raw.get("variants", {}).items()
+        )
+        score = replace(score, variants=declared)
     except (KeyError, TypeError) as exc:
         raise ScoreError(f"score is missing or mistypes {exc}") from exc
     if not STRAIGHT <= score.swing < 1:
@@ -257,3 +302,44 @@ def bar_one(score: Score, voice: Voice) -> str:
         else:
             symbols.append("x")
     return " ".join(symbols)
+
+
+# --- variants (REQ-BEN-07) -------------------------------------------------------------
+
+
+def standard_variants(score: Score) -> list[Variant]:
+    found = [
+        Variant(MAIN, "as scored"),
+        Variant("supercollider", "all in SuperCollider", engine="supercollider"),
+        Variant("renoise", "all in Renoise", engine="renoise"),
+    ]
+    if not any(v.slices for v in score.voices):
+        found.append(
+            Variant("synth-kit", "every part a SuperCollider synth", every_voice_synth=True)
+        )
+    return found
+
+
+def all_variants(score: Score) -> list[Variant]:
+    standard = standard_variants(score)
+    names = {v.name for v in standard}
+    for declared in score.variants:
+        if declared.name in names:
+            raise ScoreError(f"{score.id}: variant {declared.name} is a standard one")
+    return [*standard, *score.variants]
+
+
+def variant_of(score: Score, name: str) -> tuple[Score, Variant]:
+    """The score as this variant makes it, and the variant (for its engine)."""
+    found = next((v for v in all_variants(score) if v.name == name), None)
+    if found is None:
+        names = ", ".join(v.name for v in all_variants(score))
+        raise ScoreError(f"{score.id} has no variant {name!r} (have: {names})")
+    sounds, gains = dict(found.sounds), dict(found.gains)
+    voices = []
+    for voice in score.voices:
+        sound = sounds.get(voice.name, voice.sound)
+        if found.every_voice_synth:
+            sound = replace(sound, synth=sound.synth or "auto")
+        voices.append(replace(voice, sound=sound, gain_db=gains.get(voice.name, voice.gain_db)))
+    return replace(score, voices=tuple(voices), variant=found.name), found

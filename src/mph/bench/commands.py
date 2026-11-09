@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Sequence
 from contextlib import closing, nullcontext
 from pathlib import Path
 from typing import Any
@@ -30,11 +31,20 @@ def dispatch(args: argparse.Namespace, cfg: Config, runner: Runner, home: Path) 
         return catalogue_commands.cmd_browse(
             cfg, runner, args.port, open_page=not args.no_open, page="bench"
         )
-    return cmd_render(cfg, runner, args.ids, render_all=args.all, engine=args.engine, home=home)
+    return cmd_render(
+        cfg,
+        runner,
+        args.ids,
+        render_all=args.all,
+        engine=args.engine,
+        home=home,
+        variants=args.variant,
+        every_variant=args.variants,
+    )
 
 
 def latest_report(cfg: Config, benchmark_id: str) -> dict[str, Any] | None:
-    return next(iter(feedback.reports(cfg.data_dir / RENDERS, benchmark_id)), None)
+    return feedback.latest(cfg.data_dir / RENDERS, benchmark_id)
 
 
 def cmd_list(cfg: Config) -> int:
@@ -57,9 +67,24 @@ def cmd_report(cfg: Config, benchmark_id: str) -> int:
     return 0
 
 
+def _jobs(
+    ids: Sequence[str], variants: Sequence[str], *, every_variant: bool
+) -> list[tuple[str, str]]:
+    """(benchmark, variant) pairs to render; unknown ids are left for render to report."""
+    jobs = []
+    for benchmark_id in ids:
+        names: Sequence[str] = variants or [score.MAIN]
+        if every_variant and benchmark_id in score.available():
+            names = [v.name for v in score.all_variants(score.load(benchmark_id))]
+        jobs += [(benchmark_id, name) for name in names]
+    return jobs
+
+
 def print_report(report: dict[str, Any]) -> None:
     verdict = "pass" if report["passed"] else "FAIL"
-    print(f"{report['id']} {report['title']}: {verdict}   score {report['score_hash']}")
+    variant = report.get("variant", score.MAIN)
+    shown = "" if variant == score.MAIN else f" [{variant}]"
+    print(f"{report['id']} {report['title']}{shown}: {verdict}   score {report['score_hash']}")
     for entry in report["kit"]:
         print(f"  sound  {entry['voice']:<7} {entry['sound']}  ({entry['why']})")
     for check in report["measurements"]:
@@ -81,6 +106,8 @@ def cmd_render(
     render_all: bool,
     engine: str = "auto",
     home: Path | None = None,
+    variants: Sequence[str] = (),
+    every_variant: bool = False,
 ) -> int:
     from mph.bench import kit, render, sc  # noqa: PLC0415 - heavy audio imports, on demand
     from mph.renoise import bridge  # noqa: PLC0415
@@ -91,12 +118,22 @@ def cmd_render(
         return 2
     catalogue = cfg.data_dir / db.FILENAME
     failed = 0
+    session = bridge.Session()  # one Renoise, started by mph, for every job (REQ-REN-03)
     with closing(db.connect(catalogue)) if catalogue.is_file() else nullcontext() as conn:
-        for benchmark_id in chosen:
+        for benchmark_id, variant in _jobs(chosen, variants, every_variant=every_variant):
             try:
-                outcome = render.run(benchmark_id, cfg, runner, conn, engine=engine, home=home)
+                outcome = render.run(
+                    benchmark_id,
+                    cfg,
+                    runner,
+                    conn,
+                    engine=engine,
+                    home=home,
+                    variant=variant,
+                    session=session,
+                )
             except (score.ScoreError, kit.KitError, sc.RenderError, bridge.BridgeError) as exc:
-                print(f"{benchmark_id}: {exc}", file=sys.stderr)
+                print(f"{benchmark_id} ({variant}): {exc}", file=sys.stderr)
                 failed += 1
                 continue
             print_report(outcome.report)

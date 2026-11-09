@@ -157,6 +157,10 @@ def _add_bench(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None
         default="auto",
         help="auto (default) uses Renoise when its bridge tool is installed",
     )
+    render.add_argument(
+        "--variant", action="append", default=[], help="render this variant (repeatable)"
+    )
+    render.add_argument("--variants", action="store_true", help="render every variant")
     bench_sub.add_parser("report", help="the latest result for one benchmark").add_argument(
         "id", metavar="BM-ID"
     )

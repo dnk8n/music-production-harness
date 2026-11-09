@@ -26,7 +26,7 @@ import numpy as np
 
 from mph import __version__
 from mph.bench import audio, checks, kit, levels, sc
-from mph.bench.score import Event, Score, events, load
+from mph.bench.score import MAIN, Event, Score, events, load, variant_of
 from mph.catalogue.scanner import utc_now
 from mph.config import Config
 from mph.deliver import deliver
@@ -236,7 +236,13 @@ def renoise_tracks(setup: Setup) -> list[song_plan.Track]:
 def renoise_job(setup: Setup) -> tuple[dict[str, Any], list[Event]]:
     score, folder, work = setup.score, setup.folder, setup.folder / "work"
     tracks = renoise_tracks(setup)
-    renders: list[Any] = [{"file": str(work / "render.wav")}, {"file": str(work / "again.wav")}]
+    # The first render of a freshly built song starts ~30 samples late, so warm up first.
+    warm_up: dict[str, Any] = {"file": str(work / "warm-up.wav")}
+    renders: list[Any] = [
+        warm_up,
+        {"file": str(work / "render.wav")},
+        {"file": str(work / "again.wav")},
+    ]
     renders += [
         {"file": str(work / f"stem-{v.name}.wav"), "solo": n}
         for n, v in enumerate(score.voices, start=1)
@@ -257,20 +263,28 @@ def renoise_job(setup: Setup) -> tuple[dict[str, Any], list[Event]]:
         tracks,
         rate=setup.rate,
         save=str(work / "templates.xrns"),
-        renders=[{"file": str(work / "templates.wav")}],
+        renders=[warm_up, {"file": str(work / "templates.wav")}],
         seconds=solo_score.length_s,
     )
     return {"songs": [main, reference]}, templates
 
 
 def _render_renoise(
-    cfg: Config, runner: Runner, home: Path, setup: Setup, clock: bridge.Clock | None
+    cfg: Config,
+    runner: Runner,
+    home: Path,
+    setup: Setup,
+    *,
+    clock: bridge.Clock | None,
+    session: bridge.Session | None,
 ) -> Rendered:
     score, work = setup.score, setup.folder / "work"
     work.mkdir(parents=True, exist_ok=True)
     job, templates = renoise_job(setup)
     name = f"{score.id}-{setup.folder.name}"
-    outcome = bridge.run_job(cfg, runner, home, name, job, timeout_s=RENOISE_TIMEOUT_S, clock=clock)
+    outcome = bridge.run_job(
+        cfg, runner, home, name, job, timeout_s=RENOISE_TIMEOUT_S, clock=clock, session=session
+    )
     frames = round(score.length_s * setup.rate)
 
     def take(path: Path, length: int) -> audio.Audio:
@@ -381,15 +395,17 @@ def run(
     engine: str = "auto",
     home: Path | None = None,
     clock: bridge.Clock | None = None,
+    variant: str = MAIN,
+    session: bridge.Session | None = None,
 ) -> Outcome:
     home = Path.home() if home is None else home
-    chosen = pick_engine(engine, home)
-    score = load(benchmark_id)
+    score, chosen_variant = variant_of(load(benchmark_id), variant)
+    chosen = pick_engine(chosen_variant.engine or engine, home)
     choices = kit.choose(score, conn, cfg.data_dir)
     setup, tools, gains = _prepare(cfg, runner, score, choices, chosen)
     folder, rate = setup.folder, setup.rate
     if chosen == "renoise":
-        rendered = _render_renoise(cfg, runner, home, setup, clock)
+        rendered = _render_renoise(cfg, runner, home, setup, clock=clock, session=session)
     else:
         assert tools is not None  # noqa: S101 - _prepare refuses otherwise
         rendered = _render_supercollider(runner, tools, setup)
@@ -423,6 +439,8 @@ def run(
     report = {
         "id": score.id,
         "title": score.title,
+        "variant": score.variant,
+        "variant_title": chosen_variant.title,
         "score_hash": folder.name,
         "rendered_at": utc_now(),
         "engine": chosen,

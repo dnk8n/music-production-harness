@@ -50,18 +50,35 @@ def verdicts(conn: sqlite3.Connection | None, benchmark_id: str) -> list[dict[st
     return [dict(zip(keys, map(str, row), strict=True)) for row in rows]
 
 
+def variant_of_report(report: dict[str, Any]) -> str:
+    return str(report.get("variant", score.MAIN))  # renders before variants were main
+
+
+def latest(renders: Path, benchmark_id: str, variant: str = score.MAIN) -> dict[str, Any] | None:
+    found = (r for r in reports(renders, benchmark_id) if variant_of_report(r) == variant)
+    return next(found, None)
+
+
 def listing(renders: Path, conn: sqlite3.Connection | None) -> list[dict[str, Any]]:
     out = []
     for benchmark_id in score.available():
         loaded = score.load(benchmark_id)
-        latest = next(iter(reports(renders, benchmark_id)), None)
+        found = reports(renders, benchmark_id)
+        newest: dict[str, dict[str, Any]] = {}
+        for report in found:  # newest first, so the first of each variant wins
+            newest.setdefault(variant_of_report(report), report)
         out.append(
             {
                 "id": benchmark_id,
                 "title": loaded.title,
                 "hear": loaded.hear,
                 "bpm": loaded.bpm,
-                "report": latest,
+                "report": newest.get(score.MAIN),
+                "variants": [
+                    {"name": v.name, "title": v.title, "report": newest.get(v.name)}
+                    for v in score.all_variants(loaded)
+                    if v.name != score.MAIN
+                ],
                 "verdicts": verdicts(conn, benchmark_id),
             }
         )

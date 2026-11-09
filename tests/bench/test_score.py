@@ -116,3 +116,64 @@ def test_unknown_benchmark_and_voice() -> None:
         score.load("BM-NOPE")
     with pytest.raises(ScoreError, match="no voice"):
         score.load_text(GOOD).voice("zz")
+
+
+VARIED = """
+id = "BM-V"
+bpm = 120
+bars = 1
+
+[voices.kick]
+grid = "X . . . X . . . X . . . X . . ."
+sound = { role = "kick", words = ["909"] }
+
+[voices.chh]
+grid = ". . x . . . x . . . x . . . x ."
+sound = { role = "hat" }
+
+[variants.other-hat]
+title = "the second-best hat, quieter"
+voices = { chh = { sound = { pick = 2 }, gain_db = -3 } }
+
+[variants.synth-hat]
+title = "a synth hat"
+engine = "supercollider"
+voices = { chh = { sound = { synth = "mph_hat" } } }
+"""
+
+
+@pytest.mark.req("REQ-BEN-07")
+def test_variants_are_standard_plus_declared() -> None:
+    loaded = score.load_text(VARIED)
+    names = [v.name for v in score.all_variants(loaded)]
+    assert names == ["main", "supercollider", "renoise", "synth-kit", "other-hat", "synth-hat"]
+    other, variant = score.variant_of(loaded, "other-hat")
+    hat = other.voice("chh")
+    assert (hat.sound.role, hat.sound.pick, hat.gain_db) == ("hat", 2, -3.0)
+    assert other.voice("kick") == loaded.voice("kick")
+    assert variant.engine == "" and other.variant == "other-hat"
+    synth, variant = score.variant_of(loaded, "synth-hat")
+    assert synth.voice("chh").sound.synth == "mph_hat" and variant.engine == "supercollider"
+    kit, _ = score.variant_of(loaded, "synth-kit")
+    assert {v.sound.synth for v in kit.voices} == {"auto"}
+    main, _ = score.variant_of(loaded, "main")
+    # Each variant is its own render; declaring more variants doesn't change main's hash.
+    assert len({main.digest(), other.digest(), synth.digest(), kit.digest()}) == 4
+    trimmed = score.load_text(VARIED.split("[variants.synth-hat]", maxsplit=1)[0])
+    assert score.variant_of(trimmed, "main")[0].digest() == main.digest()
+    assert "synth-kit" not in [v.name for v in score.all_variants(score.load("BM-DRUM-09"))]
+
+
+def test_variant_mistakes_are_reported() -> None:
+    loaded = score.load_text(VARIED)
+    with pytest.raises(score.ScoreError, match="no variant 'nope'"):
+        score.variant_of(loaded, "nope")
+    with pytest.raises(score.ScoreError, match="engine must be one of"):
+        score.load_text(VARIED.replace('engine = "supercollider"', 'engine = "tidal"'))
+    with pytest.raises(score.ScoreError, match="unknown voices"):
+        score.load_text(
+            VARIED.replace("voices = { chh = { sound = { pick", "voices = { zz = { sound = { pick")
+        )
+    clash = score.load_text(VARIED.replace("[variants.other-hat]", "[variants.renoise]"))
+    with pytest.raises(score.ScoreError, match="is a standard one"):
+        score.all_variants(clash)

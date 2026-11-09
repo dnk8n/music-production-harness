@@ -19,6 +19,8 @@ from mph.catalogue.remote import CLEAR
 READABLE = frozenset({"wav", "aiff", "flac", "ogg"})  # libsndfile, inside scsynth
 SEARCH_DEPTH = 25
 OWN = "own"  # licence of a sound synthesised here
+AUTO = "auto"  # a score's way of saying "any synth voice for this role"
+ORDINALS = {2: "second", 3: "third"}
 
 # role -> (synthdef, parameters)
 SYNTHS: dict[str, tuple[str, dict[str, float]]] = {
@@ -62,7 +64,7 @@ class Choice:
 
 def synth_for(voice: Voice, reason: str) -> Choice:
     role = voice.sound.role or voice.name
-    name = voice.sound.synth
+    name = "" if voice.sound.synth == AUTO else voice.sound.synth
     params: dict[str, float] = {}
     if not name:
         if role not in SYNTHS:
@@ -88,6 +90,7 @@ def _sample(conn: sqlite3.Connection, data_dir: Path, voice: Voice) -> Choice | 
     attempts = [voice.sound.words, ()] if voice.sound.words else [()]
     for words in attempts:
         query = search.Query(roles=(voice.sound.role,), form=form, text=words, limit=SEARCH_DEPTH)
+        skip = voice.sound.pick - 1
         for hit in search.search(conn, query).hits:
             row = conn.execute(
                 "SELECT container, channels FROM asset WHERE hash = ?", (hit.digest,)
@@ -99,11 +102,19 @@ def _sample(conn: sqlite3.Connection, data_dir: Path, voice: Voice) -> Choice | 
             path = provenance.locate(conn, data_dir, hit.digest)
             if path is None or not path.is_file():
                 continue
+            if skip:
+                skip -= 1
+                continue
             matched = f" matching {' '.join(words)}" if words else ""
+            rank = (
+                ORDINALS.get(voice.sound.pick, f"#{voice.sound.pick}")
+                if voice.sound.pick > 1
+                else "best"
+            )
             return Choice(
                 voice=voice.name,
                 synthdef=f"mph_play{row[1]}",
-                reason=f"catalogue: best {voice.sound.role} {form}{matched}",
+                reason=f"catalogue: {rank} {voice.sound.role} {form}{matched}",
                 path=str(path),
                 digest=hit.digest,
                 label=hit.path,

@@ -429,3 +429,52 @@ def test_supercollider_renders_apply_the_gains(conn: sqlite3.Connection, tmp_pat
     assert peak == pytest.approx(0.8 * levels.linear(gains["chh"]), rel=0.05)
     assert set(gains) == {"kick", "clap", "chh"}
     assert outcome.passed
+
+
+# --- variants -------------------------------------------------------------------------
+
+
+@pytest.mark.req("REQ-BEN-07")
+def test_kit_can_pick_a_lower_match_or_any_synth(conn: sqlite3.Connection, tmp_path: Path) -> None:
+    lib = tmp_path / "lib"
+    add_sample(conn, lib, "Hat One.wav", [("role", "hat")])
+    add_sample(conn, lib, "Hat Two.wav", [("role", "hat")])
+    loaded = score.load("BM-DRUM-01")
+    best = {c.voice: c for c in kit.choose(loaded, conn, tmp_path / "data")}["chh"]
+    second_score = replace(
+        loaded,
+        voices=tuple(
+            replace(v, sound=replace(v.sound, pick=2)) if v.name == "chh" else v
+            for v in loaded.voices
+        ),
+    )
+    second = {c.voice: c for c in kit.choose(second_score, conn, tmp_path / "data")}["chh"]
+    assert {best.label, second.label} == {"Hat One.wav", "Hat Two.wav"}
+    assert second.reason == "catalogue: second hat oneshot"
+    synth_kit, _ = score.variant_of(loaded, "synth-kit")
+    assert all(not c.is_sample for c in kit.choose(synth_kit, conn, tmp_path / "data"))
+
+
+@pytest.mark.req("REQ-BEN-07")
+def test_variants_render_into_their_own_folders_and_list_together(
+    conn: sqlite3.Connection, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from mph.bench import feedback  # noqa: PLC0415
+
+    add_sample(conn, tmp_path / "lib", "Hat One.wav", [("role", "hat")])
+    assert run_cli(tmp_path, "render", "BM-DRUM-01", "--variant", "synth-kit") == 0
+    out = capsys.readouterr().out
+    assert "BM-DRUM-01 Detroit four-to-the-floor [synth-kit]: pass" in out
+    assert run_cli(tmp_path, "render", "BM-DRUM-01", "--variants") == 1  # renoise isn't installed
+    err = capsys.readouterr().err
+    assert "BM-DRUM-01 (renoise): Renoise can't render yet" in err
+    renders = cfg_for(tmp_path).data_dir / "renders"
+    listed = next(b for b in feedback.listing(renders, None) if b["id"] == "BM-DRUM-01")
+    assert listed["report"]["variant"] == "main"
+    by_name = {v["name"]: v for v in listed["variants"]}
+    assert set(by_name) == {"supercollider", "renoise", "synth-kit", "other-hat"}
+    assert by_name["renoise"]["report"] is None
+    assert by_name["synth-kit"]["report"]["variant_title"] == "every part a SuperCollider synth"
+    hashes = {listed["report"]["score_hash"], by_name["synth-kit"]["report"]["score_hash"]}
+    assert len(hashes) == 2
+    assert feedback.latest(renders, "BM-DRUM-01", "supercollider")["engine"] == "supercollider"  # type: ignore[index]

@@ -26,7 +26,7 @@ import numpy as np
 
 from mph import __version__
 from mph.bench import audio, checks, kit, levels, sc
-from mph.bench.score import Event, Score, events, load
+from mph.bench.score import MAIN, Event, Score, events, load, variant_of
 from mph.catalogue.scanner import utc_now
 from mph.config import Config
 from mph.deliver import deliver
@@ -381,10 +381,11 @@ def run(
     engine: str = "auto",
     home: Path | None = None,
     clock: bridge.Clock | None = None,
+    variant: str = MAIN,
 ) -> Outcome:
     home = Path.home() if home is None else home
-    chosen = pick_engine(engine, home)
-    score = load(benchmark_id)
+    score, chosen_variant = variant_of(load(benchmark_id), variant)
+    chosen = pick_engine(chosen_variant.engine or engine, home)
     choices = kit.choose(score, conn, cfg.data_dir)
     setup, tools, gains = _prepare(cfg, runner, score, choices, chosen)
     folder, rate = setup.folder, setup.rate
@@ -423,6 +424,8 @@ def run(
     report = {
         "id": score.id,
         "title": score.title,
+        "variant": score.variant,
+        "variant_title": chosen_variant.title,
         "score_hash": folder.name,
         "rendered_at": utc_now(),
         "engine": chosen,

@@ -62,6 +62,33 @@ also writes the song, `<id>.xrns`, with its samples inside.
   render in one folder, keyed by exactly what was rendered.
 - **Verify:** test
 
+### REQ-BEN-07: Variants of a benchmark
+A variant is another way of making the same benchmark: a different engine
+(Renoise or SuperCollider), a different sound recipe for some parts, or
+different levels. Every benchmark has a `main` variant, which is the score
+as written with the engine picked by REQ-BEN-10. Every benchmark also has
+these standard variants:
+
+| variant | what changes |
+|---|---|
+| `supercollider` | the whole render runs in SuperCollider (ADR-0009's fallback engine) |
+| `renoise` | the whole render runs in Renoise |
+| `synth-kit` | every part uses a SuperCollider synth voice (not for scores with a break) |
+
+A score can add its own under `[variants.<name>]`: a title, an engine,
+and per-voice changes to `sound` (role, words, `synth`, or `pick`, the Nth
+best catalogue match) and `gain_db`. `mph bench render BM-...` renders
+`main`. `--variant NAME` renders one variant, and `--variants` renders them
+all. Each variant renders into its own folder, with its own score hash,
+measurements and report, which names the variant. Verdicts are given per
+render, so each variant is rated separately.
+- **Why:** Dean wants to compare different productions of the same part by
+  ear (Renoise against SuperCollider, one sound design against another) and
+  rate each on its own. The same mechanism lets a whole track be made in
+  SuperCollider when asked, and carries the parameter A/B comparisons
+  (filter, sidechain bypass) of the later benchmarks.
+- **Verify:** test
+
 ### REQ-BEN-09: Kit sounds are level-matched
 Before a render, each sound's hit loudness is measured: the K-weighted power
 (the ITU-R BS.1770 filter) of its loudest 100 ms, in dB. Its gain is then set

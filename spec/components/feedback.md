@@ -13,6 +13,9 @@ Benchmarks tab of the sample browser (REQ-BRW-01), so sounds and renders are
 in one place. Switching takes while playing keeps the playhead, so A/B
 compares the same moment. Each sound the render used can be played
 inline: the catalogue sample on its own, and that voice's stem from the render.
+A benchmark with rendered variants (REQ-BEN-07) shows a "Variants" list that
+expands. Each variant can be played, compared with `main` at the same moment,
+and given its own verdict, with its measurements beside it.
 - **Why:** Dean needs to judge output without looking at code.
 - **Verify:** test
 

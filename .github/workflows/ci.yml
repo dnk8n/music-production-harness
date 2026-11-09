@@ -24,6 +24,8 @@ jobs:
           python-version: "3.12"
           enable-cache: true
       - run: uv sync --locked
+      - name: Lua for the Renoise bridge tests
+        run: sudo apt-get install -y --no-install-recommends lua5.1
       - name: Format
         run: uv run ruff format --check .
       - name: Lint (incl. security rules and complexity cap)

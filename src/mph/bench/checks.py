@@ -151,13 +151,30 @@ def lead_in(levels: Mapping[str, float]) -> Check:
     )
 
 
-def determinism(first: Audio, second: Audio) -> Check:
-    """REQ-AUD-05: the same score rendered twice gives the same samples."""
-    same = first.shape == second.shape and bool((first == second).all())
-    differing = 0 if same or first.shape != second.shape else int((first != second).sum())
+def determinism(first: Audio, second: Audio, *, null_limit_db: float | None = None) -> Check:
+    """REQ-AUD-05: the same score rendered twice gives the same samples.
+
+    SuperCollider must be bit-identical. Renoise passes a null test instead:
+    the two renders may differ only below ``null_limit_db`` (-120 dBFS)."""
+    if null_limit_db is None:
+        same_shape = first.shape == second.shape
+        differing = int((first != second).sum()) if same_shape else -1
+        return Check(
+            "determinism: samples differing in a second render",
+            float(differing),
+            "0 (bit-identical)",
+            differing == 0,
+            "" if same_shape else "the renders differ in length",
+        )
+    if first.shape != second.shape:
+        return Check("determinism: null test of a second render (dBFS)", 0.0, "same length", False)
+    differing = int((first != second).sum())
+    peak = float(abs(first - second).max()) if first.size else 0.0
+    level = max(round(audio.db(peak), 1), -200.0) if peak else -200.0
     return Check(
-        "determinism: samples differing in a second render",
-        float(differing if first.shape == second.shape else -1),
-        "0 (bit-identical)",
-        same,
+        "determinism: null test of a second render (dBFS)",
+        level,
+        f"<= {null_limit_db:g}",
+        level <= null_limit_db,
+        f"{differing} samples differ" if differing else "bit-identical",
     )

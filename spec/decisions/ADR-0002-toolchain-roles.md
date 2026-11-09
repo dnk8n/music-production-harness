@@ -2,6 +2,7 @@
 
 **Status:** accepted
 **Date:** 2026-11-08
+**Refined by:** ADR-0009 (Renoise holds the patterns from step 3 on)
 
 ## Context
 Dean has Renoise and SuperCollider, maybe Tidal. The output must come from

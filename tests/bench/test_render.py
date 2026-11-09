@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from collections.abc import Iterator
 from dataclasses import replace
@@ -11,9 +12,11 @@ import pytest
 import soundfile
 
 from mph import cli, config
-from mph.bench import audio, commands, kit, osc, render, sc, score
+from mph.bench import audio, commands, kit, levels, osc, render, sc, score
 from mph.catalogue import db
 from mph.proc import Result
+from mph.renoise import bridge
+from tests.bench.fake_renoise import FakeRenoise
 from tests.bench.fake_sc import fake_sclang, fake_scsynth
 from tests.fakes import FakeRunner
 
@@ -170,7 +173,7 @@ def test_render_failures_are_explained(tmp_path: Path) -> None:
 @pytest.mark.req("REQ-AUD-05")
 def test_render_writes_stems_master_delivery_and_report(tmp_path: Path) -> None:
     cfg = cfg_for(tmp_path)
-    outcome = render.run("BM-DRUM-02", cfg, runner(), None)
+    outcome = render.run("BM-DRUM-02", cfg, runner(), None, home=tmp_path)
     report = outcome.report
     assert outcome.folder.parent == cfg.data_dir / "renders" / "BM-DRUM-02"
     assert outcome.folder.name == report["score_hash"]
@@ -193,7 +196,7 @@ def test_render_measures_humanising_and_break_slices(
     conn: sqlite3.Connection, tmp_path: Path
 ) -> None:
     cfg = cfg_for(tmp_path)
-    shaker = render.run("BM-DRUM-08", cfg, runner(), None)
+    shaker = render.run("BM-DRUM-08", cfg, runner(), None, home=tmp_path)
     assert shaker.passed
     add_sample(
         conn,
@@ -203,7 +206,7 @@ def test_render_measures_humanising_and_break_slices(
         form="loop",
         seconds=2.0,
     )
-    chopped = render.run("BM-DRUM-09", cfg, runner(), conn)
+    chopped = render.run("BM-DRUM-09", cfg, runner(), conn, home=tmp_path)
     names = [m["name"] for m in chopped.report["measurements"]]  # type: ignore[attr-defined]
     assert any(n.startswith("clicks: break") for n in names)
     assert chopped.report["kit"][0]["sound"] == "Photek Break 120bpm.wav"  # type: ignore[index]
@@ -219,7 +222,9 @@ def test_render_flags_a_wrong_render(tmp_path: Path) -> None:
             audio.write_float(out, shifted, rate)
         return result
 
-    outcome = render.run("BM-DRUM-01", cfg_for(tmp_path), runner(scsynth=late_scsynth), None)
+    outcome = render.run(
+        "BM-DRUM-01", cfg_for(tmp_path), runner(scsynth=late_scsynth), None, home=tmp_path
+    )
     failed = [m["name"] for m in outcome.report["measurements"] if not m["passed"]]  # type: ignore[attr-defined]
     assert "timing: worst hit error (ms)" in failed
     assert "determinism: samples differing in a second render" in failed
@@ -228,7 +233,7 @@ def test_render_flags_a_wrong_render(tmp_path: Path) -> None:
 
 def test_render_needs_supercollider(tmp_path: Path) -> None:
     with pytest.raises(sc.RenderError, match="mph install supercollider"):
-        render.run("BM-DRUM-01", cfg_for(tmp_path), FakeRunner(), None)
+        render.run("BM-DRUM-01", cfg_for(tmp_path), FakeRunner(), None, home=tmp_path)
 
 
 def test_templates_cover_every_distinct_sound() -> None:
@@ -245,7 +250,7 @@ def test_templates_cover_every_distinct_sound() -> None:
 
 def run_cli(tmp_path: Path, *argv: str, fake: FakeRunner | None = None) -> int:
     args = cli.build_parser().parse_args(["bench", *argv])
-    return commands.dispatch(args, cfg_for(tmp_path), fake or runner())
+    return commands.dispatch(args, cfg_for(tmp_path), fake or runner(), tmp_path)
 
 
 def test_cli_render_list_and_report(
@@ -284,3 +289,143 @@ def test_cli_renders_against_the_catalogue_when_there_is_one(
 def test_main_wires_bench(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MPH_CONFIG", str(tmp_path / "none.toml"))
     assert cli.main(["bench", "list"]) == 0
+
+
+# --- Renoise engine -------------------------------------------------------------------
+
+
+def renoise_ready(tmp_path: Path, cfg: config.Config) -> Path:
+    home = tmp_path / "home"
+    (home / "Library/Preferences/Renoise/V3.5.4").mkdir(parents=True)
+    bridge.install(cfg, home)
+    return home
+
+
+def test_engine_choice(tmp_path: Path) -> None:
+    cfg = cfg_for(tmp_path)
+    assert render.pick_engine("auto", tmp_path) == "supercollider"
+    assert render.pick_engine("supercollider", tmp_path) == "supercollider"
+    with pytest.raises(sc.RenderError, match="mph renoise install"):
+        render.pick_engine("renoise", tmp_path)
+    with pytest.raises(sc.RenderError, match="engine must be one of"):
+        render.pick_engine("tidal", tmp_path)
+    home = renoise_ready(tmp_path, cfg)
+    assert render.pick_engine("auto", home) == "renoise"
+    assert render.pick_engine("supercollider", home) == "supercollider"
+
+
+@pytest.mark.lua
+@pytest.mark.req("REQ-BEN-10")
+@pytest.mark.req("REQ-REN-02")
+def test_renoise_render_builds_a_song_and_measures_it(tmp_path: Path) -> None:
+    cfg = cfg_for(tmp_path)
+    home = renoise_ready(tmp_path, cfg)
+    fake = FakeRenoise(bridge.jobs_dir(cfg))
+    outcome = render.run("BM-DRUM-02", cfg, runner(), None, home=home, clock=fake.clock())
+    report = outcome.report
+    failures = [m for m in report["measurements"] if not m["passed"]]  # type: ignore[attr-defined]
+    assert failures == []
+    assert report["engine"] == "renoise"
+    assert report["tools"]["renoise"] == "3.5.4 (fake)"  # type: ignore[index]
+    assert report["files"]["project"] == "BM-DRUM-02.xrns"  # type: ignore[index]
+    assert (outcome.folder / "BM-DRUM-02.xrns").read_bytes() == b"fake xrns"
+    main, templates = fake.performed[0]["songs"]
+    assert [t["name"] for t in main["tracks"]] == ["kick", "clap", "chh", "ohh"]
+    assert [r.get("solo") for r in main["renders"]] == [None, None, 1, 2, 3, 4]
+    # Synth voices were rendered once by SuperCollider and load as samples.
+    assert main["tracks"][0]["sample"] == str(outcome.folder / "sounds" / "kick.wav")
+    assert (outcome.folder / "sounds" / "kick.wav").is_file()
+    assert templates["save"].endswith("work/templates.xrns")
+    assert not (cfg.data_dir / "renders" / "BM-DRUM-02" / "staging").exists()
+    # The same score through SuperCollider is a different render, in its own folder.
+    plain = render.run("BM-DRUM-02", cfg, runner(), None, home=home, engine="supercollider")
+    assert plain.folder != outcome.folder and plain.report["engine"] == "supercollider"
+
+
+@pytest.mark.lua
+@pytest.mark.req("REQ-BEN-10")
+def test_renoise_render_slices_a_break(conn: sqlite3.Connection, tmp_path: Path) -> None:
+    cfg = cfg_for(tmp_path)
+    home = renoise_ready(tmp_path, cfg)
+    add_sample(
+        conn,
+        tmp_path / "lib",
+        "Photek Break 120bpm.wav",
+        [("role", "break"), ("bpm", "120")],
+        form="loop",
+        seconds=2.0,
+    )
+    fake = FakeRenoise(bridge.jobs_dir(cfg))
+    chopped = render.run("BM-DRUM-09", cfg, runner(), conn, home=home, clock=fake.clock())
+    track = fake.performed[0]["songs"][0]["tracks"][0]
+    assert len(track["slices"]) == 8  # one bar of break, 8 slices a bar
+    assert track["transpose"] == 1  # 120 BPM break played at 130 BPM
+    timing = next(m for m in chopped.report["measurements"] if m["name"].startswith("timing"))  # type: ignore[attr-defined]
+    assert timing["passed"]
+
+
+@pytest.mark.lua
+def test_renoise_problems_are_reported(tmp_path: Path) -> None:
+    cfg = cfg_for(tmp_path)
+    home = renoise_ready(tmp_path, cfg)
+    broken = FakeRenoise(bridge.jobs_dir(cfg), broken=True)
+    with pytest.raises(bridge.BridgeError, match="could not load the kick"):
+        render.run("BM-DRUM-04", cfg, runner(), None, home=home, clock=broken.clock())
+
+    class WrongRate(FakeRenoise):
+        def sleep(self, seconds: float) -> None:
+            for job_file in self.jobs.glob("*.job.lua"):
+                text = job_file.read_text("utf-8").replace("rate = 48000", "rate = 44100")
+                job_file.write_text(text, "utf-8")
+            super().sleep(seconds)
+
+    wrong = WrongRate(bridge.jobs_dir(cfg))
+    with pytest.raises(sc.RenderError, match="at 44100 Hz, not 48000"):
+        render.run("BM-DRUM-04", cfg, runner(), None, home=home, clock=wrong.clock())
+
+
+# --- levels ---------------------------------------------------------------------------
+
+
+@pytest.mark.req("REQ-BEN-09")
+def test_level_targets_match_the_spec_table() -> None:
+    spec = (Path(__file__).parents[2] / "spec/components/benchmarks.md").read_text("utf-8")
+    section = spec[spec.index("### REQ-BEN-09") : spec.index("### REQ-BEN-10")]
+    rows = re.findall(r"^\| (\w+) \| (-?\d+) \|$", section, re.MULTILINE)
+    assert {role: float(target) for role, target in rows} == levels.TARGETS_DB
+    assert "aim for -18 dB" in section and levels.DEFAULT_TARGET_DB == -18.0
+
+
+@pytest.mark.req("REQ-BEN-09")
+def test_gains_bring_each_sound_to_its_role_target() -> None:
+    rate = 48000
+    t = np.arange(rate // 4) / rate
+    tone = np.sin(2 * np.pi * 1000 * t)[:, None].astype(np.float32)
+    loud = levels.hit_loudness(tone, rate)
+    quiet = levels.hit_loudness(tone * 0.1, rate)
+    assert loud - quiet == pytest.approx(20.0, abs=0.01)
+    hat = score.Voice("chh", score.Sound(role="hat"), grid="x " * 16)
+    assert levels.gain_db(hat, loud) == pytest.approx(-22.0 - loud, abs=0.01)
+    pushed = replace(hat, gain_db=-3.0)
+    assert levels.gain_db(pushed, loud) == pytest.approx(levels.gain_db(hat, loud) - 3.0)
+    assert levels.gain_db(hat, -200.0) == 12.0  # clamped
+    assert levels.gain_db(hat, 40.0) == -30.0
+    assert levels.gain_db(hat, float("-inf")) == 0.0
+    assert levels.hit_loudness(np.zeros((100, 2), np.float32), rate) == float("-inf")
+    unknown = score.Voice("zz", score.Sound(), grid="x " * 16)
+    assert levels.target_for(unknown) == -18.0
+
+
+@pytest.mark.req("REQ-BEN-09")
+def test_supercollider_renders_apply_the_gains(conn: sqlite3.Connection, tmp_path: Path) -> None:
+    cfg = cfg_for(tmp_path)
+    add_sample(conn, tmp_path / "lib", "Loud Hat.wav", [("role", "hat")])
+    outcome = render.run("BM-DRUM-01", cfg, runner(), conn, home=tmp_path)
+    gains = {k["voice"]: k["gain_db"] for k in outcome.report["kit"]}  # type: ignore[attr-defined]
+    sample = audio.read(tmp_path / "lib" / "Loud Hat.wav")
+    assert gains["chh"] == pytest.approx(-22.0 - levels.hit_loudness(*sample), abs=0.01)
+    # The fake plays each hit at the amp it's given: velocity x the hat's gain.
+    peak = float(np.abs(audio.read(outcome.folder / "stems" / "chh.wav")[0]).max())
+    assert peak == pytest.approx(0.8 * levels.linear(gains["chh"]), rel=0.05)
+    assert set(gains) == {"kick", "clap", "chh"}
+    assert outcome.passed

@@ -38,8 +38,8 @@ def test_only_proc_spawns_processes() -> None:
 AUDIO_IO = {"catalogue/analysis.py", "bench/audio.py", "deliver.py"}
 JUSTIFIED = {
     "librosa": {"catalogue/analysis.py"},  # ADR-0008
-    "numpy": AUDIO_IO | {"bench/render.py"},  # ADR-0008
-    "pyloudnorm": {"catalogue/analysis.py", "bench/audio.py"},  # ADR-0008
+    "numpy": AUDIO_IO | {"bench/render.py", "bench/levels.py"},  # ADR-0008
+    "pyloudnorm": {"catalogue/analysis.py", "bench/audio.py", "bench/levels.py"},  # ADR-0008
     "soundfile": AUDIO_IO,  # ADR-0008
     "soxr": {"bench/audio.py", "deliver.py"},  # ADR-0003: libsoxr does the one SRC
 }

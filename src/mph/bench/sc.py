@@ -86,6 +86,7 @@ class Plan:
     slices: Sequence[Slice] = ()
     slice_rate: float = 1.0  # playback-rate factor that fits the break to the tempo
     break_rate: int = 0  # the break file's own sample rate
+    gains: Sequence[float] = ()  # linear, one per voice (REQ-BEN-09); empty means 1
 
     @property
     def channels(self) -> int:
@@ -94,7 +95,8 @@ class Plan:
 
 def _hit_args(plan: Plan, index: int, voice: Voice, event: Event, node: int) -> list[Arg]:
     choice = plan.choices[index]
-    args: list[Arg] = ["out", 2 * index, "amp", event.velocity]
+    gain = plan.gains[index] if plan.gains else 1.0
+    args: list[Arg] = ["out", 2 * index, "amp", event.velocity * gain]
     for name, value in sorted(choice.params.items()):
         args += [name, float(value)]
     if not choice.is_sample:

@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import sys
 from contextlib import closing, nullcontext
+from pathlib import Path
 from typing import Any
 
 from mph.bench import feedback, score
@@ -20,7 +21,7 @@ from mph.proc import Runner
 RENDERS = "renders"
 
 
-def dispatch(args: argparse.Namespace, cfg: Config, runner: Runner) -> int:
+def dispatch(args: argparse.Namespace, cfg: Config, runner: Runner, home: Path) -> int:
     if args.action == "list":
         return cmd_list(cfg)
     if args.action == "report":
@@ -29,7 +30,7 @@ def dispatch(args: argparse.Namespace, cfg: Config, runner: Runner) -> int:
         return catalogue_commands.cmd_browse(
             cfg, runner, args.port, open_page=not args.no_open, page="bench"
         )
-    return cmd_render(cfg, runner, args.ids, render_all=args.all)
+    return cmd_render(cfg, runner, args.ids, render_all=args.all, engine=args.engine, home=home)
 
 
 def latest_report(cfg: Config, benchmark_id: str) -> dict[str, Any] | None:
@@ -72,8 +73,17 @@ def print_report(report: dict[str, Any]) -> None:
     )
 
 
-def cmd_render(cfg: Config, runner: Runner, ids: list[str], *, render_all: bool) -> int:
+def cmd_render(
+    cfg: Config,
+    runner: Runner,
+    ids: list[str],
+    *,
+    render_all: bool,
+    engine: str = "auto",
+    home: Path | None = None,
+) -> int:
     from mph.bench import kit, render, sc  # noqa: PLC0415 - heavy audio imports, on demand
+    from mph.renoise import bridge  # noqa: PLC0415
 
     chosen = score.available() if render_all else ids
     if not chosen:
@@ -84,13 +94,13 @@ def cmd_render(cfg: Config, runner: Runner, ids: list[str], *, render_all: bool)
     with closing(db.connect(catalogue)) if catalogue.is_file() else nullcontext() as conn:
         for benchmark_id in chosen:
             try:
-                outcome = render.run(benchmark_id, cfg, runner, conn)
-            except (score.ScoreError, kit.KitError, sc.RenderError) as exc:
+                outcome = render.run(benchmark_id, cfg, runner, conn, engine=engine, home=home)
+            except (score.ScoreError, kit.KitError, sc.RenderError, bridge.BridgeError) as exc:
                 print(f"{benchmark_id}: {exc}", file=sys.stderr)
                 failed += 1
                 continue
             print_report(outcome.report)
-            print(f"  files  {outcome.folder}")
+            print(f"  files  {outcome.folder}   (made in {outcome.report['engine']})")
             failed += not outcome.passed
     print("\nlisten and give verdicts: mph bench serve")
     return 1 if failed else 0

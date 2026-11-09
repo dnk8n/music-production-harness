@@ -153,3 +153,22 @@ def test_tpdf_dither_is_about_one_lsb() -> None:
     assert 0.3 < float(np.std(quantised)) < 0.6
     loud = tpdf_quantise(np.full((10, 1), 1.0), 16)
     assert loud.max() == 2**15 - 1
+
+
+@pytest.mark.req("REQ-AUD-05")
+def test_determinism_is_bit_exact_for_supercollider_and_a_null_test_for_renoise() -> None:
+    from mph.bench import checks  # noqa: PLC0415
+
+    first = np.zeros((100, 2), np.float32)
+    tiny = first.copy()
+    tiny[10, 0] = 1e-7  # -140 dBFS
+    assert checks.determinism(first, first.copy()).passed
+    assert not checks.determinism(first, tiny).passed
+    nulled = checks.determinism(first, tiny, null_limit_db=-120.0)
+    assert nulled.passed and nulled.value == -140.0 and nulled.note == "1 samples differ"
+    loud = tiny.copy()
+    loud[20, 1] = 1e-3
+    assert not checks.determinism(first, loud, null_limit_db=-120.0).passed
+    assert checks.determinism(first, first, null_limit_db=-120.0).note == "bit-identical"
+    assert not checks.determinism(first, first[:50]).passed
+    assert not checks.determinism(first, first[:50], null_limit_db=-120.0).passed

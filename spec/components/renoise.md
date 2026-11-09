@@ -26,7 +26,9 @@ A small Renoise tool (Lua, shipped in `src/mph/renoise/tool/`) watches a job
 folder under `data_dir/renoise/jobs/`. mph writes a job (the plan, as a Lua
 data table), and the tool starts a new song, builds it, saves the `.xrns`,
 renders each requested WAV (32-bit float at the production rate, with
-other tracks muted for a stem), then writes a result file with any error.
+other tracks muted for a stem), then writes a result file with any error. The first render of a freshly
+built song starts about 30 samples late in Renoise 3.5.4, so mph asks for a
+throwaway warm-up render first and measures only the renders after it.
 mph starts Renoise in the background if it isn't running and waits for the
 result. Nobody needs to click anything. `mph renoise install` copies the tool
 into Renoise's Tools folder, and doctor checks that it's there.

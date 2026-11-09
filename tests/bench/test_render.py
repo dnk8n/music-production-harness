@@ -331,7 +331,12 @@ def test_renoise_render_builds_a_song_and_measures_it(tmp_path: Path) -> None:
     assert (outcome.folder / "BM-DRUM-02.xrns").read_bytes() == b"fake xrns"
     main, templates = fake.performed[0]["songs"]
     assert [t["name"] for t in main["tracks"]] == ["kick", "clap", "chh", "ohh"]
-    assert [r.get("solo") for r in main["renders"]] == [None, None, 1, 2, 3, 4]
+    assert [r.get("solo") for r in main["renders"]] == [None, None, None, 1, 2, 3, 4]
+    assert main["renders"][0]["file"].endswith("work/warm-up.wav")  # never measured
+    assert [r["file"].rsplit("/", 1)[1] for r in templates["renders"]] == [
+        "warm-up.wav",
+        "templates.wav",
+    ]
     # Synth voices were rendered once by SuperCollider and load as samples.
     assert main["tracks"][0]["sample"] == str(outcome.folder / "sounds" / "kick.wav")
     assert (outcome.folder / "sounds" / "kick.wav").is_file()

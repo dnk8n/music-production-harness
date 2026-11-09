@@ -236,7 +236,13 @@ def renoise_tracks(setup: Setup) -> list[song_plan.Track]:
 def renoise_job(setup: Setup) -> tuple[dict[str, Any], list[Event]]:
     score, folder, work = setup.score, setup.folder, setup.folder / "work"
     tracks = renoise_tracks(setup)
-    renders: list[Any] = [{"file": str(work / "render.wav")}, {"file": str(work / "again.wav")}]
+    # The first render of a freshly built song starts ~30 samples late, so warm up first.
+    warm_up: dict[str, Any] = {"file": str(work / "warm-up.wav")}
+    renders: list[Any] = [
+        warm_up,
+        {"file": str(work / "render.wav")},
+        {"file": str(work / "again.wav")},
+    ]
     renders += [
         {"file": str(work / f"stem-{v.name}.wav"), "solo": n}
         for n, v in enumerate(score.voices, start=1)
@@ -257,7 +263,7 @@ def renoise_job(setup: Setup) -> tuple[dict[str, Any], list[Event]]:
         tracks,
         rate=setup.rate,
         save=str(work / "templates.xrns"),
-        renders=[{"file": str(work / "templates.wav")}],
+        renders=[warm_up, {"file": str(work / "templates.wav")}],
         seconds=solo_score.length_s,
     )
     return {"songs": [main, reference]}, templates

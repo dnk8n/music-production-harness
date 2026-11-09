@@ -60,10 +60,17 @@ def add_sample(
     seconds: float = 0.3,
     container: str = "wav",
     licence: str = "commercial-pack",
+    noise: bool = False,
+    freq: float = 400.0,
 ) -> str:
     rate = 44100
     t = np.arange(round(seconds * rate)) / rate
-    wave = np.sin(2 * np.pi * 400 * t) * np.exp(-((t * 8) % 1) * 20)
+    tone = (
+        np.random.default_rng(len(name)).uniform(-1, 1, len(t))
+        if noise
+        else np.sin(2 * np.pi * freq * t)
+    )
+    wave = tone * np.exp(-((t * 8) % 1) * 20)
     folder.mkdir(parents=True, exist_ok=True)
     if container == "wav":
         soundfile.write(str(folder / name), wave, rate, subtype="PCM_16")
@@ -553,3 +560,23 @@ def test_acid_templates_pair_each_accent_with_a_plain_note() -> None:
         if accent:
             assert (pitch, False) in kinds
     assert not any(e.tie for e in templates)
+
+
+@pytest.mark.req("REQ-BEN-05")
+def test_kit_passes_over_hats_that_whistle(conn: sqlite3.Connection, tmp_path: Path) -> None:
+    lib, hat = tmp_path / "lib", [("role", "hat")]
+    add_sample(conn, lib, "A Analogue Hat 17.wav", hat, seconds=0.05, freq=9000.0)  # whistles
+    loaded = score.load("BM-DRUM-01")
+    # With nothing else to choose, the tonal hat is still used.
+    only = {c.voice: c for c in kit.choose(loaded, conn, tmp_path / "data")}["chh"]
+    assert only.label.endswith("A Analogue Hat 17.wav") and "passing over" not in only.reason
+    add_sample(conn, lib, "B Closed Hat.wav", hat, seconds=0.05, noise=True)
+    chosen = {c.voice: c for c in kit.choose(loaded, conn, tmp_path / "data")}["chh"]
+    assert chosen.label.endswith("B Closed Hat.wav")
+    assert chosen.reason.endswith("passing over 1 that whistle rather than hiss")
+    # Other roles aren't judged this way: a kick is meant to have a pitch.
+    add_sample(conn, lib, "A Kick.wav", [("role", "kick")])
+    assert {c.voice: c for c in kit.choose(loaded, conn, tmp_path / "data")}["kick"].label.endswith(
+        "A Kick.wav"
+    )
+    assert not kit.tonal(tmp_path / "missing.wav")  # unreadable: left for the render to report

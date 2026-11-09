@@ -2,8 +2,10 @@
 
 A voice asks the catalogue for its role and words, and takes the best match
 that SuperCollider can read directly (WAV, AIFF, FLAC, Ogg: no conversion,
-REQ-AUD-01). With no catalogue, no match, or a score that asks for a synth,
-the voice falls back to a SuperCollider drum voice, and says so.
+REQ-AUD-01). For noise-like roles (hats, shakers, cymbals) it passes over
+tonal sounds, ones that whistle rather than hiss, unless nothing else fits.
+With no catalogue, no match, or a score that asks for a synth, the voice
+falls back to a SuperCollider drum voice, and says so.
 """
 
 from __future__ import annotations
@@ -12,6 +14,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from mph.bench import audio
 from mph.bench.score import Score, Voice
 from mph.catalogue import provenance, search
 from mph.catalogue.remote import CLEAR
@@ -21,6 +24,8 @@ SEARCH_DEPTH = 25
 OWN = "own"  # licence of a sound synthesised here
 AUTO = "auto"  # a score's way of saying "any synth voice for this role"
 ORDINALS = {2: "second", 3: "third"}
+NOISE_ROLES = frozenset({"hat", "hat_open", "shaker", "cymbal", "ride", "crash"})
+TONAL_FLATNESS = 0.05  # below this, a noise-like sound whistles (spectral flatness)
 
 # role -> (synthdef, parameters)
 SYNTHS: dict[str, tuple[str, dict[str, float]]] = {
@@ -85,42 +90,76 @@ def _licence(conn: sqlite3.Connection, digest: str) -> str:
     return str(row[0]) if row else "unknown"
 
 
+def tonal(path: Path) -> bool:
+    """A sound that rings at a few pitches rather than hissing (REQ-BEN-05)."""
+    try:
+        data, rate = audio.read(path)
+    except (OSError, RuntimeError, ValueError):
+        return False  # unreadable here: let the render report it
+    return audio.flatness(data, rate) < TONAL_FLATNESS
+
+
+@dataclass(frozen=True, slots=True)
+class _Found:
+    digest: str
+    path: Path
+    label: str
+    synthdef: str
+    bpm: float
+
+
+def _candidates(
+    conn: sqlite3.Connection, data_dir: Path, voice: Voice, words: tuple[str, ...]
+) -> list[_Found]:
+    form = "loop" if voice.slices else "oneshot"
+    query = search.Query(roles=(voice.sound.role,), form=form, text=words, limit=SEARCH_DEPTH)
+    found = []
+    for hit in search.search(conn, query).hits:
+        row = conn.execute(
+            "SELECT container, channels FROM asset WHERE hash = ?", (hit.digest,)
+        ).fetchone()
+        if not row or row[0] not in READABLE or row[1] not in (1, 2):
+            continue
+        if voice.slices and not hit.facts.get("bpm"):
+            continue  # slicing a break needs its tempo
+        path = provenance.locate(conn, data_dir, hit.digest)
+        if path is None or not path.is_file():
+            continue
+        bpm = float(hit.facts.get("bpm", 0) or 0)
+        found.append(_Found(hit.digest, path, hit.path, f"mph_play{row[1]}", bpm))
+    return found
+
+
 def _sample(conn: sqlite3.Connection, data_dir: Path, voice: Voice) -> Choice | None:
     form = "loop" if voice.slices else "oneshot"
     attempts = [voice.sound.words, ()] if voice.sound.words else [()]
     for words in attempts:
-        query = search.Query(roles=(voice.sound.role,), form=form, text=words, limit=SEARCH_DEPTH)
-        skip = voice.sound.pick - 1
-        for hit in search.search(conn, query).hits:
-            row = conn.execute(
-                "SELECT container, channels FROM asset WHERE hash = ?", (hit.digest,)
-            ).fetchone()
-            if not row or row[0] not in READABLE or row[1] not in (1, 2):
-                continue
-            if voice.slices and not hit.facts.get("bpm"):
-                continue  # slicing a break needs its tempo
-            path = provenance.locate(conn, data_dir, hit.digest)
-            if path is None or not path.is_file():
-                continue
-            if skip:
-                skip -= 1
-                continue
-            matched = f" matching {' '.join(words)}" if words else ""
-            rank = (
-                ORDINALS.get(voice.sound.pick, f"#{voice.sound.pick}")
-                if voice.sound.pick > 1
-                else "best"
-            )
-            return Choice(
-                voice=voice.name,
-                synthdef=f"mph_play{row[1]}",
-                reason=f"catalogue: {rank} {voice.sound.role} {form}{matched}",
-                path=str(path),
-                digest=hit.digest,
-                label=hit.path,
-                licence=_licence(conn, hit.digest),
-                bpm=float(hit.facts.get("bpm", 0) or 0),
-            )
+        found = _candidates(conn, data_dir, voice, words)
+        passed = 0
+        if voice.sound.role in NOISE_ROLES:
+            hissing = [f for f in found if not tonal(f.path)]
+            if hissing:  # only pass over tonal sounds when something else fits
+                passed, found = len(found) - len(hissing), hissing
+        if len(found) < voice.sound.pick:
+            continue
+        chosen = found[voice.sound.pick - 1]
+        matched = f" matching {' '.join(words)}" if words else ""
+        rank = (
+            ORDINALS.get(voice.sound.pick, f"#{voice.sound.pick}")
+            if voice.sound.pick > 1
+            else "best"
+        )
+        skipped = f", passing over {passed} that whistle rather than hiss" if passed else ""
+        return Choice(
+            voice=voice.name,
+            synthdef=chosen.synthdef,
+            reason=f"catalogue: {rank} {voice.sound.role} {form}{matched}{skipped}",
+            path=str(chosen.path),
+            digest=chosen.digest,
+            label=chosen.label,
+            licence=_licence(conn, chosen.digest),
+            bpm=chosen.bpm,
+        )
     return None
 
 

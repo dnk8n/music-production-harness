@@ -30,6 +30,10 @@ SLICES_PER_BAR = 8
 ONSET_SNAP_S = 0.03
 WAVE_FLOAT = 3  # WAVE_FORMAT_IEEE_FLOAT
 AUDIBLE_RANGE = (20.0, 20000.0)
+FLATNESS_FROM_HZ = 2000.0
+FLATNESS_SPAN_S = 0.5
+FLATNESS_FFT = 16384
+FLATNESS_MIN_FRAMES = 256
 HARMONIC_WIDTH = 0.02  # +/- of the fundamental counts as on a harmonic
 FIT_RANGE = (0.75, 1.5)  # break playback-rate factors allowed before doubling or halving
 
@@ -180,6 +184,21 @@ def pitch_hz(signal: Audio, rate: int, low: float, high: float) -> float:
     bend = a - 2 * b + c
     shift = 0.5 * (a - c) / bend if bend > 0 else 0.0
     return float(rate / (lags[best] + shift))
+
+
+def flatness(signal: Audio, rate: int, above_hz: float = FLATNESS_FROM_HZ) -> float:
+    """Spectral flatness above ``above_hz`` over the first half second: the
+    geometric over the arithmetic mean of the power spectrum. Near 0 for a
+    tone (energy in a few sharp peaks), near 1 for white noise. A real hi-hat
+    sits around 0.1 to 0.2; a hat that whistles sits under 0.05."""
+    flat = mono(signal)[: round(FLATNESS_SPAN_S * rate)].astype(np.float64)
+    if len(flat) < FLATNESS_MIN_FRAMES or not np.any(flat):
+        return 1.0  # too short or silent to call tonal
+    padded = np.zeros(max(FLATNESS_FFT, len(flat)))
+    padded[: len(flat)] = flat * np.hanning(len(flat))
+    power = np.abs(np.fft.rfft(padded)) ** 2
+    band = power[np.fft.rfftfreq(len(padded), 1 / rate) >= above_hz] + 1e-30
+    return float(np.exp(np.mean(np.log(band))) / np.mean(band))
 
 
 def blackman_harris(n: int) -> np.ndarray:

@@ -208,3 +208,14 @@ def test_brightness_and_level() -> None:
     assert audio.centroid(bright, RATE) > audio.centroid(dull, RATE)
     assert audio.rms(dull * 2) == pytest.approx(2 * audio.rms(dull))
     assert audio.rms(np.zeros((0, 2), np.float32)) == 0.0
+
+
+@pytest.mark.req("REQ-BEN-05")
+def test_flatness_tells_a_hiss_from_a_whistle() -> None:
+    rng = np.random.default_rng(1)
+    hiss = rng.uniform(-1, 1, (RATE // 10, 2)).astype(np.float32)
+    whistle = harmonic_tone(9000.0, seconds=0.1, harmonics=1)
+    assert audio.flatness(hiss, RATE) > 0.5
+    assert audio.flatness(whistle, RATE) < 0.01
+    assert audio.flatness(np.zeros((RATE, 2), np.float32), RATE) == 1.0  # silence: not tonal
+    assert audio.flatness(hiss[:100], RATE) == 1.0  # too short to judge

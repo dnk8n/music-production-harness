@@ -44,12 +44,20 @@ written here, so the score can't drift from the description.
 
 ### REQ-BEN-05: Kits come from the catalogue, with synth fallback
 A voice asks the catalogue for a sound by role and words (e.g. a `kick`
-one-shot matching "909"), and takes the best match. A voice with no match,
+one-shot matching "909"), and takes the best match. For noise-like roles
+(hats, shakers, cymbals) it passes over tonal sounds: those whose spectral
+flatness above 2 kHz is under 0.05, so they ring at a few sharp pitches
+rather than hiss. It takes a tonal one only when nothing else matches, and
+the report says how many it passed over. A voice with no match,
 or one the score marks as synth, uses a SuperCollider drum voice instead. The
 report names every sound used, with its hash and licence, and the score hash
 covers those choices.
 - **Why:** benchmarks should use Dean's own sounds, but still render on a
-  machine without his library (CI, a fresh install).
+  machine without his library (CI, a fresh install). Dean failed seven drum
+  benchmarks for one jarring hat (BHG2_Analogue_Hat_17, flatness 0.009,
+  sharp peaks at 7.6, 8.9 and 10.1 kHz), where real hats measured 0.11 to
+  0.17. Level matching can't fix a whistle, and EQ can't turn one into a
+  hiss, so the fix is in the choosing.
 - **Verify:** test
 
 ### REQ-BEN-06: Render layout

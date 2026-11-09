@@ -41,6 +41,7 @@ ONESHOT_S = 2.0  # room for a synth voice's one-shot
 ONESHOT_FLOOR = 10 ** (-100 / 20)  # trailing silence below this is trimmed
 ENGINES = ("auto", "renoise", "supercollider")
 RENOISE_TIMEOUT_S = 600.0
+RENOISE_NULL_DB = -120.0  # REQ-AUD-05: Renoise renders null-test, not bit-identical
 
 
 @dataclass(frozen=True, slots=True)
@@ -403,7 +404,10 @@ def run(
         templates=rendered.templates,
         rate=rate,
     )
-    found_checks.append(checks.determinism(rendered.master, rendered.again))
+    null_limit = RENOISE_NULL_DB if chosen == "renoise" else None
+    found_checks.append(
+        checks.determinism(rendered.master, rendered.again, null_limit_db=null_limit)
+    )
     measured = audio.levels(rendered.master, rate)
     found_checks.append(checks.lead_in(measured))
     gain_db = _ceiling_gain(rendered.master, rate)

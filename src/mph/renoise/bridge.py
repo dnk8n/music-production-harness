@@ -159,6 +159,23 @@ def wait(result: Path, timeout_s: float, clock: Clock) -> dict[str, Any]:
     return outcome
 
 
+@dataclass(slots=True)
+class Session:
+    """One mph command's use of Renoise: remembers whether mph started it (REQ-REN-03).
+
+    mph only renders in a Renoise it started itself, so a song someone is
+    working on is never touched. Later jobs in the same command reuse it.
+    """
+
+    launched: bool = False
+
+
+ALREADY_OPEN = (
+    "Renoise is already open. Save your work and quit Renoise, then render again: "
+    "mph starts its own fresh Renoise so your song isn't touched"
+)
+
+
 def run_job(
     cfg: Config,
     runner: Runner,
@@ -168,6 +185,7 @@ def run_job(
     *,
     timeout_s: float,
     clock: Clock | None = None,
+    session: Session | None = None,
 ) -> dict[str, Any]:
     state = status(home)
     if state != "ready":
@@ -178,9 +196,14 @@ def run_job(
             f"the mph bridge tool for Renoise {what}: run `mph renoise install`, "
             "then restart Renoise"
         )
+    session = Session() if session is None else session
+    is_running = running(runner)
+    if is_running and not session.launched:
+        raise BridgeError(ALREADY_OPEN)
     result = submit(cfg, name, job)
-    if not running(runner):
+    if not is_running:
         launch(runner)
+        session.launched = True
     return wait(result, timeout_s, clock or Clock())
 
 

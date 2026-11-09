@@ -106,11 +106,54 @@ def test_run_job_reports_renoise_errors_timeouts_and_a_missing_tool(tmp_path: Pa
     bridge.install(cfg, home)
     failing = Tool({"ok": False, "error": "could not load kick.wav"})
     failing.target = bridge.jobs_dir(cfg) / "x.result.json"
+    ours = bridge.Session(launched=True)
     with pytest.raises(bridge.BridgeError, match=r"Renoise: could not load kick\.wav"):
-        bridge.run_job(cfg, runner, home, "x", {}, timeout_s=1, clock=failing.clock())
+        bridge.run_job(cfg, runner, home, "x", {}, timeout_s=1, clock=failing.clock(), session=ours)
     assert [call for call, _ in runner.calls] == [("pgrep", "-x", "Renoise")]  # already running
     with pytest.raises(bridge.BridgeError, match="didn't finish within 1 s"):
-        bridge.run_job(cfg, runner, home, "y", {}, timeout_s=1, clock=Tool(None).clock())
+        bridge.run_job(
+            cfg, runner, home, "y", {}, timeout_s=1, clock=Tool(None).clock(), session=ours
+        )
+
+
+@pytest.mark.req("REQ-REN-03")
+def test_run_job_refuses_a_renoise_someone_already_has_open(tmp_path: Path) -> None:
+    cfg = cfg_for(tmp_path)
+    home = renoise_home(tmp_path, "V3.5.4")
+    bridge.install(cfg, home)
+    runner = FakeRunner()  # pgrep finds Renoise
+    with pytest.raises(bridge.BridgeError, match="Save your work and quit Renoise"):
+        bridge.run_job(cfg, runner, home, "x", {"songs": []}, timeout_s=1)
+    assert [call for call, _ in runner.calls] == [("pgrep", "-x", "Renoise")]  # never launched
+    assert list(bridge.jobs_dir(cfg).glob("*.job.lua")) == []  # nothing left for it to pick up
+
+
+@pytest.mark.req("REQ-REN-03")
+def test_a_session_reuses_the_renoise_it_started(tmp_path: Path) -> None:
+    cfg = cfg_for(tmp_path)
+    home = renoise_home(tmp_path, "V3.5.4")
+    bridge.install(cfg, home)
+    launched: list[bool] = []
+
+    def pgrep(_argv: object) -> Result:
+        return Result(0 if launched else 1)
+
+    def open_app(_argv: object) -> Result:
+        launched.append(True)
+        return Result(0)
+
+    runner = FakeRunner(responses={"pgrep": pgrep, "open": open_app})
+    session = bridge.Session()
+    for name in ("one", "two"):
+        tool = Tool({"ok": True, "renoise": "3.5.4", "files": []})
+        tool.target = bridge.jobs_dir(cfg) / f"{name}.result.json"
+        bridge.run_job(
+            cfg, runner, home, name, {}, timeout_s=5, clock=tool.clock(), session=session
+        )
+    assert session.launched and launched == [True]  # started once, then reused
+    # A later command with a new session finds Renoise open and refuses.
+    with pytest.raises(bridge.BridgeError, match="already open"):
+        bridge.run_job(cfg, runner, home, "three", {}, timeout_s=1, session=bridge.Session())
 
 
 def test_launch_and_open_report_failures() -> None:

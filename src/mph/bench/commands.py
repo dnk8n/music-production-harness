@@ -118,11 +118,19 @@ def cmd_render(
         return 2
     catalogue = cfg.data_dir / db.FILENAME
     failed = 0
+    session = bridge.Session()  # one Renoise, started by mph, for every job (REQ-REN-03)
     with closing(db.connect(catalogue)) if catalogue.is_file() else nullcontext() as conn:
         for benchmark_id, variant in _jobs(chosen, variants, every_variant=every_variant):
             try:
                 outcome = render.run(
-                    benchmark_id, cfg, runner, conn, engine=engine, home=home, variant=variant
+                    benchmark_id,
+                    cfg,
+                    runner,
+                    conn,
+                    engine=engine,
+                    home=home,
+                    variant=variant,
+                    session=session,
                 )
             except (score.ScoreError, kit.KitError, sc.RenderError, bridge.BridgeError) as exc:
                 print(f"{benchmark_id} ({variant}): {exc}", file=sys.stderr)

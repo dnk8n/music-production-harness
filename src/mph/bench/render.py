@@ -270,13 +270,21 @@ def renoise_job(setup: Setup) -> tuple[dict[str, Any], list[Event]]:
 
 
 def _render_renoise(
-    cfg: Config, runner: Runner, home: Path, setup: Setup, clock: bridge.Clock | None
+    cfg: Config,
+    runner: Runner,
+    home: Path,
+    setup: Setup,
+    *,
+    clock: bridge.Clock | None,
+    session: bridge.Session | None,
 ) -> Rendered:
     score, work = setup.score, setup.folder / "work"
     work.mkdir(parents=True, exist_ok=True)
     job, templates = renoise_job(setup)
     name = f"{score.id}-{setup.folder.name}"
-    outcome = bridge.run_job(cfg, runner, home, name, job, timeout_s=RENOISE_TIMEOUT_S, clock=clock)
+    outcome = bridge.run_job(
+        cfg, runner, home, name, job, timeout_s=RENOISE_TIMEOUT_S, clock=clock, session=session
+    )
     frames = round(score.length_s * setup.rate)
 
     def take(path: Path, length: int) -> audio.Audio:
@@ -388,6 +396,7 @@ def run(
     home: Path | None = None,
     clock: bridge.Clock | None = None,
     variant: str = MAIN,
+    session: bridge.Session | None = None,
 ) -> Outcome:
     home = Path.home() if home is None else home
     score, chosen_variant = variant_of(load(benchmark_id), variant)
@@ -396,7 +405,7 @@ def run(
     setup, tools, gains = _prepare(cfg, runner, score, choices, chosen)
     folder, rate = setup.folder, setup.rate
     if chosen == "renoise":
-        rendered = _render_renoise(cfg, runner, home, setup, clock)
+        rendered = _render_renoise(cfg, runner, home, setup, clock=clock, session=session)
     else:
         assert tools is not None  # noqa: S101 - _prepare refuses otherwise
         rendered = _render_supercollider(runner, tools, setup)

@@ -26,7 +26,12 @@ TOOLS = {"scsynth": "/usr/bin/scsynth", "sclang": "/usr/bin/sclang"}
 def runner(**responses: object) -> FakeRunner:
     return FakeRunner(
         on_path=dict(TOOLS),
-        responses={"scsynth": fake_scsynth, "sclang": fake_sclang, **responses},  # type: ignore[dict-item]
+        responses={
+            "scsynth": fake_scsynth,
+            "sclang": fake_sclang,
+            "pgrep": Result(1),  # Renoise isn't open until mph starts it
+            **responses,  # type: ignore[dict-item]
+        },
     )
 
 

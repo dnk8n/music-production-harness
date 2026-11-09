@@ -29,8 +29,12 @@ renders each requested WAV (32-bit float at the production rate, with
 other tracks muted for a stem), then writes a result file with any error. The first render of a freshly
 built song starts about 30 samples late in Renoise 3.5.4, so mph asks for a
 throwaway warm-up render first and measures only the renders after it.
-mph starts Renoise in the background if it isn't running and waits for the
-result. Nobody needs to click anything. `mph renoise install` copies the tool
+mph starts Renoise in the background and waits for the result. If Renoise is
+already open when a render command starts, mph refuses and asks the user to
+save their work and quit Renoise: it only renders in a Renoise it started
+itself, from a fresh song, so a song someone is working on is never touched
+and an open session can't change the render. Later renders in the same
+command reuse the Renoise mph started. Nobody needs to click anything. `mph renoise install` copies the tool
 into Renoise's Tools folder, and doctor checks that it's there.
 - **Why:** Renoise has no command-line render. A job folder needs no network
   port or preference changes, survives a Renoise restart, and leaves a

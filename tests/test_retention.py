@@ -324,3 +324,18 @@ def test_sizes_read_like_finder() -> None:
         "2.5 MB",
         "21.4 GB",
     ]
+
+
+@pytest.mark.req("REQ-RET-01")
+@pytest.mark.parametrize("old_style", ["missing", "null"])
+def test_renders_from_before_variants_count_as_main(tmp_path: Path, old_style: str) -> None:
+    old = make_render(tmp_path, "a" * 16, at="2026-11-08T21:39:00Z", work=False)
+    report = json.loads((old / "report.json").read_text())
+    if old_style == "missing":
+        del report["variant"]
+    else:
+        report["variant"] = None
+    (old / "report.json").write_text(json.dumps(report))
+    age(old)
+    make_render(tmp_path, "b" * 16, at="2026-11-09T06:41:00Z", work=False)
+    assert kinds(retention.plan(tmp_path, POLICY)) == {old: retention.SUPERSEDED}

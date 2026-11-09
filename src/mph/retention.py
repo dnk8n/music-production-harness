@@ -139,7 +139,7 @@ def renders(data_dir: Path) -> tuple[list[Render], list[Path]]:
                 Render(
                     folder,
                     bench.name,
-                    str(report.get("variant", MAIN)),
+                    str(report.get("variant") or MAIN),
                     str(report.get("rendered_at", "")),
                     kit,
                 )
@@ -292,7 +292,7 @@ def after_render(data_dir: Path, folder: Path, policy: Retention) -> int:
         shutil.rmtree(work)
     if policy.prune_after_render:
         report = _read_report(folder) or {}
-        only = (folder.parent.name, str(report.get("variant", MAIN)))
+        only = (folder.parent.name, str(report.get("variant") or MAIN))
         keep = max(policy.keep_renders, 1)
         chosen = plan(data_dir, policy, keep=keep, only=only, now=lambda: float("inf"))
         chosen.items = [i for i in chosen.items if i.path != folder and i.kind == SUPERSEDED]

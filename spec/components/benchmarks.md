@@ -54,11 +54,55 @@ covers those choices.
 
 ### REQ-BEN-06: Render layout
 `mph bench render BM-...` writes to `data_dir/renders/<id>/<score hash>/`:
-one stem per voice and a summed `master.wav` (32-bit float at the production
-rate, REQ-AUD-02), the delivered `<id>.aiff` (48 kHz / 24-bit through the
-single SRC and dither, REQ-AUD-03) and `report.json`.
+one stem per voice and a `master.wav` (32-bit float at the production rate,
+REQ-AUD-02), the delivered `<id>.aiff` (48 kHz / 24-bit through the single
+SRC and dither, REQ-AUD-03) and `report.json`. A Renoise render (REQ-BEN-10)
+also writes the song, `<id>.xrns`, with its samples inside.
 - **Why:** the feedback page and the AI reviewer find everything for one
   render in one folder, keyed by exactly what was rendered.
+- **Verify:** test
+
+### REQ-BEN-09: Kit sounds are level-matched
+Before a render, each sound's hit loudness is measured: the K-weighted power
+(the ITU-R BS.1770 filter) of its loudest 100 ms, in dB. Its gain is then set
+so that it lands on its role's target below, plus any `gain_db` the score
+gives that voice. Gains are clamped to -30 dB to +12 dB and listed in the
+report. Velocities and the measurements are unchanged, because the
+templates get the same gain.
+
+| role | target (dB) |
+|---|---|
+| kick | -12 |
+| snare | -14 |
+| clap | -14 |
+| break | -14 |
+| tom | -16 |
+| conga | -17 |
+| perc | -18 |
+| rim | -20 |
+| clave | -20 |
+| hat_open | -21 |
+| hat | -22 |
+| shaker | -24 |
+
+Roles not in the table aim for -18 dB.
+- **Why:** catalogue sounds arrive at whatever level their pack chose, so a
+  hat can jump out of the kit (Dean, on BHG2_Analogue_Hat_17 in
+  BM-DRUM-01). Matching by role gives a balanced starting mix, and the
+  table is the one place to change it.
+- **Verify:** test
+
+### REQ-BEN-10: Renoise is the render engine
+With Renoise and the bridge tool installed (REQ-REN-03), a benchmark renders
+through Renoise (ADR-0009). The song has one track per voice. Synth voices
+are first rendered once by SuperCollider into one-shot samples, and break
+slices become Renoise slice markers. mph renders the song, again for
+determinism, then each track alone for its stem. The templates for matching
+come from a second small song with each voice's sounds spaced apart. Without
+Renoise, or with `--engine supercollider`, the render runs in SuperCollider
+alone as before. The report names the engine and its version.
+- **Why:** what Dean hears is the song he can open and change, while CI and
+  machines without Renoise can still render and test every benchmark.
 - **Verify:** test
 
 ## Drum patterns

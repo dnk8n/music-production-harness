@@ -29,6 +29,8 @@ TRUE_PEAK_OVERSAMPLING = 4
 SLICES_PER_BAR = 8
 ONSET_SNAP_S = 0.03
 WAVE_FLOAT = 3  # WAVE_FORMAT_IEEE_FLOAT
+AUDIBLE_RANGE = (20.0, 20000.0)
+HARMONIC_WIDTH = 0.02  # +/- of the fundamental counts as on a harmonic
 FIT_RANGE = (0.75, 1.5)  # break playback-rate factors allowed before doubling or halving
 
 Audio = np.ndarray
@@ -142,6 +144,65 @@ def edge_jumps(stem: Audio, edges_s: Sequence[float], rate: int) -> float:
         around = np.concatenate([steps[: max(middle - near, 0)], steps[middle + near :]])
         worst = max(worst, float(jump) / max(float(around.max(initial=0.0)), floor))
     return worst
+
+
+# --- tone -----------------------------------------------------------------------------
+
+
+def rms(signal: Audio) -> float:
+    flat = mono(signal)
+    return float(np.sqrt(np.mean(flat.astype(np.float64) ** 2))) if flat.size else 0.0
+
+
+def centroid(signal: Audio, rate: int) -> float:
+    """Spectral centroid in Hz: where the brightness sits."""
+    flat = mono(signal).astype(np.float64)
+    power = np.abs(np.fft.rfft(flat * np.hanning(len(flat)))) ** 2
+    freqs = np.fft.rfftfreq(len(flat), 1 / rate)
+    return float((power * freqs).sum() / power.sum()) if power.sum() else 0.0
+
+
+def pitch_hz(signal: Audio, rate: int, low: float, high: float) -> float:
+    """Fundamental of a steady note, by the YIN difference function: the period
+    (searched from 1/high to 1/low) whose shifted copy differs least, refined
+    between samples. Give a narrow range around the pitch you expect, so an
+    octave mistake can't happen. 0 if the signal is too short or silent."""
+    flat = mono(signal).astype(np.float64)
+    flat = flat - flat.mean()
+    shortest, longest = max(int(rate / high), 2), int(np.ceil(rate / low)) + 1
+    width = len(flat) - longest - 1
+    if width <= 0 or not np.any(flat):
+        return 0.0
+    lags = np.arange(shortest - 1, longest + 2)
+    diff = np.array([np.sum((flat[:width] - flat[lag : lag + width]) ** 2) for lag in lags])
+    best = int(np.argmin(diff[1:-1])) + 1
+    a, b, c = diff[best - 1], diff[best], diff[best + 1]
+    bend = a - 2 * b + c
+    shift = 0.5 * (a - c) / bend if bend > 0 else 0.0
+    return float(rate / (lags[best] + shift))
+
+
+def blackman_harris(n: int) -> np.ndarray:
+    """4-term Blackman-Harris window: side lobes under -92 dB, so a harmonic's
+    own leakage doesn't read as energy between harmonics."""
+    k = 2 * np.pi * np.arange(n) / (n - 1)
+    return 0.35875 - 0.48829 * np.cos(k) + 0.14128 * np.cos(2 * k) - 0.01168 * np.cos(3 * k)
+
+
+def inharmonic_db(signal: Audio, rate: int, fundamental: float, span: tuple[float, float]) -> float:
+    """Energy away from the harmonics of a held note, relative to all of it, in
+    dB, from 20 Hz to 20 kHz. Aliasing shows up here as tones between the harmonics."""
+    flat = mono(signal)[round(span[0] * rate) : round(span[1] * rate)].astype(np.float64)
+    flat = flat - flat.mean()  # saturation leaves a little DC, which isn't aliasing
+    power = np.abs(np.fft.rfft(flat * blackman_harris(len(flat)))) ** 2
+    freqs = np.fft.rfftfreq(len(flat), 1 / rate)
+    audible = (freqs >= AUDIBLE_RANGE[0]) & (freqs < AUDIBLE_RANGE[1])
+    nearest = np.round(freqs / fundamental) * fundamental
+    width = max(HARMONIC_WIDTH * fundamental, 6 * rate / len(flat))
+    harmonic = (np.abs(freqs - nearest) <= width) & (nearest > 0)
+    total = float(power[audible].sum())
+    stray = float(power[audible & ~harmonic].sum())
+    return db(np.sqrt(stray / total)) if total and stray else float("-inf")
 
 
 # --- slicing a break ------------------------------------------------------------------

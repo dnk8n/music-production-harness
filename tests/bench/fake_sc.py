@@ -2,14 +2,18 @@
 
 The fake reads the real OSC score mph writes, and "plays" every /s_new as a
 short decaying sine on the right channels at the right sample, honouring
-amp, dur and choke (/n_set gate 0). That's enough for the matching, swing,
-choke and determinism checks to mean something.
+amp, dur and choke (/n_set gate 0). A melodic note (an /s_new with ``freq``)
+is a harmonic tone at that pitch, held until its /n_set gate 0; an /n_set of
+``freq`` changes its pitch there (a slide), and an accent makes it louder
+and brighter. That's enough for the matching, swing, choke, accent, slide
+and determinism checks to mean something.
 """
 
 from __future__ import annotations
 
 import zlib
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -19,11 +23,41 @@ from mph.proc import Result
 
 HIT_S = 0.08
 CHOKE_RELEASE_S = 0.005
+NOTE_HARMONICS = 6  # 12 when accented: brighter
+ACCENT_GAIN = 1.6
+
+
+@dataclass
+class _Note:
+    start: int
+    channel: int
+    amp: float
+    accent: bool
+    pitches: list[tuple[int, float]]  # (from sample, Hz)
+    end: int | None = None
+
+    def play(self, data: np.ndarray, rate: int) -> None:
+        end = len(data) if self.end is None else min(self.end, len(data))
+        hz = np.zeros(end - self.start)
+        for (at, freq), until in zip(
+            self.pitches, [*[a for a, _ in self.pitches[1:]], end], strict=True
+        ):
+            hz[at - self.start : until - self.start] = freq
+        phase = 2 * np.pi * np.cumsum(hz) / rate  # continuous through a slide
+        count = NOTE_HARMONICS * (2 if self.accent else 1)
+        tone = np.sum([np.sin(n * phase) / n for n in range(1, count + 1)], axis=0)
+        gain = self.amp * (ACCENT_GAIN if self.accent else 1.0) * 0.3
+        wave = (gain * tone).astype(np.float32)
+        data[self.start : end, self.channel] += wave
+        data[self.start : end, self.channel + 1] += wave
+
+
+def _pairs(pairs: Sequence[object]) -> dict[str, float]:
+    return {str(pairs[i]): float(pairs[i + 1]) for i in range(0, len(pairs), 2)}  # type: ignore[arg-type]
 
 
 def _args(message: osc.Message) -> dict[str, float]:
-    pairs = message.args[4:]
-    return {str(pairs[i]): float(pairs[i + 1]) for i in range(0, len(pairs), 2)}
+    return _pairs(message.args[4:])
 
 
 def _hit(name: str, args: dict[str, float], rate: int) -> np.ndarray:
@@ -36,6 +70,47 @@ def _hit(name: str, args: dict[str, float], rate: int) -> np.ndarray:
     )
 
 
+def _note_message(message: osc.Message, at: int, rate: int, notes: dict[int, _Note]) -> bool:
+    """Handle a message about a melodic note; False if it's about something else."""
+    if message.address == "/s_new" and "freq" in _args(message):
+        args = _args(message)
+        notes[int(message.args[1])] = _Note(
+            at, int(args["out"]), args["amp"], bool(args["acc"]), [(at, args["freq"])]
+        )
+        return True
+    node = int(message.args[0]) if message.address == "/n_set" else 0
+    if node not in notes:
+        return False
+    change = _pairs(message.args[1:])
+    if "freq" in change:
+        notes[node].pitches.append((at, change["freq"]))
+    if change.get("gate") == 0:
+        notes[node].end = at + round(CHOKE_RELEASE_S * rate)
+    return True
+
+
+def _hit_message(
+    message: osc.Message,
+    at: int,
+    rate: int,
+    data: np.ndarray,
+    nodes: dict[int, tuple[int, int, int]],
+) -> None:
+    """A drum hit starts (/s_new) or is choked (/n_set gate 0)."""
+    if message.address == "/s_new":
+        args = _args(message)
+        wave = _hit(str(message.args[0]), args, rate)[: max(len(data) - at, 0)]
+        channel = int(args["out"])
+        data[at : at + len(wave), channel] += wave
+        data[at : at + len(wave), channel + 1] += wave
+        nodes[int(message.args[1])] = (at, at + len(wave), channel)
+    elif message.address == "/n_set":
+        start, end, channel = nodes[int(message.args[0])]
+        cut = max(at + round(CHOKE_RELEASE_S * rate), start)
+        if cut < end:
+            data[cut:end, channel : channel + 2] = 0.0
+
+
 def fake_scsynth(argv: Sequence[str]) -> Result:
     if "-v" in argv:
         return Result(0, stdout="scsynth 3.13.0 (fake)\n")
@@ -46,21 +121,14 @@ def fake_scsynth(argv: Sequence[str]) -> Result:
     length = round(bundles[-1].time_s * rate)
     data = np.zeros((length, channels), dtype=np.float32)
     nodes: dict[int, tuple[int, int, int]] = {}  # node -> (start, end, channel)
+    notes: dict[int, _Note] = {}
     for bundle in bundles:
         at = round(bundle.time_s * rate)
         for message in bundle.messages:
-            if message.address == "/s_new":
-                args = _args(message)
-                wave = _hit(str(message.args[0]), args, rate)[: max(length - at, 0)]
-                channel = int(args["out"])
-                data[at : at + len(wave), channel] += wave
-                data[at : at + len(wave), channel + 1] += wave
-                nodes[int(message.args[1])] = (at, at + len(wave), channel)
-            elif message.address == "/n_set":
-                start, end, channel = nodes[int(message.args[0])]
-                cut = max(at + round(CHOKE_RELEASE_S * rate), start)
-                if cut < end:
-                    data[cut:end, channel : channel + 2] = 0.0
+            if not _note_message(message, at, rate, notes):
+                _hit_message(message, at, rate, data, nodes)
+    for note in notes.values():
+        note.play(data, rate)
     audio.write_float(out, data, rate)
     return Result(0)
 

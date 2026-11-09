@@ -75,9 +75,13 @@ these standard variants:
 | `renoise` | the whole render runs in Renoise |
 | `synth-kit` | every part uses a SuperCollider synth voice (not for scores with a break) |
 
+A score with a melodic voice has only `main` as a standard variant, because
+it always renders in SuperCollider (REQ-BEN-10).
+
 A score can add its own under `[variants.<name>]`: a title, an engine,
 and per-voice changes to `sound` (role, words, `synth`, or `pick`, the Nth
-best catalogue match) and `gain_db`. `mph bench render BM-...` renders
+best catalogue match), `gain_db` and synth `params` (such as a filter
+cutoff). `mph bench render BM-...` renders
 `main`. `--variant NAME` renders one variant, and `--variants` renders them
 all. Each variant renders into its own folder, with its own score hash,
 measurements and report, which names the variant. Verdicts are given per
@@ -127,7 +131,9 @@ slices become Renoise slice markers. mph renders the song, again for
 determinism, then each track alone for its stem. The templates for matching
 come from a second small song with each voice's sounds spaced apart. Without
 Renoise, or with `--engine supercollider`, the render runs in SuperCollider
-alone as before. The report names the engine and its version.
+alone as before. A score with a melodic voice (glides, per-note filter
+envelopes) renders in SuperCollider either way, and asking for Renoise is
+refused with a plain reason. The report names the engine and its version.
 - **Why:** what Dean hears is the song he can open and change, while CI and
   machines without Renoise can still render and test every benchmark.
 - **Verify:** test
@@ -273,8 +279,14 @@ into each phrase.
 ## Bass
 
 ### BM-BASS-01: Acid line
-130 BPM. A 16-step 303-style line, synthesised in SuperCollider with an
-oversampled resonant low-pass filter (REQ-AUD-04).
+130 BPM. A 16-step 303-style line, synthesised in SuperCollider from a
+band-limited saw through a resonant low-pass filter and soft saturation, at
+the production rate, with aliasing measured (REQ-AUD-04). It renders in
+SuperCollider whatever the engine, because its glides and per-note filter
+envelopes can't be one-shot samples in Renoise yet. `S` works as on a 303:
+the note is held into the next step and glides to its pitch without
+retriggering. Before a rest, it just holds for the whole step. Other notes
+sound for half a step.
 ```
 note   C2 C2 C3 C2 D#2 C2 G2 C2 C2 A#2 C2 C3 C2 F2 C2 G2
 accent .  .  X  .  .   .  X  .  .  .   .  X  .  .  .  X
@@ -294,6 +306,19 @@ Live controls (laptop keyboard, through Renoise in step 4, standalone in step 3)
 | `7` / `8` | decay down / up | 50 ms to 2 s |
 | `9` / `0` | accent amount down / up | 0 to 100% |
 
+Variants (REQ-BEN-07) set the controls to the ends of their range:
+`cutoff-low` (120 Hz), `cutoff-high` (2.5 kHz) and `resonance-high` (0.92).
+
+Measurements: every note that isn't slid into starts within 1 ms of its step.
+Accented notes are at least 2 dB louder than the same notes unaccented, and
+in `main` also brighter (higher spectral centroid); the variants push the
+controls to the ends of their range, where an accent needn't get brighter.
+A slid-into note doesn't dip by more than 3 dB. Two short probe renders of
+the voice alone check the rest. In one, the score's first slide is held
+until it settles, and it must land within 10 cents of its pitch (a
+57 ms note is too short and changing to measure pitch that finely). In the
+other, a high, open, resonant note (C5, cutoff 8 kHz, resonance 0.9) must
+keep the energy between its harmonics (aliasing) below -60 dB.
 - **Why:** the 303 is the canonical acid sound and a hard test of filter
   quality, slides and live control.
 - **Verify:** measure, listen

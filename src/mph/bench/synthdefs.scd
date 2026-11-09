@@ -103,6 +103,33 @@ write.(SynthDef(\mph_shaker, { |out = 0, amp = 1, gate = 1, seed = 1, rid = 0, d
     OffsetOut.ar(out, (sig * 0.5 * amp) ! 2);
 }));
 
+// 303-style bass: a band-limited saw through a resonant ladder low-pass and
+// soft saturation. The saw is a sum of its harmonics up to 20 kHz (fading out
+// over the last 1 kHz, and never past 0.45 of the sample rate), so it has no
+// aliasing of its own; SuperCollider's Saw.ar leaks about -50 dB of
+// inharmonic energy (REQ-AUD-04). freq and acc are per note; a slide is an
+// /n_set of freq on the held note, so nothing retriggers and Lag makes the
+// glide. The controls (cutoff, resonance, envmod, decay, accent) are what the
+// keyboard plays.
+~acidHarmonics = 256;  // C2's harmonics reach 16.7 kHz
+write.(SynthDef(\mph_acid, { |out = 0, amp = 1, gate = 1, freq = 65.41, acc = 0,
+    cutoff = 420, resonance = 0.6, envmod = 0.6, decay = 0.3, accent = 0.6, glide = 0.06|
+    var accented = Lag.kr(acc, 0.005) * accent;
+    var pitch = Lag.kr(freq, glide);
+    var fenv = EnvGen.ar(Env.perc(0.003, decay * (1 - (accent * acc * 0.5)), curve: -4));
+    var wow = EnvGen.ar(Env.perc(0.02, 0.25, curve: -3)) * accented;
+    var cf = (cutoff * (1 + (envmod * 7 * fenv) + (wow * 6))).clip(30, 18000);
+    var top = min(20000, SampleRate.ir * 0.45);
+    var saw = Mix.fill(~acidHarmonics, { |i|
+        var f = pitch * (i + 1);
+        SinOsc.ar(f, 0, ((top - f) / 1000).clip(0, 1) / (i + 1))
+    }) * (2 / pi);
+    var filtered = MoogFF.ar(saw, cf, resonance.linlin(0, 1, 0, 3.95));
+    var level = EnvGen.ar(Env.asr(0.002, 1, 0.008), gate, doneAction: 2)
+        * (0.6 + (accented * 0.6)) * amp;
+    OffsetOut.ar(out, ((filtered * 1.5).tanh * level * 0.7) ! 2);
+}));
+
 "mph: synthdefs written to %".format(dir).postln;
 0.exit;
 )

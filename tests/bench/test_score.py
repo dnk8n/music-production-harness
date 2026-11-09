@@ -34,7 +34,14 @@ def test_scores_match_the_spec(benchmark_id: str) -> None:
     assert f"{loaded.bpm:g} BPM" in first_line
     swing = re.search(r"swing (\d+)%", first_line)
     assert loaded.swing == (int(swing.group(1)) / 100 if swing else 0.5)
-    for name, cells in spec_grid(section).items():
+    rows = spec_grid(section)
+    if "note" in rows:  # a melodic line: note, accent, slide and gate rows for its one voice
+        voice = next(v for v in loaded.voices if v.melodic)
+        assert " ".join(voice.notes) == rows.pop("note")
+        assert voice.accents == rows.pop("accent")
+        assert voice.slides == rows.pop("slide")
+        assert voice.grid.split() == rows.pop("gate").split()
+    for name, cells in rows.items():
         assert score.bar_one(loaded, loaded.voice(name)) == cells, name
 
 
@@ -177,3 +184,79 @@ def test_variant_mistakes_are_reported() -> None:
     clash = score.load_text(VARIED.replace("[variants.other-hat]", "[variants.renoise]"))
     with pytest.raises(score.ScoreError, match="is a standard one"):
         score.all_variants(clash)
+
+
+# --- melodic voices (BM-BASS-01) --------------------------------------------------------
+
+ACID = """
+id = "BM-T"
+bpm = 120
+bars = 1
+[voices.bass]
+notes  = "C2 C2 C3 C2 D#2 C2 G2 C2 C2 A#2 C2 C3 C2 F2 C2 G2"
+accent = ".  .  X  .  .   .  .  .  .  .   .  .  .  .  .  ."
+slide  = ".  .  .  .  S   .  .  .  .  S   .  .  .  .  .  S"
+gate   = "x  x  x  .  x   x  x  x  x  x   .  x  x  x  x  x"
+sound = { synth = "mph_acid" }
+params = { cutoff = 420.0 }
+"""
+
+
+def test_note_names() -> None:
+    assert [score.midi(n) for n in ("C2", "D#2", "Bb1", "A4", "C-1")] == [36, 39, 34, 69, 0]
+    with pytest.raises(ScoreError, match="not a note: 'H2'"):
+        score.midi("H2")
+
+
+@pytest.mark.req("REQ-BEN-04")
+def test_a_melodic_voice_plays_notes_with_303_slides() -> None:
+    loaded = score.load_text(ACID)
+    assert loaded.melodic and loaded.voice("bass").params == (("cutoff", 420.0),)
+    found = {e.step: e for e in score.events(loaded)}
+    assert sorted(found) == [0, 1, 2, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15]  # the gate
+    step = loaded.step_s
+    assert found[2].pitch == 48 and found[2].accent and not found[1].accent
+    assert found[0].length_s == pytest.approx(step / 2)  # an ordinary note: half a step
+    # A slide into a played step ties on, held for the whole step.
+    assert found[4].tie and found[4].length_s == pytest.approx(step)
+    # A slide before a rest just holds; so does one on the last step of the score.
+    assert not found[9].tie and found[9].length_s == pytest.approx(step)
+    assert not found[15].tie and found[15].length_s == pytest.approx(step)
+    assert {e.kind for e in (found[2], found[0])} == {(0, 48, True), (0, 36, False)}
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        (('notes  = "C2 C2', 'notes  = "C2'), "notes needs 16 entries"),
+        (('notes  = "C2', 'notes  = "X9'), "not a note"),
+        (('gate   = "x  x  x  .  x   x  x  x  x  x   .  x  x  x  x  x"', ""), "needs a gate row"),
+        (('slide  = ".', 'slide  = "Q'), "a row needs 16 symbols"),
+    ],
+)
+def test_melodic_mistakes(change: tuple[str, str], message: str) -> None:
+    with pytest.raises(ScoreError, match=message):
+        score.load_text(ACID.replace(*change, 1))
+    drum = (
+        'id = "X"\nbpm = 120\nbars = 1\n[voices.k]\ngrid = "'
+        + "x " * 16
+        + '"\naccent = "'
+        + "X " * 16
+        + '"\n'
+    )
+    with pytest.raises(ScoreError, match="accent and slide rows need notes"):
+        score.load_text(drum)
+
+
+@pytest.mark.req("REQ-BEN-07")
+def test_melodic_variants_change_synth_controls() -> None:
+    loaded = score.load("BM-BASS-01")
+    names = [v.name for v in score.all_variants(loaded)]
+    assert names == ["main", "cutoff-low", "cutoff-high", "resonance-high"]  # no engine variants
+    low, variant = score.variant_of(loaded, "cutoff-low")
+    params = dict(low.voice("acid").params)
+    assert params["cutoff"] == 120.0 and params["resonance"] == 0.6  # only the cutoff changes
+    assert variant.title.startswith("cutoff turned right down")
+    assert low.digest() != loaded.digest()
+    with pytest.raises(ScoreError, match="unknown voices"):
+        score.load_text(ACID + "[variants.x]\nvoices = { nope = { params = { cutoff = 1.0 } } }\n")

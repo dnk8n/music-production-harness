@@ -10,13 +10,20 @@ verdicts into spec or code changes. No code reading needed.
 its description, measurements (pass/fail with numbers), a player, and an
 A/B toggle where the benchmark defines one (e.g. sidechain bypass). It is the
 Benchmarks tab of the sample browser (REQ-BRW-01), so sounds and renders are
-in one place. Switching takes while playing keeps the playhead, so A/B
-compares the same moment. Each sound the render used can be played
+in one place. Each take starts from the top when played. A "Keep the
+playhead" switch (off by default) makes switching takes keep the moment
+instead, to compare one spot. A "Match loudness" switch (on by default)
+plays every take at the loudness of the quietest rendered take on the page
+(integrated LUFS, ITU-R BS.1770), by turning the player down, never by
+changing the files; a part played on its own gets its render's setting.
+Each sound the render used can be played
 inline: the catalogue sample on its own, and that voice's stem from the render.
 A benchmark with rendered variants (REQ-BEN-07) shows a "Variants" list that
 expands. Each variant can be played, compared with `main` at the same moment,
 and given its own verdict, with its measurements beside it.
-- **Why:** Dean needs to judge output without looking at code.
+- **Why:** Dean needs to judge output without looking at code. A louder take
+  tends to sound better whatever else differs, so fair comparison needs
+  matched loudness.
 - **Verify:** test
 
 ### REQ-FBK-02: Verdicts are recorded

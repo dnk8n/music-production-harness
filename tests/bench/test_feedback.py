@@ -223,3 +223,13 @@ def test_open_in_renoise_opens_only_the_song_a_report_lists(tmp_path: Path) -> N
     )
     refused = failing.handle_post("/api/open-project", POST, json.dumps(ask).encode())
     assert refused.status == HTTPStatus.BAD_GATEWAY and b"no app" in refused.body
+
+
+@pytest.mark.req("REQ-FBK-01")
+def test_the_page_matches_loudness_and_starts_takes_from_the_top() -> None:
+    # The player logic runs in the browser; this pins the switches and their defaults.
+    page = (Path(browse.__file__).parent / "browse.html").read_text("utf-8")
+    assert "{ match: true, keep: false }" in page  # loudness matched, playhead not kept
+    assert "Match loudness" in page and "Keep the playhead when switching takes" in page
+    assert "10 ** ((quietest - lufs) / 20)" in page  # turned down to the quietest take
+    assert "Math.min(1," in page  # never louder than the file

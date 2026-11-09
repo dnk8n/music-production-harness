@@ -83,6 +83,8 @@
     .badge.mid { background: #78350f; color: #fde68a; }
   }
   .takes { display: flex; flex-wrap: wrap; gap: 6px; }
+  .listening { display: flex; flex-wrap: wrap; gap: 16px; list-style: none; padding: 8px 12px; }
+  .listening label { flex-direction: row; align-items: center; gap: 6px; color: inherit; font-size: 13px; }
   .takes button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
   details { font-size: 13px; } summary { cursor: pointer; color: var(--dim); }
   .variant-list { list-style: none; margin: 6px 0 0; padding: 0 0 0 12px; border-left: 2px solid var(--line); }
@@ -189,6 +191,7 @@ function seconds(s) { return s == null ? "" : `${s.toFixed(1)}s`; }
 function play(item) {
   stopLayer();
   player.src = `/audio/${item.hash}`;
+  player.volume = 1;
   player.loop = $("q-loop").checked && sequence === null;
   player.play().catch(() => {});
   $("now").textContent = `▶ ${item.label || item.path}`;
@@ -262,27 +265,56 @@ function render() {
 
 // --- benchmarks: listen, compare, give a verdict --------------------------------
 let playingTake = null;    // {id, key} of the benchmark take in the player
+let quietest = null;       // LUFS of the quietest rendered take on the page
+const listening = load("mph.listening", { match: true, keep: false });
+function lufsOf(r) {
+  const value = r?.levels?.integrated_lufs;
+  return Number.isFinite(value) ? value : null;
+}
+// Loudness-matched playback: every take is turned down to the quietest one's
+// loudness (ITU-R BS.1770 integrated LUFS), so a louder take can't win just by
+// being louder. Only the player's volume changes, never the files.
+function matchedVolume(r) {
+  const lufs = lufsOf(r);
+  if (!listening.match || lufs === null || quietest === null) return 1;
+  return Math.min(1, 10 ** ((quietest - lufs) / 20));
+}
+function listeningControls() {
+  const toggle = (key, label, title) => el("label", { title },
+    el("input", { type: "checkbox", ...(listening[key] ? { checked: "" } : {}), onchange: (e) => {
+      listening[key] = e.target.checked; save("mph.listening", listening);
+      if (key === "match" && playingTake) player.volume = playingTake.volume();
+    } }), ` ${label}`);
+  return el("li", { class: "listening" },
+    toggle("match", "Match loudness", "play every take at the same loudness, so you compare the sound, not the level"),
+    toggle("keep", "Keep the playhead when switching takes", "off: each take starts from the top; on: switch takes at the same moment"));
+}
 async function showBench() {
   const data = await (await fetch("/api/bench")).json();
   rows = []; showView("bench");
   const rendered = data.filter((b) => b.report).length;
+  const all = data.flatMap((b) => [b.report, ...(b.variants || []).map((v) => v.report)]).map(lufsOf).filter((v) => v !== null);
+  quietest = all.length ? Math.min(...all) : null;
   $("status").textContent = rendered
-    ? `${rendered} of ${data.length} benchmarks rendered. Switch takes while playing to compare at the same moment.`
+    ? `${rendered} of ${data.length} benchmarks rendered.${quietest === null ? "" : ` With "Match loudness" on, everything plays at ${quietest.toFixed(1)} LUFS.`}`
     : "Nothing rendered yet: run `mph bench render --all`, then reload.";
-  $("list").replaceChildren(...data.map(benchCard));
+  $("list").replaceChildren(listeningControls(), ...data.map(benchCard));
   history.replaceState(null, "", "#bench");
 }
 function badge(kind, label) { return el("span", { class: `badge ${kind}` }, label); }
 function clock(t) { return `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`; }
 function playTake(b, take, buttons) {
   stopLayer();
-  const same = playingTake && playingTake.id === b.id;
-  const at = same ? player.currentTime : 0;
+  // Keep the moment only when asked to, while switching between takes of one benchmark.
+  const switching = listening.keep && playingTake && playingTake.id === b.id && playingTake.key !== take.key;
+  const at = switching ? player.currentTime : 0;
   player.src = `/bench/${b.id}/${take.hash}/${take.file}`;
   player.loop = $("q-loop").checked;
   player.addEventListener("loadedmetadata", () => { player.currentTime = at; }, { once: true });
+  const volume = () => matchedVolume(take.report);
+  player.volume = volume();
   player.play().catch(() => {});
-  playingTake = { id: b.id, key: take.key };
+  playingTake = { id: b.id, key: take.key, volume };
   $("now").textContent = `▶ ${b.id} ${b.title} · ${take.label}`;
   buttons.forEach((button) => button.classList.toggle("on", button.dataset.key === take.key));
 }
@@ -290,6 +322,7 @@ function playStem(b, r, voice) {
   stopLayer();
   player.src = `/bench/${b.id}/${r.score_hash}/stems/${voice}.wav`;
   player.loop = $("q-loop").checked;
+  player.volume = matchedVolume(r);  // the part at the level it has in its matched render
   player.play().catch(() => {});
   playingTake = null;
   $("now").textContent = `▶ ${b.id} · ${voice} part only${r.variant && r.variant !== "main" ? ` (${r.variant})` : ""}`;
@@ -333,9 +366,9 @@ function benchCard(b) {
   const card = el("li", { class: "card" }, head, el("p", { class: "hear" }, el("b", {}, "Hear: "), b.hear));
   const variants = b.variants || [];
   const rendered = variants.filter((v) => v.report);
-  // Every rendered take of this benchmark, so A/B keeps the playhead across them.
-  const takes = [...(r ? [{ key: "main", label: "main", hash: r.score_hash, file: r.files.delivery, note: "the render as scored" }] : []),
-                 ...rendered.map((v) => ({ key: v.name, label: v.name, hash: v.report.score_hash, file: v.report.files.delivery, note: v.title }))];
+  // Every rendered take of this benchmark, to compare by switching between them.
+  const takes = [...(r ? [{ key: "main", label: "main", hash: r.score_hash, file: r.files.delivery, note: "the render as scored", report: r }] : []),
+                 ...rendered.map((v) => ({ key: v.name, label: v.name, hash: v.report.score_hash, file: v.report.files.delivery, note: v.title, report: v.report }))];
   const buttons = takes.map((take) => el("button", { "data-key": take.key, title: take.note,
     onclick: () => playTake(b, take, buttons) }, `▶ ${take.label}`));
   if (!r) {

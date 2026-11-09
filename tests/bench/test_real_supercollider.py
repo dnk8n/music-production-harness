@@ -31,6 +31,8 @@ def real() -> SubprocessRunner:
 def test_synth_kit_benchmarks_pass_with_real_supercollider(
     real: SubprocessRunner, tmp_path: Path, benchmark_id: str
 ) -> None:
-    outcome = render.run(benchmark_id, cfg_for(tmp_path, rate=96000), real, None)
+    outcome = render.run(
+        benchmark_id, cfg_for(tmp_path, rate=96000), real, None, engine="supercollider"
+    )
     failures = [m for m in outcome.report["measurements"] if not m["passed"]]  # type: ignore[attr-defined]
     assert failures == []

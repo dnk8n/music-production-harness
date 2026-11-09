@@ -33,13 +33,17 @@ def _isolate_user_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Non
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    """``tools`` tests need SuperCollider; skip them quietly where it isn't installed."""
+    """``tools`` tests need SuperCollider and ``lua`` tests need lua5.1; skip them
+    quietly where those aren't installed."""
     from mph.bench.sc import find_tools  # noqa: PLC0415 - only when collecting
     from mph.proc import SubprocessRunner  # noqa: PLC0415
 
-    if find_tools(SubprocessRunner()) is not None:
-        return
-    skip = pytest.mark.skip(reason="SuperCollider isn't installed")
+    runner = SubprocessRunner()
+    missing = {
+        "tools": find_tools(runner) is None and "SuperCollider isn't installed",
+        "lua": runner.which("lua5.1") is None and "lua5.1 isn't installed",
+    }
     for item in items:
-        if "tools" in item.keywords:
-            item.add_marker(skip)
+        for marker, reason in missing.items():
+            if reason and marker in item.keywords:
+                item.add_marker(pytest.mark.skip(reason=str(reason)))

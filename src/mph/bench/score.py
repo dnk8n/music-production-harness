@@ -61,6 +61,7 @@ class Voice:
     humanise: float = 0.0  # +/- fraction of velocity, seeded
     chokes: tuple[str, ...] = ()  # voices this one cuts short
     seconds: float = 0.0  # length limit for one-shots (0 = whole sound)
+    gain_db: float = 0.0  # on top of the role's level target (REQ-BEN-09)
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,6 +136,7 @@ def _voice(name: str, raw: dict[str, Any]) -> Voice:
         humanise=float(raw.get("humanise", 0.0)),
         chokes=tuple(str(v) for v in raw.get("chokes", ())),
         seconds=float(raw.get("seconds", 0.0)),
+        gain_db=float(raw.get("gain_db", 0.0)),
     )
     if sum(bool(x) for x in (voice.grid, voice.pulse, voice.slices)) != 1:
         raise ScoreError(f"voice {name}: give exactly one of grid, pulse or slices")

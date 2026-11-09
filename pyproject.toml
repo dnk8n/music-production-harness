@@ -56,7 +56,7 @@ python_version = "3.12"
 files = ["src", "tests"]
 
 [[tool.mypy.overrides]]
-module = ["pyloudnorm", "soundfile", "soxr"]
+module = ["pyloudnorm", "pyloudnorm.*", "soundfile", "soxr"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
@@ -67,6 +67,7 @@ markers = [
   "req(id): links a test to a spec requirement ID for traceability",
   "macos: requires macOS (Keychain, app bundles)",
   "tools: renders with real SuperCollider; skipped when scsynth and sclang aren't installed",
+  "lua: runs the Renoise bridge tool under lua5.1 with a fake Renoise; skipped without lua5.1",
 ]
 
 [tool.coverage.report]

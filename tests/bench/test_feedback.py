@@ -181,3 +181,45 @@ def test_bench_serve_opens_the_benchmarks_tab(
 def test_the_page_shows_the_spec_description(benchmark_id: str) -> None:
     section = " ".join(spec_sections()[benchmark_id].split())
     assert f"Hear: {score.load(benchmark_id).hear}" in section
+
+
+@pytest.mark.req("REQ-REN-07")
+def test_open_in_renoise_opens_only_the_song_a_report_lists(tmp_path: Path) -> None:
+    data = tmp_path / "data"
+    folder = fake_render(data)
+    runner = FakeRunner()
+    app = browse.App(data / db.FILENAME, data, runner, PORT)
+
+    def open_project(payload: object, headers: dict[str, str] = POST) -> browse.Response:
+        return app.handle_post("/api/open-project", headers, json.dumps(payload).encode())
+
+    ask = {"id": "BM-DRUM-02", "score_hash": HASH}
+    assert open_project(ask).status == HTTPStatus.NOT_FOUND  # this render has no song
+    report = json.loads((folder / "report.json").read_text())
+    report["files"]["project"] = "BM-DRUM-02.xrns"
+    (folder / "report.json").write_text(json.dumps(report))
+    assert open_project(ask).status == HTTPStatus.NOT_FOUND  # listed, but not on disk
+    (folder / "BM-DRUM-02.xrns").write_bytes(b"xrns")
+    assert (
+        open_project(ask, {**POST, "Origin": "https://evil.example"}).status == HTTPStatus.FORBIDDEN
+    )
+    assert runner.calls == []
+    opened = open_project(ask)
+    assert opened.status == HTTPStatus.OK
+    assert json.loads(opened.body) == {"opened": "BM-DRUM-02.xrns"}
+    assert runner.calls == [
+        (("open", "-a", "/Applications/Renoise.app", str(folder / "BM-DRUM-02.xrns")), False)
+    ]
+    assert (
+        open_project({"id": "BM-DRUM-02", "score_hash": "../../etc"}).status == HTTPStatus.NOT_FOUND
+    )
+    report["files"]["project"] = "secret.txt"
+    (folder / "report.json").write_text(json.dumps(report))
+    assert open_project(ask).status == HTTPStatus.NOT_FOUND  # only a Renoise song
+    report["files"]["project"] = "BM-DRUM-02.xrns"
+    (folder / "report.json").write_text(json.dumps(report))
+    failing = browse.App(
+        data / db.FILENAME, data, FakeRunner(responses={"open": Result(1, stderr="no app")}), PORT
+    )
+    refused = failing.handle_post("/api/open-project", POST, json.dumps(ask).encode())
+    assert refused.status == HTTPStatus.BAD_GATEWAY and b"no app" in refused.body

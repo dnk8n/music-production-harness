@@ -19,6 +19,7 @@ from mph.catalogue import commands as catalogue_commands
 from mph.components import Context, Stage
 from mph.platform_info import current_host
 from mph.proc import SubprocessRunner
+from mph.renoise import commands as renoise_commands
 
 RENDER_TIMEOUT_S = 900.0
 
@@ -78,6 +79,10 @@ def build_parser() -> argparse.ArgumentParser:
     _add_search(cat_sub)
     _add_provenance(cat_sub)
     _add_bench(sub)
+    renoise = sub.add_parser("renoise", help="the Renoise bridge tool")
+    renoise_sub = renoise.add_subparsers(dest="action", required=True)
+    renoise_sub.add_parser("install", help="copy the bridge tool into Renoise's Tools folder")
+    renoise_sub.add_parser("status", help="is the bridge tool installed and up to date?")
 
     spec = sub.add_parser("spec", help="spec tooling")
     spec_sub = spec.add_subparsers(dest="action", required=True)
@@ -146,6 +151,12 @@ def _add_bench(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None
     render = bench_sub.add_parser("render", help="render, measure and deliver benchmarks")
     render.add_argument("ids", nargs="*", metavar="BM-ID", help="e.g. BM-DRUM-02")
     render.add_argument("--all", action="store_true", help="every benchmark with a score")
+    render.add_argument(
+        "--engine",
+        choices=["auto", "renoise", "supercollider"],
+        default="auto",
+        help="auto (default) uses Renoise when its bridge tool is installed",
+    )
     bench_sub.add_parser("report", help="the latest result for one benchmark").add_argument(
         "id", metavar="BM-ID"
     )
@@ -185,10 +196,16 @@ def dispatch(
             return cmd_install(components.by_id(args.component), ctx, run=args.yes)
         case "catalogue":
             return catalogue_commands.dispatch(args, cfg, ctx.runner, store)
-        case "bench":
-            return bench_commands.dispatch(args, cfg, ctx.runner)
+        case "bench" | "renoise":
+            return _audio_commands(args, cfg, ctx)
         case _:
             return cmd_secrets(store, args.action, getattr(args, "name", None))
+
+
+def _audio_commands(args: argparse.Namespace, cfg: config.Config, ctx: Context) -> int:
+    if args.command == "renoise":
+        return renoise_commands.dispatch(args, cfg, ctx.host.home)
+    return bench_commands.dispatch(args, cfg, ctx.runner, ctx.host.home)
 
 
 def cmd_status(cfg: config.Config, ctx: Context, store: secrets.SecretStore | None) -> int:

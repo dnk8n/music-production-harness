@@ -33,6 +33,7 @@ from urllib.parse import parse_qs, urlsplit
 from mph.bench import feedback
 from mph.catalogue import db, provenance, search
 from mph.proc import Runner
+from mph.renoise import bridge
 
 HOST = "127.0.0.1"
 HASH = re.compile(r"^[0-9a-f]{8,64}$")
@@ -47,6 +48,7 @@ NATIVE = {
 DECODED_CACHE_ITEMS = 8  # recent AIFF decodes kept in memory, for seeking
 MAX_LIMIT = 200
 MAX_BODY = 64 * 1024
+POST_PATHS = frozenset({"/api/verdict", "/api/open-project"})
 DECODE_TO_WAV = ("-c:a", "pcm_f32le", "-f", "wav", "-")  # float, native rate, to a pipe
 
 
@@ -140,8 +142,9 @@ class App:
             return self._route(conn, url.path, parse_qs(url.query), headers)
 
     def handle_post(self, target: str, headers: Mapping[str, str], body: bytes) -> Response:
-        """Saving a verdict. Besides the Host check, the request must come from
-        this page (Origin) as JSON, so another site can't post one for Dean."""
+        """Saving a verdict, or opening a render's song in Renoise. Besides the
+        Host check, the request must come from this page (Origin) as JSON, so
+        another site can't post one for Dean."""
         refused = self._refuse_post(target, headers)
         if refused:
             return refused
@@ -151,20 +154,35 @@ class App:
             payload = None
         if not isinstance(payload, dict):
             return text(HTTPStatus.BAD_REQUEST, "send a JSON object")
+        if urlsplit(target).path == "/api/open-project":
+            return self._open_project(payload)
         with closing(db.connect(self._db_file)) as conn:
             try:
                 return as_json(feedback.record(conn, self._renders, payload))
             except feedback.FeedbackError as exc:
                 return text(HTTPStatus.BAD_REQUEST, str(exc))
 
+    def _open_project(self, payload: Mapping[str, object]) -> Response:
+        """REQ-REN-07: only a song the render's own report lists."""
+        song = feedback.project(
+            self._renders, str(payload.get("id", "")), str(payload.get("score_hash", ""))
+        )
+        if song is None:
+            return text(HTTPStatus.NOT_FOUND, "this render has no Renoise song")
+        try:
+            bridge.open_song(self._runner, song)
+        except bridge.BridgeError as exc:
+            return text(HTTPStatus.BAD_GATEWAY, str(exc))
+        return as_json({"opened": song.name})
+
     def _refuse_post(self, target: str, headers: Mapping[str, str]) -> Response | None:
         if headers.get("Host") not in self._hosts:
             return text(HTTPStatus.FORBIDDEN, "local use only")
         if headers.get("Origin") not in self._origins:
-            return text(HTTPStatus.FORBIDDEN, "only this page can save verdicts")
+            return text(HTTPStatus.FORBIDDEN, "only this page can do that")
         if not headers.get("Content-Type", "").startswith("application/json"):
             return text(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, "send JSON")
-        if urlsplit(target).path != "/api/verdict":
+        if urlsplit(target).path not in POST_PATHS:
             return text(HTTPStatus.NOT_FOUND, "not found")
         return None
 

@@ -37,15 +37,20 @@ uv run mph catalogue scan
 uv run mph catalogue stats
 ```
 
-Render the benchmarks with SuperCollider (`mph install supercollider` first).
-Each one is measured (timing to the millisecond, swing, chokes, a second render
-that must match bit for bit) and delivered as a 48 kHz / 24-bit AIFF:
+Render the benchmarks. Each one becomes a small Renoise song, with one track
+per part, that you can open and change by hand (ADR-0009). Install the bridge
+tool once, then restart Renoise. Synth sounds come from SuperCollider
+(`mph install supercollider`). Without Renoise, benchmarks render in
+SuperCollider alone. Each render is measured (timing to the millisecond,
+swing, chokes, a second render that must match bit for bit) and delivered as
+a 48 kHz / 24-bit AIFF:
 
 ```sh
+uv run mph renoise install # once; then restart Renoise
 uv run mph bench list
 uv run mph bench render BM-DRUM-02
 uv run mph bench render --all
-uv run mph bench serve     # listen, compare and give verdicts in the browser
+uv run mph bench serve     # listen, compare, give verdicts, open in Renoise
 ```
 
 Store third-party credentials in the macOS Keychain, never in files. Setup asks
@@ -64,7 +69,7 @@ uv run mph secrets set gemini      # API key
 | 1 | Spec, config, Keychain secrets, doctor and installers, CI | done |
 | 2 | Sample catalogue and search engine | done |
 | 3 | Benchmark kit and listening/feedback page | in progress |
-| 4 | Renoise bridge and mastering | |
+| 4 | Renoise bridge and mastering | bridge in progress (benchmark songs) |
 
 Once Dean signs off the benchmarks, the first track gets its own spec.
 

@@ -68,14 +68,22 @@ def listing(renders: Path, conn: sqlite3.Connection | None) -> list[dict[str, An
     return out
 
 
-def playable(renders: Path, benchmark_id: str, render_hash: str, name: str) -> Path | None:
-    """The file to serve, if the render's own report lists it; otherwise None."""
+def _report(renders: Path, benchmark_id: str, render_hash: str) -> dict[str, Any] | None:
     if benchmark_id not in score.available() or not RENDER_HASH.match(render_hash):
         return None
-    folder = renders / benchmark_id / render_hash
     try:
-        report = json.loads((folder / "report.json").read_text("utf-8"))
+        found: dict[str, Any] = json.loads(
+            (renders / benchmark_id / render_hash / "report.json").read_text("utf-8")
+        )
     except (OSError, ValueError):
+        return None
+    return found
+
+
+def playable(renders: Path, benchmark_id: str, render_hash: str, name: str) -> Path | None:
+    """The file to serve, if the render's own report lists it; otherwise None."""
+    report = _report(renders, benchmark_id, render_hash)
+    if report is None:
         return None
     files = report["files"]
     listed = {
@@ -85,8 +93,18 @@ def playable(renders: Path, benchmark_id: str, render_hash: str, name: str) -> P
     }
     if name not in listed:
         return None
-    path = folder / name
+    path = renders / benchmark_id / render_hash / name
     return path if path.is_file() else None
+
+
+def project(renders: Path, benchmark_id: str, render_hash: str) -> Path | None:
+    """The render's Renoise song, if its report lists one (REQ-REN-07)."""
+    report = _report(renders, benchmark_id, render_hash)
+    name = report["files"].get("project") if report else None
+    if not name:
+        return None
+    path = renders / benchmark_id / render_hash / str(name)
+    return path if path.is_file() and path.suffix == ".xrns" else None
 
 
 def record(conn: sqlite3.Connection, renders: Path, payload: dict[str, Any]) -> dict[str, str]:

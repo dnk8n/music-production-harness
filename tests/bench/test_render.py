@@ -532,6 +532,8 @@ def test_acid_notes_slide_on_the_held_synth(tmp_path: Path) -> None:
 @pytest.mark.req("REQ-AUD-04")
 def test_acid_line_renders_in_supercollider_and_measures_its_notes(tmp_path: Path) -> None:
     cfg = cfg_for(tmp_path)
+    # Keep work/ (REQ-RET-03 deletes it by default) to check the probe renders were made.
+    cfg = replace(cfg, retention=replace(cfg.retention, keep_work=True))
     home = renoise_ready(tmp_path, cfg)  # Renoise is ready, but a melodic part needs SuperCollider
     outcome = render.run("BM-BASS-01", cfg, runner(), None, home=home)
     report = outcome.report

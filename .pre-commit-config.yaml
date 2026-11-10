@@ -1,0 +1,63 @@
+# Local git hooks (REQ-ENG-07). CI runs the same file with
+# `uv run pre-commit run --all-files`, so local and CI checks can't drift.
+# One-time setup in a checkout: `uv run pre-commit install`
+# (installs both the pre-commit and pre-push hooks listed below).
+default_install_hook_types: [pre-commit, pre-push]
+default_stages: [pre-commit]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c # frozen: v6.0.0
+    hooks:
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-toml
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: 745eface02aef23e168a8afb6b5737818efbea95 # frozen: v0.11.0.1
+    hooks:
+      - id: shellcheck
+
+  # Tool versions come from uv.lock, the same ones CI uses.
+  - repo: local
+    hooks:
+      - id: no-audio
+        name: no audio files in the repo (renders live in data_dir)
+        language: fail
+        entry: audio files belong in data_dir, not the repo
+        files: (?i)\.(wav|aif|aiff|flac|mp3|ogg|m4a)$
+      - id: ruff-format
+        name: ruff format
+        language: system
+        entry: uv run ruff format
+        types: [python]
+      - id: ruff-check
+        name: ruff check
+        language: system
+        entry: uv run ruff check --fix
+        types: [python]
+      - id: mypy
+        name: mypy --strict
+        language: system
+        entry: uv run mypy
+        pass_filenames: false
+        types: [python]
+      - id: spec-check
+        name: mph spec check
+        language: system
+        entry: uv run mph spec check
+        pass_filenames: false
+        always_run: true
+      - id: pytest
+        name: pytest (before push)
+        language: system
+        entry: uv run pytest -q -x -m "not macos and not tools" --cov=mph
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

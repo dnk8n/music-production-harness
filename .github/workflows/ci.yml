@@ -15,7 +15,7 @@ concurrency:
 jobs:
   checks:
     name: lint, types, tests, spec
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -25,21 +25,17 @@ jobs:
           enable-cache: true
       - run: uv sync --locked
       - name: Lua for the Renoise bridge tests
-        run: sudo apt-get install -y --no-install-recommends lua5.1
-      - name: Format
-        run: uv run ruff format --check .
-      - name: Lint (incl. security rules and complexity cap)
-        run: uv run ruff check --output-format=github .
-      - name: Types
-        run: uv run mypy
+        run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends lua5.1
+      - name: Format, lint, types, spec gate (pre-commit hooks; REQ-ENG-07, REQ-PRC-01, REQ-PRC-02)
+        env:
+          RUFF_OUTPUT_FORMAT: github
+        run: uv run pre-commit run --all-files --show-diff-on-failure
       - name: Tests (macOS-only tests deselected)
         run: uv run pytest -m "not macos and not tools" --cov=mph --cov-report=term-missing
-      - name: Spec gate (REQ-PRC-01, REQ-PRC-02)
-        run: uv run mph spec check
 
   security:
     name: secrets and dependency audit
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

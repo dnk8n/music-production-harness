@@ -40,8 +40,37 @@ needs a line in the relevant spec or ADR saying why.
 - **Verify:** inspect
 
 ### REQ-ENG-06: CI on Linux, real tools on macOS
-CI runs everything that doesn't need macOS apps. Tests needing real tools
-are marked `macos` and run locally (`uv run pytest -m macos`).
+CI runs everything that doesn't need macOS apps, on a pinned runner image
+(never a moving `-latest` label). Tests that need real tools are marked
+`tools` (real SuperCollider) or `macos` (Keychain, app bundles) and run on
+macOS (REQ-ENG-08).
 - **Why:** free CI minutes, and the hardware-specific checks run where the
-  hardware is.
+  hardware is. A pinned image changes only when we choose to move it, so a
+  runner migration can't break or warn on an unrelated PR.
 - **Verify:** inspect
+
+### REQ-ENG-07: Same checks locally and in CI
+`.pre-commit-config.yaml` is the one list of fast checks: file hygiene, no
+audio files, no private keys, `ruff format`, `ruff check`, `mypy` and
+`mph spec check` before each commit, and the Linux test suite before each
+push. Tool versions come from `uv.lock`. CI runs the same file with
+`pre-commit run --all-files`, so a check can't pass locally and fail in CI.
+Set up once per checkout with `uv run pre-commit install`.
+- **Why:** problems show up seconds after they are made instead of minutes
+  later in CI, and the two lists can't drift apart.
+- **Verify:** inspect
+
+### REQ-ENG-08: Full check on the Mac, on demand
+`scripts/mac-check [REF]` runs on Dean's Mac when Dean (or an agent over
+Remote Control) starts it: `mph doctor`, the pre-commit hooks, and every
+test with no marker deselected, against the apps installed on that Mac.
+A skipped test fails the check, because it means something a real run
+needs is missing (`--allow-skips` to accept that knowingly). With a REF it
+checks that branch or commit in a temporary worktree and leaves the
+checkout alone. The log goes to `~/Library/Logs/mph/`. No schedule, no
+self-hosted runner, no secrets in the repo or the log.
+- **Why:** Linux CI can't see macOS-only breakage or the real tools. A
+  self-hosted runner on a public repo would let anyone's PR run code on the
+  Mac, and a schedule would run when nobody is looking; on demand fits how
+  Dean works.
+- **Verify:** inspect (run it on the Mac)

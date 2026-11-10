@@ -23,6 +23,7 @@ dev = [
   "mypy>=1.13",
   "ruff>=0.8",
   "pip-audit>=2.7",
+  "pre-commit>=4.0",
 ]
 
 [build-system]
@@ -67,7 +68,7 @@ markers = [
   "req(id): links a test to a spec requirement ID for traceability",
   "macos: requires macOS (Keychain, app bundles)",
   "tools: renders with real SuperCollider; skipped when scsynth and sclang aren't installed",
-  "lua: runs the Renoise bridge tool under lua5.1 with a fake Renoise; skipped without lua5.1",
+  "lua: runs the Renoise bridge tool under Lua 5.1 (lua5.1 or luajit) with a fake Renoise; skipped without one",
 ]
 
 [tool.coverage.report]

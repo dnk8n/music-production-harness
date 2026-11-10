@@ -83,8 +83,8 @@ standard variants:
 | `supercollider` | the score as written, rendered in SuperCollider (ADR-0009's fallback engine) |
 | `synth-kit` | every part a SuperCollider synth voice (not for scores with a break) |
 
-A score with a melodic voice has only `supercollider` as a standard variant,
-because it always renders there (REQ-BEN-10).
+A score with a melodic voice or a sidechain has only `supercollider` as a
+standard variant, because it always renders there (REQ-BEN-10, REQ-BEN-12).
 
 A score can add its own under `[variants.<name>]`: a title, an engine,
 and per-voice changes to `sound` (role, words, `synth`, or `pick`, the Nth
@@ -144,7 +144,8 @@ come from a second small song with each voice's sounds spaced apart. Without
 Renoise, or with `--engine supercollider`, the render runs in SuperCollider
 alone as before. A score with a melodic voice (glides, per-note filter
 envelopes) renders in SuperCollider either way, and asking for Renoise is
-refused with a plain reason. The report names the engine and its version.
+refused with a plain reason. So does a score with a sidechain (REQ-BEN-12).
+The report names the engine and its version.
 - **Why:** what Dean hears is the song he can open and change, while CI and
   machines without Renoise can still render and test every benchmark.
 - **Verify:** test
@@ -157,6 +158,27 @@ piece of work (a track, a set of experiments) can be its own project. The
 listening page groups benchmarks by project (REQ-FBK-01).
 - **Why:** the list keeps growing (Dean, 2026-11-10), and a project groups
   what is judged together, so the rest can be folded away.
+- **Verify:** test
+
+### REQ-BEN-12: Sidechain ducking
+A score can sidechain voices to a trigger voice: `[sidechain]` names the
+`trigger` (such as the kick), the `targets`, the `depth_db`, and the
+`attack_ms` and `release_ms` of the dip. Every trigger hit in the score
+starts the dip at that hit's exact sample, so the ducking follows the
+pattern, not a detector listening to the kick (like a volume-shaper plugin
+synced to the kick). The gain falls by the depth over the attack, then
+rises back along a half-cosine curve over the release. Overlapping dips
+add up, but never past the depth. A declared variant can set `sidechain = { depth_db =
+0 }`, which bypasses it. Sidechained scores render in SuperCollider for
+now (asking for Renoise is refused with a plain reason), where a ducker
+after each target's synths applies the gain. To measure it, mph also
+renders the targets with the sidechain bypassed: the note timing checks
+use that dry render, and the gain is the ratio of the ducked target to the
+dry one, in 0.5 ms windows.
+- **Why:** pumping is a musical choice, so it should land exactly where the
+  pattern says, every time, and stay deterministic (REQ-AUD-05). Measuring
+  against the same target without the ducking shows the envelope itself, whatever
+  the pad or bass is playing.
 - **Verify:** test
 
 ## Drum patterns
@@ -377,10 +399,22 @@ stutter roll that tightens into the next bar, landing exactly on beat 1.
 ## Sidechain
 
 ### BM-SC-01: Kick-triggered ducking
-BM-DRUM-01 plus a sustained pad and the acid bass, both sidechained to the kick.
-Expected envelope on the pad: ducks 6 dB (±1 dB) within 5 ms of each kick,
-recovers to full level by the next 8th note (230 ms at 130 BPM), using a
-smooth release curve.
+130 BPM, straight. BM-DRUM-01's kick, clap and hats, the BM-BASS-01 acid
+line, and a sustained pad: a C minor chord (C3, E♭3, G3) held for 15 steps
+of every bar, so it's sounding when each kick lands. In a melodic gate row,
+`-` holds the note before it for one more step, so the pad's gate is `x`
+then fourteen `-` and a rest. The pad and the acid are sidechained to the
+kick (REQ-BEN-12).
+```
+kick  X . . . X . . . X . . . X . . .
+clap  . . . . x . . . . . . . x . . .
+chh   . . x . . . x . . . x . . . x .
+```
+Expected envelope on the pad and the acid: ducks 6 dB (±1 dB) within 5 ms
+of each kick, and recovers to full level (within 0.5 dB) by the next 8th
+note (230 ms at 130 BPM), along a smooth release curve: no step between
+0.5 ms windows bigger than 0.5 dB. A `bypass` take sets the depth to 0 dB,
+for A/B.
 Hear: the pad and bass "breathe" with the kick. They pump, rising between
 kicks and dipping as each kick lands. The kick punches through cleanly, with
 no low-end smear. At 0 dB depth (bypass), the kick sounds buried, which

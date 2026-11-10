@@ -176,4 +176,6 @@ def _cannot(benchmark_id: str, variant: str, home: Path | None) -> str:
 
     loaded = score.load(benchmark_id)
     _, take = score.variant_of(loaded, variant)
-    return render.can_render(take, Path.home() if home is None else home, melodic=loaded.melodic)
+    return render.can_render(
+        take, Path.home() if home is None else home, only=loaded.supercollider_only
+    )

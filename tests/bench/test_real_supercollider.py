@@ -28,7 +28,10 @@ def real() -> SubprocessRunner:
 @pytest.mark.req("REQ-BEN-01")
 @pytest.mark.req("REQ-AUD-05")
 @pytest.mark.req("REQ-AUD-04")
-@pytest.mark.parametrize("benchmark_id", ["BM-DRUM-02", "BM-DRUM-06", "BM-DRUM-08", "BM-BASS-01"])
+@pytest.mark.req("REQ-BEN-12")
+@pytest.mark.parametrize(
+    "benchmark_id", ["BM-DRUM-02", "BM-DRUM-06", "BM-DRUM-08", "BM-BASS-01", "BM-SC-01"]
+)
 def test_synth_kit_benchmarks_pass_with_real_supercollider(
     real: SubprocessRunner, tmp_path: Path, benchmark_id: str
 ) -> None:

@@ -10,6 +10,7 @@ voices never confuse the match.
 
 from __future__ import annotations
 
+import math
 import struct
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -156,6 +157,70 @@ def edge_jumps(stem: Audio, edges_s: Sequence[float], rate: int) -> float:
 def rms(signal: Audio) -> float:
     flat = mono(signal)
     return float(np.sqrt(np.mean(flat.astype(np.float64) ** 2))) if flat.size else 0.0
+
+
+def gain_curve(wet: Audio, dry: Audio, frames: int, floor: float = 1e-4) -> np.ndarray:
+    """The level of ``wet`` against ``dry`` (the same signal before a gain was
+    applied), in dB, over windows of ``frames``. Windows where ``dry`` is
+    quieter than ``floor`` (RMS) can't say anything, so they're NaN."""
+    count = min(len(wet), len(dry)) // frames
+    shape = (count, frames)
+    w = mono(wet)[: count * frames].astype(np.float64).reshape(shape)
+    d = mono(dry)[: count * frames].astype(np.float64).reshape(shape)
+    wet_power, dry_power = (w**2).sum(axis=1), (d**2).sum(axis=1)
+    heard = dry_power > frames * floor**2
+    out = np.full(count, np.nan)
+    out[heard] = 10 * np.log10(np.maximum(wet_power[heard], 1e-30) / dry_power[heard])
+    return out
+
+
+@dataclass(frozen=True, slots=True)
+class Dip:
+    """One trigger hit's dip in a gain curve (REQ-BEN-12)."""
+
+    depth_db: float  # how far the level fell
+    reach_ms: float  # from the hit until it had fallen ``reached_db``
+    recovered_db: float  # the level ``recover_s`` after the hit (nan if silent then)
+    step_db: float  # the biggest change between neighbouring windows on the way back
+
+
+def dips(
+    wet: Audio,
+    dry: Audio,
+    triggers_s: Sequence[float],
+    *,
+    rate: int,
+    window_s: float,
+    search_s: float,
+    recover_s: float,
+    reached_db: float,
+) -> list[Dip]:
+    """The dip at each trigger, from ``wet`` against ``dry``; hits where the
+    dry signal is silent are left out."""
+    frames = max(1, round(window_s * rate))
+    gain = gain_curve(wet, dry, frames)
+    window = frames / rate
+    found = []
+    for at in triggers_s:
+        start = int(at / window)
+        near = gain[start : start + math.ceil(search_s / window)]
+        if near.size == 0 or np.isnan(near).all():
+            continue
+        deepest = start + int(np.nanargmin(near))
+        reached = np.flatnonzero(near <= -reached_db)
+        reach = (reached[0] + 1) if reached.size else len(near) + 1
+        end = start + round(recover_s / window)
+        steps = np.abs(np.diff(gain[deepest : end + 1]))  # neighbours only: NaN across silence
+        steps = steps[~np.isnan(steps)]
+        found.append(
+            Dip(
+                depth_db=-float(gain[deepest]),
+                reach_ms=float(reach * window * 1000),
+                recovered_db=float(gain[end]) if end < len(gain) else math.nan,
+                step_db=float(steps.max()) if steps.size else 0.0,
+            )
+        )
+    return found
 
 
 def centroid(signal: Audio, rate: int) -> float:

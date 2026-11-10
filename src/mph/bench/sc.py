@@ -6,8 +6,12 @@
 and each voice writes its own pair of output channels, so stems come out of
 one deterministic pass. A melodic note is a ``/s_new`` with its pitch and
 accent, released by ``/n_set gate 0``; a slide is an ``/n_set`` of the held
-note's pitch, so nothing retriggers (BM-BASS-01). Processes are spawned only
-through ``mph.proc.Runner``.
+note's pitch, so nothing retriggers (BM-BASS-01).
+
+Voices play in one group and the sidechain (REQ-BEN-12) in a group after
+it: every trigger hit starts an ``mph_duck`` envelope on a private bus, at
+the hit's own sample, and an ``mph_ducker`` per target scales that target's
+channels by it. Processes are spawned only through ``mph.proc.Runner``.
 """
 
 from __future__ import annotations
@@ -31,6 +35,11 @@ RANDOM_GENERATORS = 64  # scsynth default (-r); concurrent noisy hits stay well 
 SLICE_FADE_S = 0.001  # click-free slice edges (BM-DRUM-09)
 WIRE_BUFFERS = 1024  # the acid voice's additive saw needs more than the default 64
 DONE = "compiled.ok"
+VOICES_GROUP = 100
+SIDECHAIN_GROUP = 101  # runs after the voices, so the duckers see their output
+DUCK_BUS = 512  # a private audio bus, well past the output and input channels
+AUTO_NODE = -1  # scsynth picks the id, for synths nothing addresses again
+HEAD, TAIL, AFTER = 0, 1, 3  # scsynth add actions
 
 
 class RenderError(RuntimeError):
@@ -145,12 +154,48 @@ def _note(
         now = [Message("/n_set", (node, "freq", hz(event.pitch), "acc", int(event.accent)))]
     else:
         name = plan.choices[index].synthdef
-        now = [Message("/s_new", (name, node, 1, 0, *_note_args(plan, index, voice, event)))]
+        args = _note_args(plan, index, voice, event)
+        now = [Message("/s_new", (name, node, TAIL, VOICES_GROUP, *args))]
     if event.tie:
         held[event.voice] = node
         return now, []
     end = round((event.time_s + event.length_s) * plan.rate) / plan.rate
     return now, [Bundle(end, (Message("/n_set", (node, "gate", 0)),))]
+
+
+def reduction(depth_db: float) -> float:
+    """How much of the level a dip of ``depth_db`` takes away (REQ-BEN-12)."""
+    return 1.0 - 10 ** (-depth_db / 20)
+
+
+def _duckers(plan: Plan, index: dict[str, int]) -> list[Message]:
+    sidechain = plan.score.sidechain
+    if sidechain is None or not sidechain.active:
+        return []
+    depth = reduction(sidechain.depth_db)
+    return [
+        Message(
+            "/s_new",
+            (
+                "mph_ducker",
+                AUTO_NODE,
+                TAIL,
+                SIDECHAIN_GROUP,
+                *("out", 2 * index[target], "bus", DUCK_BUS, "depth", depth),
+            ),
+        )
+        for target in sidechain.targets
+    ]
+
+
+def _duck(plan: Plan, event: Event) -> list[Message]:
+    """The dip a trigger hit starts, if this voice is the sidechain's trigger."""
+    sidechain = plan.score.sidechain
+    if sidechain is None or not sidechain.active or event.voice != sidechain.trigger:
+        return []
+    args: list[Arg] = ["bus", DUCK_BUS, "depth", reduction(sidechain.depth_db)]
+    args += ["attack", sidechain.attack_ms / 1000, "release", sidechain.release_ms / 1000]
+    return [Message("/s_new", ("mph_duck", AUTO_NODE, HEAD, SIDECHAIN_GROUP, *args))]
 
 
 def build(plan: Plan, events: Sequence[Event]) -> list[Bundle]:
@@ -161,6 +206,11 @@ def build(plan: Plan, events: Sequence[Event]) -> list[Bundle]:
         Message("/b_allocRead", (n, choice.path))
         for n, choice in enumerate(plan.choices)
         if choice.is_sample
+    ]
+    setup += [
+        Message("/g_new", (VOICES_GROUP, TAIL, 0)),
+        Message("/g_new", (SIDECHAIN_GROUP, AFTER, VOICES_GROUP)),
+        *_duckers(plan, index),
     ]
     bundles = [Bundle(0.0, tuple(setup))]
     latest: dict[str, int] = {}  # voice -> its most recent node, for chokes
@@ -179,9 +229,9 @@ def build(plan: Plan, events: Sequence[Event]) -> list[Bundle]:
             if target in latest
         ]
         name = plan.choices[n].synthdef
-        messages.append(
-            Message("/s_new", (name, node, 1, 0, *_hit_args(plan, n, voice, event, node)))
-        )
+        args = _hit_args(plan, n, voice, event, node)
+        messages.append(Message("/s_new", (name, node, TAIL, VOICES_GROUP, *args)))
+        messages += _duck(plan, event)
         bundles.append(Bundle(at, tuple(messages)))
         latest[event.voice] = node
     end = round(plan.score.length_s * plan.rate) / plan.rate

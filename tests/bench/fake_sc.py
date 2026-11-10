@@ -5,8 +5,10 @@ short decaying sine on the right channels at the right sample, honouring
 amp, dur and choke (/n_set gate 0). A melodic note (an /s_new with ``freq``)
 is a harmonic tone at that pitch, held until its /n_set gate 0; an /n_set of
 ``freq`` changes its pitch there (a slide), and an accent makes it louder
-and brighter. That's enough for the matching, swing, choke, accent, slide
-and determinism checks to mean something.
+and brighter. An ``mph_duck`` starts a dip on its bus at its sample, and an
+``mph_ducker`` scales its channels by the dips, as the real synths do
+(REQ-BEN-12). That's enough for the matching, swing, choke, accent, slide,
+sidechain and determinism checks to mean something.
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ HIT_S = 0.08
 CHOKE_RELEASE_S = 0.005
 NOTE_HARMONICS = 6  # 12 when accented: brighter
 ACCENT_GAIN = 1.6
+Started = list[tuple[int, dict[str, float]]]  # (sample, args) of each mph_duck or mph_ducker
 
 
 @dataclass
@@ -89,6 +92,27 @@ def _note_message(message: osc.Message, at: int, rate: int, notes: dict[int, _No
     return True
 
 
+def _dips(length: int, rate: int, ducks: Started) -> np.ndarray:
+    """How much level the mph_duck envelopes take away, summed: a linear
+    attack to the depth, then a half-cosine release back to 0."""
+    taken = np.zeros(length)
+    for at, args in ducks:
+        attack = round(args["attack"] * rate)
+        release = round(args["release"] * rate)
+        rise = args["depth"] * np.arange(1, attack + 1) / attack
+        fall = args["depth"] * (0.5 + 0.5 * np.cos(np.pi * np.arange(1, release + 1) / release))
+        shape = np.concatenate([rise, fall])[: max(length - at, 0)]
+        taken[at : at + len(shape)] += shape
+    return taken
+
+
+def _sidechain(message: osc.Message, at: int, ducks: Started, duckers: Started) -> bool:
+    if message.address != "/s_new" or message.args[0] not in ("mph_duck", "mph_ducker"):
+        return False
+    (ducks if message.args[0] == "mph_duck" else duckers).append((at, _args(message)))
+    return True
+
+
 def _hit_message(
     message: osc.Message,
     at: int,
@@ -122,13 +146,22 @@ def fake_scsynth(argv: Sequence[str]) -> Result:
     data = np.zeros((length, channels), dtype=np.float32)
     nodes: dict[int, tuple[int, int, int]] = {}  # node -> (start, end, channel)
     notes: dict[int, _Note] = {}
+    ducks: Started = []
+    duckers: Started = []
     for bundle in bundles:
         at = round(bundle.time_s * rate)
         for message in bundle.messages:
+            if _sidechain(message, at, ducks, duckers):
+                continue
             if not _note_message(message, at, rate, notes):
                 _hit_message(message, at, rate, data, nodes)
     for note in notes.values():
         note.play(data, rate)
+    taken = _dips(length, rate, ducks)
+    for _, args in duckers:
+        channel = int(args["out"])
+        gain = (1 - np.clip(taken, 0, args["depth"])).astype(np.float32)
+        data[:, channel : channel + 2] *= gain[:, None]
     audio.write_float(out, data, rate)
     return Result(0)
 

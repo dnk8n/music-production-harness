@@ -6,12 +6,13 @@ Each check is a named number with a limit and a pass flag, written to
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 
 from mph.bench import audio
 from mph.bench.audio import Audio, Match
-from mph.bench.score import Event, Score
+from mph.bench.score import Event, Score, Sidechain
 
 TIMING_LIMIT_MS = 1.0  # REQ-BEN-01
 VELOCITY_LIMIT = 0.1
@@ -25,6 +26,12 @@ ACCENT_LOUDER_DB = 2.0
 SLIDE_DIP_DB = -3.0
 SLIDE_CENTS = 10.0
 ALIASING_LIMIT_DB = -60.0
+DUCK_WINDOW_S = 0.0005  # REQ-BEN-12: the gain is measured in windows this long
+DUCK_DEPTH_SLACK_DB = 1.0
+DUCK_REACH_MS = 5.0
+DUCK_RECOVERED_DB = -0.5
+DUCK_STEP_DB = 0.5
+DUCK_DIP_SEARCH_S = 0.02  # after the attack, where the deepest point can be
 
 
 @dataclass(frozen=True, slots=True)
@@ -236,3 +243,49 @@ def aliasing(name: str, level_db: float) -> Check:
     """REQ-AUD-04: energy between the harmonics of a high, open, resonant note."""
     return Check(f"aliasing: {name} inharmonic energy (dB)", max(round(level_db, 1), -200.0),
                  f"<= {ALIASING_LIMIT_DB}", level_db <= ALIASING_LIMIT_DB)  # fmt: skip
+
+
+def sidechain(
+    sidechain: Sidechain,
+    target: str,
+    wet: Audio,
+    dry: Audio,
+    triggers_s: Sequence[float],
+    *,
+    rate: int,
+    recover_s: float,
+) -> list[Check]:
+    """REQ-BEN-12 and BM-SC-01: at each trigger hit, the target dips by the
+    depth (within the slack) quickly, and is back to full level after
+    ``recover_s``, along a smooth curve. Measured as the ducked target against
+    the same target rendered dry."""
+    dips = audio.dips(
+        wet,
+        dry,
+        triggers_s,
+        rate=rate,
+        window_s=DUCK_WINDOW_S,
+        search_s=sidechain.attack_ms / 1000 + DUCK_DIP_SEARCH_S,
+        recover_s=recover_s,
+        reached_db=sidechain.depth_db - DUCK_DEPTH_SLACK_DB,
+    )
+    name = f"sidechain: {target}"
+    if not dips:
+        return [Check(f"{name} dip (dB)", 0.0, "measurable", False, "silent at every hit")]
+    worst_depth = max((d.depth_db for d in dips), key=lambda v: abs(v - sidechain.depth_db))
+    reach = max(d.reach_ms for d in dips)
+    recovered = [d.recovered_db for d in dips if not math.isnan(d.recovered_db)]
+    level = min(recovered, default=0.0)
+    step = max(d.step_db for d in dips)
+    note = f"{len(dips)} of {len(triggers_s)} hits measured"
+    return [
+        Check(f"{name} dip (dB)", round(worst_depth, 2),
+              f"{sidechain.depth_db:g} ± {DUCK_DEPTH_SLACK_DB:g}",
+              abs(worst_depth - sidechain.depth_db) <= DUCK_DEPTH_SLACK_DB, note),
+        Check(f"{name} dip reached (ms)", round(reach, 2), f"<= {DUCK_REACH_MS:g}",
+              reach <= DUCK_REACH_MS),
+        Check(f"{name} level one 8th after the hit (dB)", round(level, 2),
+              f">= {DUCK_RECOVERED_DB:g}", level >= DUCK_RECOVERED_DB),
+        Check(f"{name} biggest step on the way back (dB per 0.5 ms)", round(step, 3),
+              f"<= {DUCK_STEP_DB:g}", step <= DUCK_STEP_DB),
+    ]  # fmt: skip

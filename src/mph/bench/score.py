@@ -81,6 +81,22 @@ class Voice:
 
 
 Params = tuple[tuple[str, float], ...]
+HOLD = "-"  # in a melodic gate: hold the note before it for one more step
+
+
+@dataclass(frozen=True, slots=True)
+class Sidechain:
+    """Targets dip in level on every hit of the trigger voice (REQ-BEN-12)."""
+
+    trigger: str
+    targets: tuple[str, ...]
+    depth_db: float = 6.0
+    attack_ms: float = 2.0
+    release_ms: float = 200.0
+
+    @property
+    def active(self) -> bool:
+        return self.depth_db > 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,11 +110,13 @@ class Variant:
     gains: tuple[tuple[str, float], ...] = ()  # voice -> gain_db
     every_voice_synth: bool = False
     params: tuple[tuple[str, Params], ...] = ()  # voice -> synth controls changed
+    sidechain_depth_db: float | None = None  # None keeps the score's own depth
 
     @property
     def as_scored(self) -> bool:
         """True when it plays the score's own sounds, levels and controls."""
-        return not (self.sounds or self.gains or self.params or self.every_voice_synth)
+        changed = self.sounds or self.gains or self.params or self.every_voice_synth
+        return not changed and self.sidechain_depth_db is None
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,6 +133,7 @@ class Score:
     variants: tuple[Variant, ...] = ()  # declared in the score, besides the standard ones
     variant: str = ""  # which one this is; "" = the score as written, before a variant
     project: str = ""  # the group it belongs to (REQ-BEN-11)
+    sidechain: Sidechain | None = None
 
     @property
     def step_s(self) -> float:
@@ -129,6 +148,15 @@ class Score:
         """Melodic voices glide and filter per note, so only SuperCollider plays them yet."""
         return any(v.melodic for v in self.voices)
 
+    @property
+    def supercollider_only(self) -> str:
+        """Why only SuperCollider can render this score yet, or "" if Renoise can too."""
+        if self.melodic:
+            return "a melodic part (glides and filter envelopes)"
+        if self.sidechain:
+            return "a sidechain"
+        return ""
+
     def voice(self, name: str) -> Voice:
         for voice in self.voices:
             if voice.name == name:
@@ -140,6 +168,8 @@ class Score:
         shape = asdict(self)
         shape.pop("variants")  # other variants don't shape this render
         shape.pop("project")  # nor does the group it is listed in
+        if shape["sidechain"] is None:
+            shape.pop("sidechain")  # so scores without one keep the hashes they had
         payload = json.dumps({"score": shape, "extra": extra or {}}, sort_keys=True)
         return hashlib.blake2b(payload.encode(), digest_size=8).hexdigest()
 
@@ -168,10 +198,12 @@ class Event:
 # --- loading -------------------------------------------------------------------------
 
 
-def cells(grid: str) -> list[str]:
+def cells(grid: str, *, hold: bool = False) -> list[str]:
+    allowed = (*VELOCITY, ".", *((HOLD,) if hold else ()))
     symbols = grid.split()
-    if len(symbols) != STEPS or any(s not in (*VELOCITY, ".") for s in symbols):
-        raise ScoreError(f"a grid needs {STEPS} symbols from X x o . : {grid!r}")
+    if len(symbols) != STEPS or any(s not in allowed for s in symbols):
+        shown = " ".join(allowed)
+        raise ScoreError(f"a grid needs {STEPS} symbols from {shown}: {grid!r}")
     return symbols
 
 
@@ -220,6 +252,7 @@ def _variant(name: str, raw: dict[str, Any], voices: dict[str, Voice]) -> Varian
             sounds.append((voice, _sound(merged)))
     gains = [(v, float(c["gain_db"])) for v, c in changes.items() if "gain_db" in c]
     params = [(v, _params(c["params"])) for v, c in changes.items() if "params" in c]
+    depth = raw.get("sidechain", {}).get("depth_db")
     return Variant(
         name,
         str(raw.get("title", name)),
@@ -227,6 +260,7 @@ def _variant(name: str, raw: dict[str, Any], voices: dict[str, Voice]) -> Varian
         tuple(sounds),
         tuple(gains),
         params=tuple(params),
+        sidechain_depth_db=None if depth is None else float(depth),
     )
 
 
@@ -250,20 +284,44 @@ def _voice(name: str, raw: dict[str, Any]) -> Voice:
         params=_params(raw.get("params", {})),
     )
     if voice.notes:
-        if len(voice.notes) != STEPS:
-            raise ScoreError(f"voice {name}: notes needs {STEPS} entries")
-        for note in voice.notes:
-            midi(note)
-        voice = replace(voice, grid=str(raw.get("gate", "")))
-        if not voice.grid:
-            raise ScoreError(f"voice {name}: a melodic voice needs a gate row")
+        voice = _melodic_voice(voice, str(raw.get("gate", "")))
     elif voice.accents or voice.slides:
         raise ScoreError(f"voice {name}: accent and slide rows need notes")
     if sum(bool(x) for x in (voice.grid, voice.pulse, voice.slices)) != 1:
         raise ScoreError(f"voice {name}: give exactly one of grid, pulse or slices")
     if voice.grid:
-        cells(voice.grid)
+        cells(voice.grid, hold=voice.melodic)
     return voice
+
+
+def _melodic_voice(voice: Voice, gate: str) -> Voice:
+    if len(voice.notes) != STEPS:
+        raise ScoreError(f"voice {voice.name}: notes needs {STEPS} entries")
+    if not gate:
+        raise ScoreError(f"voice {voice.name}: a melodic voice needs a gate row")
+    for note, symbol in zip(voice.notes, cells(gate, hold=True), strict=True):
+        if note != HOLD or symbol in VELOCITY:  # a held or silent step needn't name a note
+            midi(note)
+    return replace(voice, grid=gate)
+
+
+def _sidechain(raw: dict[str, Any], voices: dict[str, Voice]) -> Sidechain:
+    found = Sidechain(
+        trigger=str(raw["trigger"]),
+        targets=tuple(str(t) for t in raw["targets"]),
+        depth_db=float(raw.get("depth_db", 6.0)),
+        attack_ms=float(raw.get("attack_ms", 2.0)),
+        release_ms=float(raw.get("release_ms", 200.0)),
+    )
+    if unknown := {found.trigger, *found.targets} - set(voices):
+        raise ScoreError(f"the sidechain names unknown voices {sorted(unknown)}")
+    if not found.targets or found.trigger in found.targets:
+        raise ScoreError("the sidechain needs targets other than its trigger")
+    if found.depth_db < 0 or found.attack_ms <= 0 or found.release_ms <= 0:
+        raise ScoreError(
+            "the sidechain needs a depth of 0 dB or more, and a positive attack and release"
+        )
+    return found
 
 
 def parse(raw: dict[str, Any]) -> Score:
@@ -285,7 +343,8 @@ def parse(raw: dict[str, Any]) -> Score:
         declared = tuple(
             _variant(str(name), table, by_name) for name, table in raw.get("variants", {}).items()
         )
-        score = replace(score, variants=declared)
+        sidechain = _sidechain(raw["sidechain"], by_name) if "sidechain" in raw else None
+        score = replace(score, variants=declared, sidechain=sidechain)
     except (KeyError, TypeError) as exc:
         raise ScoreError(f"score is missing or mistypes {exc}") from exc
     if not STRAIGHT <= score.swing < 1:
@@ -361,18 +420,23 @@ def _velocity(voice: Voice, n: int, step: int, base: float, rng: random.Random) 
 
 def _melodic(score: Score, voice: Voice) -> list[Event]:
     """303 rules: a slid note holds for the whole step and, if the next step
-    plays, ties into it so that note glides instead of retriggering."""
-    gate = cells(voice.grid)
+    plays, ties into it so that note glides instead of retriggering. A note
+    followed by "-" steps is held through them (a pad, BM-SC-01)."""
+    gate = cells(voice.grid, hold=True)
     accents = voice.accents.split() or ["."] * STEPS
     slides = voice.slides.split() or ["."] * STEPS
     total = score.bars * STEPS
     found = []
     for step in range(total):
         at = step % STEPS
-        if gate[at] == ".":
+        if gate[at] in (".", HOLD):
             continue
-        slide = slides[at] == "S"
-        following = step + 1 < total and gate[(at + 1) % STEPS] != "."
+        held = 0  # steps the note is held for after its own, by "-"
+        while step + held + 1 < total and gate[(step + held + 1) % STEPS] == HOLD:
+            held += 1
+        slide = slides[at] == "S" and not held
+        following = step + 1 < total and gate[(at + 1) % STEPS] not in (".", HOLD)
+        steps = held + 1 if held else (1.0 if slide else NOTE_LENGTH)
         found.append(
             Event(
                 voice.name,
@@ -382,7 +446,7 @@ def _melodic(score: Score, voice: Voice) -> list[Event]:
                 pitch=midi(voice.notes[at]),
                 accent=accents[at] == "X",
                 tie=slide and following,
-                length_s=(1.0 if slide else NOTE_LENGTH) * score.step_s,
+                length_s=steps * score.step_s,
             )
         )
     return found
@@ -424,7 +488,7 @@ def bar_one(score: Score, voice: Voice) -> str:
 def standard_variants(score: Score) -> list[Variant]:
     """Equal takes, none of them "main" (REQ-BEN-07)."""
     supercollider = Variant("supercollider", "in SuperCollider", engine="supercollider")
-    if score.melodic:  # it always renders in SuperCollider (REQ-BEN-10)
+    if score.supercollider_only:  # it always renders there (REQ-BEN-10, REQ-BEN-12)
         return [supercollider]
     found = [Variant("renoise", "in Renoise", engine="renoise"), supercollider]
     if not any(v.slices for v in score.voices):
@@ -464,4 +528,7 @@ def variant_of(score: Score, name: str) -> tuple[Score, Variant]:
                 params=changed,
             )
         )
-    return replace(score, voices=tuple(voices), variant=found.name), found
+    sidechain = score.sidechain
+    if sidechain and found.sidechain_depth_db is not None:
+        sidechain = replace(sidechain, depth_db=found.sidechain_depth_db)
+    return replace(score, voices=tuple(voices), variant=found.name, sidechain=sidechain), found

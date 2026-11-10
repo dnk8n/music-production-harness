@@ -3,6 +3,7 @@ id = "BM-DRUM-07"
 title = "Tribal techno, 3 against 4"
 hear = "the toms seem to rotate against the kick, since the pattern only lines up again every 3 bars. Hypnotic rather than repetitive."
 bpm = 128
+project = "Drum patterns"
 bars = 12
 
 [voices.kick]

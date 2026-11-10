@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -153,7 +154,7 @@ voices = { chh = { sound = { synth = "mph_hat" } } }
 def test_variants_are_standard_plus_declared() -> None:
     loaded = score.load_text(VARIED)
     names = [v.name for v in score.all_variants(loaded)]
-    assert names == ["main", "supercollider", "renoise", "synth-kit", "other-hat", "synth-hat"]
+    assert names == ["renoise", "supercollider", "synth-kit", "other-hat", "synth-hat"]  # no main
     other, variant = score.variant_of(loaded, "other-hat")
     hat = other.voice("chh")
     assert (hat.sound.role, hat.sound.pick, hat.gain_db) == ("hat", 2, -3.0)
@@ -163,11 +164,13 @@ def test_variants_are_standard_plus_declared() -> None:
     assert synth.voice("chh").sound.synth == "mph_hat" and variant.engine == "supercollider"
     kit, _ = score.variant_of(loaded, "synth-kit")
     assert {v.sound.synth for v in kit.voices} == {"auto"}
-    main, _ = score.variant_of(loaded, "main")
-    # Each variant is its own render; declaring more variants doesn't change main's hash.
-    assert len({main.digest(), other.digest(), synth.digest(), kit.digest()}) == 4
+    renoise, _ = score.variant_of(loaded, "renoise")
+    # Each variant is its own render; declaring more variants doesn't change another's hash.
+    assert len({renoise.digest(), other.digest(), synth.digest(), kit.digest()}) == 4
     trimmed = score.load_text(VARIED.split("[variants.synth-hat]", maxsplit=1)[0])
-    assert score.variant_of(trimmed, "main")[0].digest() == main.digest()
+    assert score.variant_of(trimmed, "renoise")[0].digest() == renoise.digest()
+    assert replace(renoise, project="Elsewhere").digest() == renoise.digest()  # just a listing
+    assert [v.as_scored for v in score.all_variants(loaded)] == [True, True, False, False, False]
     assert "synth-kit" not in [v.name for v in score.all_variants(score.load("BM-DRUM-09"))]
 
 
@@ -252,7 +255,7 @@ def test_melodic_mistakes(change: tuple[str, str], message: str) -> None:
 def test_melodic_variants_change_synth_controls() -> None:
     loaded = score.load("BM-BASS-01")
     names = [v.name for v in score.all_variants(loaded)]
-    assert names == ["main", "cutoff-low", "cutoff-high", "resonance-high"]  # no engine variants
+    assert names == ["supercollider", "cutoff-low", "cutoff-high", "resonance-high"]
     low, variant = score.variant_of(loaded, "cutoff-low")
     params = dict(low.voice("acid").params)
     assert params["cutoff"] == 120.0 and params["resonance"] == 0.6  # only the cutoff changes
@@ -260,3 +263,12 @@ def test_melodic_variants_change_synth_controls() -> None:
     assert low.digest() != loaded.digest()
     with pytest.raises(ScoreError, match="unknown voices"):
         score.load_text(ACID + "[variants.x]\nvoices = { nope = { params = { cutoff = 1.0 } } }\n")
+
+
+@pytest.mark.req("REQ-BEN-11")
+@pytest.mark.parametrize("benchmark_id", score.available())
+def test_every_score_names_the_project_it_is_written_under(benchmark_id: str) -> None:
+    text = SPEC.read_text("utf-8")
+    heading = text.index(f"### {benchmark_id}:")
+    section = re.findall(r"^## (.+)$", text[:heading], re.MULTILINE)[-1]
+    assert score.load(benchmark_id).project == section

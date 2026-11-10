@@ -21,8 +21,15 @@ POST = {**LOCAL, "Origin": ORIGIN, "Content-Type": "application/json"}
 HASH = "0123456789abcdef"
 
 
-def fake_render(data: Path, benchmark_id: str = "BM-DRUM-02") -> Path:
-    folder = data / "renders" / benchmark_id / HASH
+def fake_render(
+    data: Path,
+    benchmark_id: str = "BM-DRUM-02",
+    *,
+    variant: str = "renoise",
+    render_hash: str = HASH,
+    at: str = "2026-11-08T21:00:00Z",
+) -> Path:
+    folder = data / "renders" / benchmark_id / render_hash
     (folder / "variants").mkdir(parents=True)
     (folder / "stems").mkdir()
     (folder / "stems" / "kick.wav").write_bytes(b"RIFF....stem")
@@ -31,12 +38,14 @@ def fake_render(data: Path, benchmark_id: str = "BM-DRUM-02") -> Path:
     (folder / "secret.txt").write_text("not listed")
     report = {
         "id": benchmark_id,
-        "score_hash": HASH,
-        "rendered_at": "2026-11-08T21:00:00Z",
+        "score_hash": render_hash,
+        "rendered_at": at,
         "passed": True,
         "files": {"delivery": f"{benchmark_id}.aiff", "stems": ["stems/kick.wav"]},
         "variants": [{"name": "low", "file": "variants/x-low.wav"}],
     }
+    if variant:  # "" writes a render from before variants existed
+        report["variant"] = variant
     (folder / "report.json").write_text(json.dumps(report))
     return folder
 
@@ -56,11 +65,26 @@ def post(app: browse.App, payload: object, headers: dict[str, str] = POST) -> br
 @pytest.mark.req("REQ-FBK-01")
 def test_listing_shows_every_benchmark_with_its_latest_render(app: browse.App) -> None:
     listed = json.loads(app.handle("/api/bench", LOCAL).body)
-    assert [b["id"] for b in listed] == score.available()
+    assert sorted(b["id"] for b in listed) == score.available()
     shuffle = next(b for b in listed if b["id"] == "BM-DRUM-02")
-    assert shuffle["report"]["score_hash"] == HASH
+    takes = {t["name"]: t for t in shuffle["takes"]}
+    assert list(takes) == ["renoise", "supercollider", "synth-kit"]  # all equal, no main
+    assert takes["renoise"]["report"]["score_hash"] == HASH
+    assert takes["supercollider"]["report"] is None
     assert shuffle["hear"].startswith("the same four-on-the-floor")
-    assert next(b for b in listed if b["id"] == "BM-DRUM-01")["report"] is None
+    detroit = next(b for b in listed if b["id"] == "BM-DRUM-01")
+    assert all(t["report"] is None for t in detroit["takes"])
+
+
+@pytest.mark.req("REQ-BEN-11")
+@pytest.mark.req("REQ-FBK-01")
+def test_benchmarks_are_listed_by_project(app: browse.App) -> None:
+    listed = json.loads(app.handle("/api/bench", LOCAL).body)
+    projects = [b["project"] for b in listed]
+    assert projects == sorted(projects)  # grouped, projects by name
+    assert {"Bass", "Drum patterns"} <= set(projects)
+    page = (Path(browse.__file__).parent / "browse.html").read_text("utf-8")
+    assert "mph.collapsed-projects" in page  # remembers which were folded away
 
 
 @pytest.mark.req("REQ-FBK-01")
@@ -96,8 +120,15 @@ def test_undecodable_render_is_explained(tmp_path: Path) -> None:
 
 @pytest.mark.req("REQ-FBK-02")
 def test_verdicts_are_stored_against_the_render(app: browse.App, tmp_path: Path) -> None:
-    saved = post(app, {"id": "BM-DRUM-02", "score_hash": HASH, "verdict": "close",
-                       "notes": " 0:42 hats too loud "})  # fmt: skip
+    saved = post(
+        app,
+        {
+            "id": "BM-DRUM-02",
+            "score_hash": HASH,
+            "verdict": "close",
+            "notes": " 0:42 hats too loud ",
+        },
+    )  # fmt: skip (scope "take" is the default)
     assert saved.status == HTTPStatus.OK
     assert json.loads(saved.body)["notes"] == "0:42 hats too loud"
     listed = json.loads(app.handle("/api/bench", LOCAL).body)
@@ -117,6 +148,9 @@ def test_verdicts_are_stored_against_the_render(app: browse.App, tmp_path: Path)
         ({"id": "BM-DRUM-02", "score_hash": "ffffffffffffffff", "verdict": "pass"}, "no such"),
         ({"id": "BM-DRUM-02", "score_hash": HASH, "verdict": "pass", "notes": "x" * 5000},
          "limited"),
+        ({"id": "BM-DRUM-02", "scope": "some", "verdict": "pass"}, "scope must be"),
+        ({"id": "BM-NOPE", "scope": "all", "verdict": "pass"}, "no benchmark"),
+        ({"id": "BM-DRUM-01", "scope": "all", "verdict": "pass"}, "no take has been rendered"),
     ],
 )  # fmt: skip
 def test_bad_verdicts_are_refused(app: browse.App, payload: dict[str, str], message: str) -> None:
@@ -173,7 +207,7 @@ def test_bench_serve_opens_the_benchmarks_tab(
     assert "listening page at http://127.0.0.1:8765/#bench" in capsys.readouterr().out
     opened = [call[0][1] for call in fake.calls]
     assert opened == ["http://127.0.0.1:8765/#bench"]
-    assert commands.latest_report(cfg_for(tmp_path), "BM-DRUM-01") is None
+    assert commands.latest_reports(cfg_for(tmp_path), "BM-DRUM-01") == []
 
 
 @pytest.mark.req("REQ-BEN-02")
@@ -233,3 +267,56 @@ def test_the_page_matches_loudness_and_starts_takes_from_the_top() -> None:
     assert "Match loudness" in page and "Keep the playhead when switching takes" in page
     assert "10 ** ((quietest - lufs) / 20)" in page  # turned down to the quietest take
     assert "Math.min(1," in page  # never louder than the file
+
+
+def takes_of(app: browse.App, benchmark_id: str = "BM-DRUM-02") -> dict[str, dict[str, object]]:
+    listed = json.loads(app.handle("/api/bench", LOCAL).body)
+    found = next(b for b in listed if b["id"] == benchmark_id)
+    return {t["name"]: t for t in found["takes"]}
+
+
+def said(take: dict[str, object]) -> str | None:
+    verdict = take["verdict"]
+    return None if verdict is None else str(verdict["verdict"])  # type: ignore[index]
+
+
+@pytest.mark.req("REQ-FBK-02")
+def test_a_verdict_on_the_whole_benchmark_covers_every_take_but_one_judged_alone(
+    tmp_path: Path,
+) -> None:
+    data = tmp_path / "data"
+    fake_render(data)  # renoise
+    fake_render(data, variant="supercollider", render_hash="1" * 16)
+    fake_render(data, variant="synth-kit", render_hash="2" * 16)
+    app = browse.App(data / db.FILENAME, data, FakeRunner(), PORT)
+    alone = {"id": "BM-DRUM-02", "scope": "take", "score_hash": "2" * 16, "verdict": "fail"}
+    assert post(app, alone).status == HTTPStatus.OK
+    whole = post(app, {"id": "BM-DRUM-02", "scope": "all", "verdict": "pass", "notes": "lovely"})
+    assert whole.status == HTTPStatus.OK
+    assert sorted(json.loads(whole.body)["score_hashes"]) == [HASH, "1" * 16, "2" * 16]
+    takes = takes_of(app)
+    assert said(takes["renoise"]) == "pass" and said(takes["supercollider"]) == "pass"
+    assert said(takes["synth-kit"]) == "fail"  # judged on its own before: that verdict stands
+    assert post(app, {**alone, "score_hash": HASH, "verdict": "close"}).status == HTTPStatus.OK
+    assert said(takes_of(app)["renoise"]) == "close"  # and after, too
+    fake_render(data, variant="supercollider", render_hash="3" * 16, at="2026-11-09T09:00:00Z")
+    assert takes_of(app)["supercollider"]["verdict"] is None  # a new render is heard afresh
+
+
+@pytest.mark.req("REQ-FBK-02")
+def test_a_verdict_on_an_old_main_render_counts_for_the_takes_rendered_by_then(
+    tmp_path: Path,
+) -> None:
+    data = tmp_path / "data"
+    fake_render(data, variant="", render_hash="9" * 16, at="2026-11-08T20:00:00Z")
+    fake_render(data)  # renoise, rendered 21:00
+    app = browse.App(data / db.FILENAME, data, FakeRunner(), PORT)
+    main = {"id": "BM-DRUM-02", "score_hash": "9" * 16, "verdict": "pass"}
+    assert post(app, main).status == HTTPStatus.OK  # given now, after both renders
+    assert said(takes_of(app)["renoise"]) == "pass"
+    assert "main" not in takes_of(app)  # an old main render isn't a take
+    listed = json.loads(app.handle("/api/bench", LOCAL).body)
+    shuffle = next(b for b in listed if b["id"] == "BM-DRUM-02")
+    assert shuffle["verdicts"][0]["legacy"] is True
+    fake_render(data, variant="supercollider", render_hash="1" * 16, at="2099-01-01T00:00:00Z")
+    assert takes_of(app)["supercollider"]["verdict"] is None  # rendered after the verdict

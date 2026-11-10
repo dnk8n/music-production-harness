@@ -72,32 +72,34 @@ files go in `work/`, which is deleted when the render finishes (REQ-RET-03).
 - **Verify:** test
 
 ### REQ-BEN-07: Variants of a benchmark
-A variant is another way of making the same benchmark: a different engine
-(Renoise or SuperCollider), a different sound recipe for some parts, or
-different levels. Every benchmark has a `main` variant, which is the score
-as written with the engine picked by REQ-BEN-10. Every benchmark also has
-these standard variants:
+A variant (a *take*) is one way of making a benchmark: an engine (Renoise
+or SuperCollider), a sound recipe for each part, and levels. All variants
+are equal alternatives: none is the "main" one. Every benchmark has these
+standard variants:
 
-| variant | what changes |
+| variant | what it is |
 |---|---|
-| `supercollider` | the whole render runs in SuperCollider (ADR-0009's fallback engine) |
-| `renoise` | the whole render runs in Renoise |
-| `synth-kit` | every part uses a SuperCollider synth voice (not for scores with a break) |
+| `renoise` | the score as written, rendered in Renoise |
+| `supercollider` | the score as written, rendered in SuperCollider (ADR-0009's fallback engine) |
+| `synth-kit` | every part a SuperCollider synth voice (not for scores with a break) |
 
-A score with a melodic voice has only `main` as a standard variant, because
-it always renders in SuperCollider (REQ-BEN-10).
+A score with a melodic voice has only `supercollider` as a standard variant,
+because it always renders there (REQ-BEN-10).
 
 A score can add its own under `[variants.<name>]`: a title, an engine,
 and per-voice changes to `sound` (role, words, `synth`, or `pick`, the Nth
 best catalogue match), `gain_db` and synth `params` (such as a filter
-cutoff). `mph bench render BM-...` renders
-`main`. `--variant NAME` renders one variant, and `--variants` renders them
-all. Each variant renders into its own folder, with its own score hash,
-measurements and report, which names the variant. Verdicts are given per
-render, so each variant is rated separately.
+cutoff). A declared variant with no engine uses the engine REQ-BEN-10 picks.
+`mph bench render BM-...` renders every variant; one whose engine isn't
+installed here is skipped with a note, not counted as a failure.
+`--variant NAME` renders just that one, and fails if it can't. Each variant
+renders into its own folder, with its own score hash, measurements and
+report, which names the variant. A verdict can cover every take of a
+benchmark or just one (REQ-FBK-02).
 - **Why:** Dean wants to compare different productions of the same part by
   ear (Renoise against SuperCollider, one sound design against another) and
-  rate each on its own. The same mechanism lets a whole track be made in
+  rate each on its own, without one take being privileged as "main". The
+  same mechanism lets a whole track be made in
   SuperCollider when asked, and carries the parameter A/B comparisons
   (filter, sidechain bypass) of the later benchmarks.
 - **Verify:** test
@@ -145,6 +147,16 @@ envelopes) renders in SuperCollider either way, and asking for Renoise is
 refused with a plain reason. The report names the engine and its version.
 - **Why:** what Dean hears is the song he can open and change, while CI and
   machines without Renoise can still render and test every benchmark.
+- **Verify:** test
+
+### REQ-BEN-11: Benchmarks belong to a project
+Every score names its `project`: the group it belongs to. For the benchmarks
+in this file, the project is the section heading it is written under (such
+as "Drum patterns" or "Bass"), and a test checks that the two agree. A later
+piece of work (a track, a set of experiments) can be its own project. The
+listening page groups benchmarks by project (REQ-FBK-01).
+- **Why:** the list keeps growing (Dean, 2026-11-10), and a project groups
+  what is judged together, so the rest can be folded away.
 - **Verify:** test
 
 ## Drum patterns
@@ -320,8 +332,9 @@ Variants (REQ-BEN-07) set the controls to the ends of their range:
 
 Measurements: every note that isn't slid into starts within 1 ms of its step.
 Accented notes are at least 2 dB louder than the same notes unaccented, and
-in `main` also brighter (higher spectral centroid); the variants push the
-controls to the ends of their range, where an accent needn't get brighter.
+with the controls as scored also brighter (higher spectral centroid); the
+declared variants push the controls to the ends of their range, where an
+accent needn't get brighter.
 A slid-into note doesn't dip by more than 3 dB. Two short probe renders of
 the voice alone check the rest. In one, the score's first slide is held
 until it settles, and it must land within 10 cents of its pitch (a

@@ -148,11 +148,16 @@ def renders(data_dir: Path) -> tuple[list[Render], list[Path]]:
 
 
 def split_fresh(found: Iterable[Render], keep: int) -> tuple[list[Render], list[Render]]:
-    """REQ-RET-01: the newest ``keep`` renders of each benchmark variant are fresh."""
+    """REQ-RET-01: the newest ``keep`` renders of each benchmark variant are fresh.
+    A ``main`` render is from before takes were equal, so no take plays it."""
     groups: dict[tuple[str, str], list[Render]] = {}
+    fresh: list[Render] = []
+    stale: list[Render] = []
     for render in found:
+        if render.variant == MAIN:
+            stale.append(render)
+            continue
         groups.setdefault((render.benchmark, render.variant), []).append(render)
-    fresh, stale = [], []
     for group in groups.values():
         group.sort(key=lambda r: (r.rendered_at, r.folder.name), reverse=True)
         fresh += group[:keep]
@@ -211,6 +216,8 @@ def _superseded_items(stale: Iterable[Render], old: Callable[[Path], bool]) -> l
         size = sum(size_of(p) for p in _audio(render.folder))
         if size and old(render.folder):
             why = f"{render.benchmark} {render.variant}: a newer render replaces it"
+            if render.variant == MAIN:
+                why = f"{render.benchmark} main: from before takes were equal"
             items.append(Item(render.folder, SUPERSEDED, size, why))
     return items
 

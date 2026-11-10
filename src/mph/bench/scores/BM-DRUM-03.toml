@@ -3,6 +3,7 @@ id = "BM-DRUM-03"
 title = "UK garage 2-step"
 hear = "no kick on beats 2 and 4. The kick skips, landing on 1 and the \"and\" of 3, so the groove limps forward. A heavily swung hat carries it."
 bpm = 132
+project = "Drum patterns"
 bars = 8
 swing = 0.62
 

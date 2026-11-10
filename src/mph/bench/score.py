@@ -28,7 +28,7 @@ STRAIGHT = 0.5
 NOTE_LENGTH = 0.5  # of a step, for notes that don't slide
 PITCH_CLASS = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 DEFAULT_TAIL_S = 1.0
-MAIN = "main"
+LEGACY_MAIN = "main"  # the variant of renders from before takes were equal
 ENGINE_NAMES = ("renoise", "supercollider")
 
 
@@ -89,11 +89,16 @@ class Variant:
 
     name: str
     title: str
-    engine: str = ""  # "" = the engine picked for main
+    engine: str = ""  # "" = the engine REQ-BEN-10 picks
     sounds: tuple[tuple[str, Sound], ...] = ()  # voice -> its replacement sound
     gains: tuple[tuple[str, float], ...] = ()  # voice -> gain_db
     every_voice_synth: bool = False
     params: tuple[tuple[str, Params], ...] = ()  # voice -> synth controls changed
+
+    @property
+    def as_scored(self) -> bool:
+        """True when it plays the score's own sounds, levels and controls."""
+        return not (self.sounds or self.gains or self.params or self.every_voice_synth)
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,7 +113,8 @@ class Score:
     title: str = ""
     hear: str = ""  # the spec's "Hear:" text, for the listening page
     variants: tuple[Variant, ...] = ()  # declared in the score, besides the standard ones
-    variant: str = MAIN  # which one this is
+    variant: str = ""  # which one this is; "" = the score as written, before a variant
+    project: str = ""  # the group it belongs to (REQ-BEN-11)
 
     @property
     def step_s(self) -> float:
@@ -133,6 +139,7 @@ class Score:
         """Hash of the score and anything else that shapes the render."""
         shape = asdict(self)
         shape.pop("variants")  # other variants don't shape this render
+        shape.pop("project")  # nor does the group it is listed in
         payload = json.dumps({"score": shape, "extra": extra or {}}, sort_keys=True)
         return hashlib.blake2b(payload.encode(), digest_size=8).hexdigest()
 
@@ -272,6 +279,7 @@ def parse(raw: dict[str, Any]) -> Score:
             tail_s=float(raw.get("tail_s", DEFAULT_TAIL_S)),
             title=str(raw.get("title", "")),
             hear=str(raw.get("hear", "")),
+            project=str(raw.get("project", "")),
         )
         by_name = {v.name: v for v in voices}
         declared = tuple(
@@ -414,13 +422,11 @@ def bar_one(score: Score, voice: Voice) -> str:
 
 
 def standard_variants(score: Score) -> list[Variant]:
-    if score.melodic:  # SuperCollider only, so main already is the SuperCollider take
-        return [Variant(MAIN, "as scored")]
-    found = [
-        Variant(MAIN, "as scored"),
-        Variant("supercollider", "all in SuperCollider", engine="supercollider"),
-        Variant("renoise", "all in Renoise", engine="renoise"),
-    ]
+    """Equal takes, none of them "main" (REQ-BEN-07)."""
+    supercollider = Variant("supercollider", "in SuperCollider", engine="supercollider")
+    if score.melodic:  # it always renders in SuperCollider (REQ-BEN-10)
+        return [supercollider]
+    found = [Variant("renoise", "in Renoise", engine="renoise"), supercollider]
     if not any(v.slices for v in score.voices):
         found.append(
             Variant("synth-kit", "every part a SuperCollider synth", every_voice_synth=True)

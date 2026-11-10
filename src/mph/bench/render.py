@@ -29,7 +29,17 @@ import numpy as np
 
 from mph import __version__, retention
 from mph.bench import audio, checks, kit, levels, sc
-from mph.bench.score import MAIN, Event, Score, Voice, events, load, midi, variant_of
+from mph.bench.score import (
+    Event,
+    Score,
+    Variant,
+    Voice,
+    all_variants,
+    events,
+    load,
+    midi,
+    variant_of,
+)
 from mph.catalogue.scanner import utc_now
 from mph.config import Config
 from mph.deliver import deliver
@@ -192,6 +202,7 @@ def measure(
     reference: dict[str, audio.Audio],
     templates: Sequence[Event],
     rate: int,
+    as_scored: bool = True,
 ) -> list[checks.Check]:
     matches: dict[str, list[audio.Match]] = {}
     peaks: dict[str, float] = {}
@@ -217,14 +228,15 @@ def measure(
             for t in templates
             if t.voice == voice.name and t.accent
         ]
-        # The variants push controls to the ends of their range, where an accent
-        # needn't get brighter (the filter is already open), so only main is held to it.
+        # Declared variants push controls to the ends of their range, where an accent
+        # needn't get brighter (the filter is already open), so only the controls as
+        # scored are held to it.
         found_checks += checks.accents(
             voice.name,
             pairs,
             rate,
             round(score.step_s * NOTE_PART * rate),
-            brighter=score.variant == MAIN,
+            brighter=as_scored,
         )
         slid = [e for e in own if _slid_into(own, e)]
         found_checks += checks.slides(voice.name, stems[voice.name], slid, rate)
@@ -256,6 +268,23 @@ def pick_engine(requested: str, home: Path, *, melodic: bool = False) -> str:
             "Renoise can't render yet: run `mph renoise install`, then restart Renoise"
         )
     return "renoise" if state == "ready" else "supercollider"
+
+
+def can_render(variant: Variant, home: Path, *, melodic: bool = False) -> str:
+    """Why this take can't render here, or "" when it can (REQ-BEN-07)."""
+    if variant.engine != "renoise":
+        return ""  # SuperCollider, or the engine REQ-BEN-10 picks, which falls back to it
+    if melodic:
+        return "a melodic part renders only in SuperCollider so far"
+    if bridge.status(home) != "ready":
+        return "Renoise isn't set up here (run `mph renoise install`)"
+    return ""
+
+
+def first_take(score: Score, home: Path) -> Variant:
+    """The first take that can render here."""
+    takes = all_variants(score)
+    return next((v for v in takes if not can_render(v, home, melodic=score.melodic)), takes[0])
 
 
 def _fit(data: audio.Audio, frames: int) -> audio.Audio:
@@ -522,11 +551,13 @@ def run(
     engine: str = "auto",
     home: Path | None = None,
     clock: bridge.Clock | None = None,
-    variant: str = MAIN,
+    variant: str = "",
     session: bridge.Session | None = None,
 ) -> Outcome:
+    """Render one take; with no variant named, the benchmark's first (REQ-BEN-07)."""
     home = Path.home() if home is None else home
-    score, chosen_variant = variant_of(load(benchmark_id), variant)
+    loaded = load(benchmark_id)
+    score, chosen_variant = variant_of(loaded, variant or first_take(loaded, home).name)
     chosen = pick_engine(chosen_variant.engine or engine, home, melodic=score.melodic)
     choices = kit.choose(score, conn, cfg.data_dir)
     setup, tools, gains = _prepare(cfg, runner, score, choices, chosen)
@@ -546,6 +577,7 @@ def run(
         reference=rendered.reference,
         templates=rendered.templates,
         rate=rate,
+        as_scored=chosen_variant.as_scored,
     )
     found_checks += rendered.extra_checks
     null_limit = RENOISE_NULL_DB if chosen == "renoise" else None

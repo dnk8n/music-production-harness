@@ -172,9 +172,14 @@ def _add_bench(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None
         help="auto (default) uses Renoise when its bridge tool is installed",
     )
     render.add_argument(
-        "--variant", action="append", default=[], help="render this variant (repeatable)"
+        "--variant",
+        action="append",
+        default=[],
+        help="render just this take (repeatable); default: every take",
     )
-    render.add_argument("--variants", action="store_true", help="render every variant")
+    render.add_argument(
+        "--variants", action="store_true", help=argparse.SUPPRESS
+    )  # every take renders by default now; kept so old commands still work
     bench_sub.add_parser("report", help="the latest result for one benchmark").add_argument(
         "id", metavar="BM-ID"
     )

@@ -28,13 +28,17 @@ class FeedbackError(ValueError):
 
 
 def reports(renders: Path, benchmark_id: str) -> list[dict[str, Any]]:
-    """Every readable report for a benchmark, newest first."""
+    """Every readable report for a benchmark, newest first. ``on_disk`` says
+    whether its delivered audio is still there, or was pruned (REQ-RET-02)."""
     found = []
     for path in (renders / benchmark_id).glob("*/report.json"):
         try:
-            found.append(json.loads(path.read_text("utf-8")))
-        except (OSError, ValueError):
+            report = json.loads(path.read_text("utf-8"))
+            delivery = str(report["files"]["delivery"])
+        except (OSError, ValueError, KeyError, TypeError):
             continue
+        report["on_disk"] = (path.parent / delivery).is_file()
+        found.append(report)
     return sorted(found, key=lambda r: str(r.get("rendered_at", "")), reverse=True)
 
 

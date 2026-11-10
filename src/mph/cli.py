@@ -13,7 +13,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from mph import __version__, components, config, doctor, secrets, speccheck
+from mph import __version__, components, config, doctor, retention, secrets, speccheck
 from mph.bench import commands as bench_commands
 from mph.catalogue import commands as catalogue_commands
 from mph.components import Context, Stage
@@ -38,6 +38,20 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("status", help="one-screen summary of config and health")
+
+    prune = sub.add_parser(
+        "prune",
+        help="free disk space: old renders, work files, unused cache (shows the list first)",
+        description="Deletes only what mph can make again. Without --yes nothing is deleted.",
+    )
+    prune.add_argument("--yes", action="store_true", help="delete what the list shows")
+    prune.add_argument(
+        "--keep",
+        type=int,
+        metavar="N",
+        help="newest renders kept whole per benchmark variant (default: retention.keep_renders)",
+    )
+    prune.add_argument("--list", action="store_true", help="name every file or folder")
 
     doc = sub.add_parser("doctor", help="diagnose installation and configuration")
     doc.add_argument("--stage", action="append", choices=[s.value for s in Stage], default=[])
@@ -200,13 +214,15 @@ def dispatch(
             return cmd_install(components.by_id(args.component), ctx, run=args.yes)
         case "catalogue":
             return catalogue_commands.dispatch(args, cfg, ctx.runner, store)
-        case "bench" | "renoise":
+        case "bench" | "renoise" | "prune":
             return _audio_commands(args, cfg, ctx)
         case _:
             return cmd_secrets(store, args.action, getattr(args, "name", None))
 
 
 def _audio_commands(args: argparse.Namespace, cfg: config.Config, ctx: Context) -> int:
+    if args.command == "prune":
+        return cmd_prune(cfg, keep=args.keep, delete=args.yes, show_all=args.list)
     if args.command == "renoise":
         return renoise_commands.dispatch(args, cfg, ctx.host.home)
     return bench_commands.dispatch(args, cfg, ctx.runner, ctx.host.home)
@@ -231,12 +247,46 @@ def cmd_status(cfg: config.Config, ctx: Context, store: secrets.SecretStore | No
         f"master       {cfg.master.target_lufs_integrated} LUFS, "
         f"<= {cfg.master.max_true_peak_dbtp} dBTP"
     )
+    tidy = retention.plan(cfg.data_dir, cfg.retention)
+    print(
+        f"disk         renders use {retention.human(tidy.renders_size)}; "
+        f"{retention.human(tidy.size)} can be freed  -> `mph prune` shows what"
+    )
     print(
         f"health       {report.count(doctor.Status.OK)} ok, "
         f"{report.count(doctor.Status.WARN)} warnings, {report.count(doctor.Status.FAIL)} "
         f"failures  -> run `mph doctor` for details"
     )
     return 0 if report.healthy else 1
+
+
+def cmd_prune(cfg: config.Config, *, keep: int | None, delete: bool, show_all: bool) -> int:
+    """REQ-RET-05: show what can go; delete it only with --yes."""
+    if keep is not None and keep < 0:
+        print("--keep must be 0 or more", file=sys.stderr)
+        return 2
+    chosen = retention.plan(cfg.data_dir, cfg.retention, keep=keep)
+    if not chosen.items:
+        print(f"nothing to prune in {cfg.data_dir}")
+        return 0
+    for kind, count, size in chosen.by_kind():
+        print(f"{retention.human(size):>10}  {count:>5} x {kind}")
+    if show_all:
+        for item in chosen.items:
+            print(f"  {retention.human(item.size):>10}  {item.path}  ({item.why})")
+    print(f"{retention.human(chosen.size):>10}  in total, from {cfg.data_dir}")
+    if not delete:
+        print("Nothing deleted. Run `mph prune --yes` to delete this (--list names every item).")
+        return 0
+    try:
+        freed = retention.apply(cfg.data_dir, chosen)
+    except retention.PruneError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    print(
+        f"freed {retention.human(freed)}. The listening page renders pruned takes again on demand."
+    )
+    return 0
 
 
 def cmd_doctor(

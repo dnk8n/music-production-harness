@@ -41,6 +41,12 @@ delivery rate, delivery bit depth must be 16 or 24, and the format must be
   a render.
 - **Verify:** test
 
+### REQ-CFG-07: Retention is validated
+`[retention]` holds `keep_renders` (a whole number, 0 or more), `keep_work`
+and `prune_after_render` (true or false). See [retention.md](retention.md).
+- **Why:** a typo here decides what gets deleted, so it must fail at load.
+- **Verify:** test
+
 ### REQ-CFG-06: No secrets in config
 Config files never hold secrets. Secret values live only in the Keychain
 (see [secrets.md](secrets.md)).

@@ -21,6 +21,8 @@ inline: the catalogue sample on its own, and that voice's stem from the render.
 A benchmark with rendered variants (REQ-BEN-07) shows a "Variants" list that
 expands. Each variant can be played, compared with `main` at the same moment,
 and given its own verdict, with its measurements beside it.
+A take whose audio was pruned, or that was never rendered, can be rendered
+from the page (REQ-RET-06).
 - **Why:** Dean needs to judge output without looking at code. A louder take
   tends to sound better whatever else differs, so fair comparison needs
   matched loudness.

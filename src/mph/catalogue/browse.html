@@ -266,6 +266,8 @@ function render() {
 // --- benchmarks: listen, compare, give a verdict --------------------------------
 let playingTake = null;    // {id, key} of the benchmark take in the player
 let quietest = null;       // LUFS of the quietest rendered take on the page
+let benchData = [];        // the last /api/bench answer
+let renderWatch = null;    // polls a render started from this page
 const listening = load("mph.listening", { match: true, keep: false });
 function lufsOf(r) {
   const value = r?.levels?.integrated_lufs;
@@ -291,6 +293,7 @@ function listeningControls() {
 }
 async function showBench() {
   const data = await (await fetch("/api/bench")).json();
+  benchData = data;
   rows = []; showView("bench");
   const rendered = data.filter((b) => b.report).length;
   const all = data.flatMap((b) => [b.report, ...(b.variants || []).map((v) => v.report)]).map(lufsOf).filter((v) => v !== null);
@@ -300,10 +303,47 @@ async function showBench() {
     : "Nothing rendered yet: run `mph bench render --all`, then reload.";
   $("list").replaceChildren(listeningControls(), ...data.map(benchCard));
   history.replaceState(null, "", "#bench");
+  if (!renderWatch) {  // a render may still be running from before a reload
+    const now = await (await fetch("/api/render-status")).json();
+    if (now.state === "rendering") { $("status").textContent = `Rendering ${now.id} ${now.variant}…`; watchRender(null); }
+  }
+}
+// --- rendering on demand (REQ-RET-06): pruned or never-rendered takes -------------
+async function renderNow(b, variant, then) {
+  const response = await fetch("/api/render", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: b.id, variant }) });
+  if (!response.ok) { $("status").textContent = await response.text(); return; }
+  $("status").textContent = `Rendering ${b.id} ${variant}… this takes a minute or two.`;
+  watchRender(then);
+}
+function watchRender(then) {
+  clearInterval(renderWatch);
+  renderWatch = setInterval(async () => {
+    const now = await (await fetch("/api/render-status")).json();
+    if (now.state === "rendering") return;
+    clearInterval(renderWatch); renderWatch = null;
+    if (now.state === "failed") { $("status").textContent = `Couldn't render ${now.id} ${now.variant}: ${now.message}`; return; }
+    await showBench();
+    $("status").textContent = `Rendered ${now.id} ${now.variant}.`;
+    if (then) then();
+  }, 2000);
+}
+function renderButton(b, variant, label) {
+  return el("button", { title: "render it now; it takes a minute or two", onclick: () => renderNow(b, variant, null) }, label);
+}
+function reportOf(b, variant) {
+  return variant === "main" ? b.report : ((b.variants || []).find((v) => v.name === variant) || {}).report;
+}
+function playLatest(id, variant) {
+  const b = benchData.find((x) => x.id === id);
+  const r = b && reportOf(b, variant);
+  if (!r || !r.on_disk) return;
+  playTake(b, { key: variant, label: variant, hash: r.score_hash, file: r.files.delivery, report: r }, []);
 }
 function badge(kind, label) { return el("span", { class: `badge ${kind}` }, label); }
 function clock(t) { return `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`; }
 function playTake(b, take, buttons) {
+  if (take.report && take.report.on_disk === false) { renderNow(b, take.key, () => playLatest(b.id, take.key)); return; }
   stopLayer();
   // Keep the moment only when asked to, while switching between takes of one benchmark.
   const switching = listening.keep && playingTake && playingTake.id === b.id && playingTake.key !== take.key;
@@ -319,6 +359,7 @@ function playTake(b, take, buttons) {
   buttons.forEach((button) => button.classList.toggle("on", button.dataset.key === take.key));
 }
 function playStem(b, r, voice) {
+  if (r.on_disk === false) { renderNow(b, r.variant || "main", () => playStem(b, reportOf(benchData.find((x) => x.id === b.id), r.variant || "main"), voice)); return; }
   stopLayer();
   player.src = `/bench/${b.id}/${r.score_hash}/stems/${voice}.wav`;
   player.loop = $("q-loop").checked;
@@ -327,6 +368,10 @@ function playStem(b, r, voice) {
   playingTake = null;
   $("now").textContent = `▶ ${b.id} · ${voice} part only${r.variant && r.variant !== "main" ? ` (${r.variant})` : ""}`;
 }
+function prunedBadge(b, r, variant) {
+  if (r.on_disk !== false) return [];
+  return [badge("none", "audio pruned"), renderButton(b, variant, "Render again")];
+}
 function verdictBadge(b, r) {
   const mine = b.verdicts.filter((v) => v.score_hash === r.score_hash);
   if (!mine.length) return "";
@@ -334,7 +379,7 @@ function verdictBadge(b, r) {
   return badge(v === "pass" ? "ok" : v === "fail" ? "bad" : "mid", `you said: ${v}`);
 }
 function openButton(b, r) {
-  if (!r.files.project) return [];
+  if (!r.files.project || r.on_disk === false) return [];
   const opened = el("span", { class: "why" });
   return [el("button", { title: `open ${r.files.project} in Renoise, to change it by hand`, onclick: async () => {
     const response = await fetch("/api/open-project", { method: "POST", headers: { "Content-Type": "application/json" },
@@ -370,12 +415,12 @@ function benchCard(b) {
   const takes = [...(r ? [{ key: "main", label: "main", hash: r.score_hash, file: r.files.delivery, note: "the render as scored", report: r }] : []),
                  ...rendered.map((v) => ({ key: v.name, label: v.name, hash: v.report.score_hash, file: v.report.files.delivery, note: v.title, report: v.report }))];
   const buttons = takes.map((take) => el("button", { "data-key": take.key, title: take.note,
-    onclick: () => playTake(b, take, buttons) }, `▶ ${take.label}`));
+    onclick: () => playTake(b, take, buttons) }, `▶ ${take.label}${take.report.on_disk === false ? " (renders first)" : ""}`));
   if (!r) {
     head.append(badge("none", "not rendered"));
-    card.append(el("div", { class: "why" }, `Render it with: mph bench render ${b.id}`));
+    card.append(el("div", { class: "why" }, renderButton(b, "main", "Render now"), ` or: mph bench render ${b.id}`));
   } else {
-    head.append(badge(r.passed ? "ok" : "bad", r.passed ? "measurements pass" : "measurements fail"), verdictBadge(b, r));
+    head.append(badge(r.passed ? "ok" : "bad", r.passed ? "measurements pass" : "measurements fail"), verdictBadge(b, r), ...prunedBadge(b, r, "main"));
   }
   if (takes.length) card.append(el("div", { class: "takes" }, ...buttons, ...(r ? openButton(b, r) : [])));
   if (r) card.append(...renderDetails(b, r));
@@ -389,11 +434,11 @@ function variantItem(b, v) {
   const item = el("li", { class: "variant" }, head);
   if (!v.report) {
     head.append(badge("none", "not rendered"));
-    item.append(el("div", { class: "why" }, `Render it with: mph bench render ${b.id} --variant ${v.name}`));
+    item.append(el("div", { class: "why" }, renderButton(b, v.name, "Render now"), ` or: mph bench render ${b.id} --variant ${v.name}`));
     return item;
   }
   const r = v.report;
-  head.append(badge(r.passed ? "ok" : "bad", r.passed ? "measurements pass" : "measurements fail"), verdictBadge(b, r));
+  head.append(badge(r.passed ? "ok" : "bad", r.passed ? "measurements pass" : "measurements fail"), verdictBadge(b, r), ...prunedBadge(b, r, v.name));
   const opener = openButton(b, r);
   if (opener.length) item.append(el("div", { class: "takes" }, ...opener));
   item.append(...renderDetails(b, r));

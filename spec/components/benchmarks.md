@@ -57,7 +57,8 @@ covers those choices.
 one stem per voice and a `master.wav` (32-bit float at the production rate,
 REQ-AUD-02), the delivered `<id>.aiff` (48 kHz / 24-bit through the single
 SRC and dither, REQ-AUD-03) and `report.json`. A Renoise render (REQ-BEN-10)
-also writes the song, `<id>.xrns`, with its samples inside.
+also writes the song, `<id>.xrns`, with its samples inside. Intermediate
+files go in `work/`, which is deleted when the render finishes (REQ-RET-03).
 - **Why:** the feedback page and the AI reviewer find everything for one
   render in one folder, keyed by exactly what was rendered.
 - **Verify:** test

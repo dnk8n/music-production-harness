@@ -281,10 +281,12 @@ def can_render(variant: Variant, home: Path, *, melodic: bool = False) -> str:
     return ""
 
 
-def first_take(score: Score, home: Path) -> Variant:
-    """The first take that can render here."""
-    takes = all_variants(score)
-    return next((v for v in takes if not can_render(v, home, melodic=score.melodic)), takes[0])
+def first_take(score: Score, home: Path, engine: str = "auto") -> Variant:
+    """The first take that can render here, in the engine asked for if one was."""
+    takes = [v for v in all_variants(score) if not can_render(v, home, melodic=score.melodic)]
+    if engine != "auto":
+        takes = [v for v in takes if v.engine == engine] or [v for v in takes if not v.engine]
+    return next(iter(takes), all_variants(score)[0])
 
 
 def _fit(data: audio.Audio, frames: int) -> audio.Audio:
@@ -557,7 +559,7 @@ def run(
     """Render one take; with no variant named, the benchmark's first (REQ-BEN-07)."""
     home = Path.home() if home is None else home
     loaded = load(benchmark_id)
-    score, chosen_variant = variant_of(loaded, variant or first_take(loaded, home).name)
+    score, chosen_variant = variant_of(loaded, variant or first_take(loaded, home, engine).name)
     chosen = pick_engine(chosen_variant.engine or engine, home, melodic=score.melodic)
     choices = kit.choose(score, conn, cfg.data_dir)
     setup, tools, gains = _prepare(cfg, runner, score, choices, chosen)

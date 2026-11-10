@@ -197,7 +197,7 @@ def test_prune_shows_the_list_and_deletes_only_with_yes(
 @pytest.mark.req("REQ-RET-03")
 def test_a_render_tidies_up_after_itself(tmp_path: Path) -> None:
     cfg = cfg_for(tmp_path)
-    old = make_render(cfg.data_dir, "a" * 16, at="2000-01-01T00:00:00Z")
+    old = make_render(cfg.data_dir, "a" * 16, variant="supercollider", at="2000-01-01T00:00:00Z")
     other = make_render(cfg.data_dir, "c" * 16, variant="synth-kit", at="2000-01-01T00:00:00Z")
     outcome = render.run("BM-DRUM-01", cfg, runner(), None, home=tmp_path)
     assert not (outcome.folder / "work").exists()

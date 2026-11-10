@@ -272,11 +272,12 @@ def test_cli_render_list_and_report(
     assert "hasn't been rendered" in capsys.readouterr().out
     assert run_cli(tmp_path, "render", "BM-DRUM-01") == 0
     out = capsys.readouterr().out
-    assert "BM-DRUM-01 Detroit four-to-the-floor: pass" in out
+    assert "BM-DRUM-01 Detroit four-to-the-floor [supercollider]: pass" in out
     assert "✓ timing" in out and "files" in out
     assert run_cli(tmp_path, "list") == 0
     listing = capsys.readouterr().out
-    assert "BM-DRUM-01" in listing and "pass (" in listing and "not rendered" in listing
+    assert "3 of 3 takes measure well" in listing and "not rendered" in listing
+    assert "Drum patterns" in listing
     assert run_cli(tmp_path, "report", "BM-DRUM-01") == 0
     assert "sound  kick" in capsys.readouterr().out
 

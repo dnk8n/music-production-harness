@@ -25,9 +25,11 @@ The benchmark's own verdict form judges every take at once (REQ-FBK-02).
 A take whose audio was pruned, or that was never rendered, can be rendered
 from the page (REQ-RET-06).
 Benchmarks are grouped under their project (REQ-BEN-11), projects sorted
-by name. Each project can be collapsed to its heading,
-which still shows how many of its benchmarks have passed, and the page
-remembers which projects were collapsed.
+by name. Each project can be collapsed to its heading, which still shows how
+many of its benchmarks have passed. Each benchmark folds to its heading and
+badges too, and starts folded. A fold opens or closes only when clicked:
+saving a verdict or finishing a render redraws the page with every fold and
+the scroll position as they were, and a reload keeps them too.
 - **Why:** Dean needs to judge output without looking at code. A louder take
   tends to sound better whatever else differs, so fair comparison needs
   matched loudness.

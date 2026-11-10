@@ -84,7 +84,8 @@ def test_benchmarks_are_listed_by_project(app: browse.App) -> None:
     assert projects == sorted(projects)  # grouped, projects by name
     assert {"Bass", "Drum patterns"} <= set(projects)
     page = (Path(browse.__file__).parent / "browse.html").read_text("utf-8")
-    assert "mph.collapsed-projects" in page  # remembers which were folded away
+    assert '"mph.folds"' in page  # remembers what was folded away, across saves and reloads
+    assert "fold(`benchmark:${b.id}`, false" in page  # each benchmark starts folded
 
 
 @pytest.mark.req("REQ-FBK-01")

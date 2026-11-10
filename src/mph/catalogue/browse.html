@@ -73,6 +73,11 @@
   .card { padding: 12px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
   .card h3 { margin: 0; font-size: 14px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
   .card h3 .id { color: var(--dim); font-weight: 400; }
+  .card > details > summary { list-style: none; display: flex; gap: 6px; align-items: baseline; color: var(--ink); }
+  .card > details > summary::-webkit-details-marker { display: none; }
+  .card > details > summary::before { content: "▸"; color: var(--dim); }
+  .card > details[open] > summary::before { content: "▾"; }
+  .card .body { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
   .hear { margin: 0; color: var(--ink); }
   .hear b { color: var(--dim); font-weight: 500; }
   .badge { border-radius: 4px; padding: 0 6px; font-size: 12px; font-weight: 500; }
@@ -299,7 +304,14 @@ function listeningControls() {
     toggle("match", "Match loudness", "play every take at the same loudness, so you compare the sound, not the level"),
     toggle("keep", "Keep the playhead when switching takes", "off: each take starts from the top; on: switch takes at the same moment"));
 }
-const collapsed = new Set(load("mph.collapsed-projects", []));
+// What is folded or open stays as Dean left it: across saves, renders and reloads.
+// Only a click on a heading changes it (REQ-FBK-01).
+const folds = load("mph.folds", {});
+function fold(key, openByDefault, attrs, summary, ...children) {
+  const details = el("details", { ...attrs, ...((folds[key] ?? openByDefault) ? { open: "" } : {}) }, summary, ...children);
+  details.addEventListener("toggle", () => { folds[key] = details.open; save("mph.folds", folds); });
+  return details;
+}
 function takesOf(b) { return b.takes.filter((t) => t.report); }
 async function showBench() {
   const data = await (await fetch("/api/bench")).json();
@@ -317,7 +329,9 @@ async function showBench() {
     if (projects.at(-1)?.name !== name) projects.push({ name, benchmarks: [] });
     projects.at(-1).benchmarks.push(b);
   }
+  const at = window.scrollY;  // redrawing after a save or render keeps the page where it was
   $("list").replaceChildren(listeningControls(), ...projects.map(projectGroup));
+  window.scrollTo(0, at);
   history.replaceState(null, "", "#bench");
   if (!renderWatch) {  // a render may still be running from before a reload
     const now = await (await fetch("/api/render-status")).json();
@@ -327,14 +341,10 @@ async function showBench() {
 // One project's benchmarks, foldable to a heading that still says how they stand.
 function projectGroup(p) {
   const passed = p.benchmarks.filter((b) => judged(b).state === "pass").length;
-  const details = el("details", collapsed.has(p.name) ? {} : { open: "" },
+  const details = fold(`project:${p.name}`, true, {},
     el("summary", {}, p.name, el("span", { class: "why" },
       `${p.benchmarks.length} benchmark${p.benchmarks.length === 1 ? "" : "s"} · you passed ${passed}`)),
     el("ol", {}, ...p.benchmarks.map(benchCard)));
-  details.addEventListener("toggle", () => {
-    if (details.open) collapsed.delete(p.name); else collapsed.add(p.name);
-    save("mph.collapsed-projects", [...collapsed]);
-  });
   return el("li", { class: "project" }, details);
 }
 // How Dean has judged a benchmark: every rendered take, by the verdict that stands for it.
@@ -437,12 +447,13 @@ function openButton(b, r) {
 // One take's measurements and the sounds it used.
 function renderDetails(b, r) {
   const failed = r.measurements.filter((m) => !m.passed).length;
-  const checks = el("details", failed ? { open: "" } : {},
+  const key = `take:${b.id}:${r.variant}`;
+  const checks = fold(`${key}:measurements`, failed > 0, {},
     el("summary", {}, `Measurements: ${r.measurements.length - failed} pass${failed ? `, ${failed} fail` : ""}`),
     el("ul", { class: "checks" }, ...r.measurements.map((m) => el("li", {},
       `${m.passed ? "✓" : "✗"} ${m.name}: ${m.value} `, el("span", { class: "want" }, `(want ${m.limit})${m.note ? ` · ${m.note}` : ""}`)))));
   const engine = r.engine === "renoise" ? " · made in Renoise" : r.engine ? " · made in SuperCollider" : "";
-  const kit = el("details", {}, el("summary", {}, `Sounds used · ${r.licence_marker} · ${r.levels.integrated_lufs} LUFS${engine}`),
+  const kit = fold(`${key}:sounds`, false, {}, el("summary", {}, `Sounds used · ${r.licence_marker} · ${r.levels.integrated_lufs} LUFS${engine}`),
     el("ul", { class: "checks" }, ...r.kit.map((k) => el("li", { class: "sound" },
       k.hash ? el("button", { class: "mini", title: "play this sound on its own",
                               onclick: () => play({ hash: k.hash, label: k.sound }) }, "▶") : "",
@@ -452,15 +463,17 @@ function renderDetails(b, r) {
         `(${k.why}${k.gain_db === undefined ? "" : `, level ${k.gain_db > 0 ? "+" : ""}${k.gain_db} dB`})`)))));
   return [checks, kit];
 }
+// A benchmark folds to its heading and badges; folded until Dean opens it.
 function benchCard(b) {
   const head = el("h3", {}, b.title, el("span", { class: "id" }, b.id));
-  const card = el("li", { class: "card" }, head, el("p", { class: "hear" }, el("b", {}, "Hear: "), b.hear));
+  const card = el("div", { class: "body" }, el("p", { class: "hear" }, el("b", {}, "Hear: "), b.hear));
+  const item = el("li", { class: "card" }, fold(`benchmark:${b.id}`, false, {}, el("summary", {}, head), card));
   const rendered = takesOf(b);
   if (!rendered.length) {
     head.append(badge("none", "not rendered"));
     card.append(el("div", { class: "why" }, renderButton(b, b.takes[0].name, `Render ${b.takes[0].name}`), ` or every take: mph bench render ${b.id}`));
     card.append(takeList(b));
-    return card;
+    return item;
   }
   const state = judged(b);
   const failing = rendered.filter((t) => !t.report.passed).length;
@@ -476,11 +489,11 @@ function benchCard(b) {
     el("span", { class: "why" }, "A take you judge on its own below keeps its own verdict."),
     verdictForm(b, null)));
   card.append(takeList(b));
-  return card;
+  return item;
 }
 function takeList(b) {
   const rendered = takesOf(b).length;
-  return el("details", { class: "variants" },
+  return fold(`takes:${b.id}`, false, { class: "variants" },
     el("summary", {}, `Each take: ${rendered} of ${b.takes.length} rendered, with its measurements, sounds and own verdict`),
     el("ul", { class: "variant-list" }, ...b.takes.map((t) => takeItem(b, t))));
 }
@@ -514,8 +527,9 @@ function verdictForm(b, r) {
                    : { id: b.id, scope: "all", verdict: choice, notes: notes.value };
     const response = await fetch("/api/verdict", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body) });
-    status.textContent = response.ok ? "Saved." : await response.text();
-    if (response.ok) showBench();
+    if (!response.ok) { status.textContent = await response.text(); return; }
+    await showBench();  // folds and scroll stay as they were
+    $("status").textContent = `Saved your verdict on ${r ? `${b.id} ${r.variant}` : `every take of ${b.id}`}: ${choice}.`;
   } }, r ? `Save verdict on ${r.variant}` : "Save verdict on every take");
   const box = el("div", {}, el("div", { class: "verdict" }, ...choices, notes, stamp, saveButton, status));
   const shown = r ? b.verdicts.filter((v) => v.score_hash === r.score_hash && v.scope === "take")

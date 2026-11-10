@@ -60,10 +60,17 @@ def add_sample(
     seconds: float = 0.3,
     container: str = "wav",
     licence: str = "commercial-pack",
+    noise: bool = False,
+    freq: float = 400.0,
 ) -> str:
     rate = 44100
     t = np.arange(round(seconds * rate)) / rate
-    wave = np.sin(2 * np.pi * 400 * t) * np.exp(-((t * 8) % 1) * 20)
+    tone = (
+        np.random.default_rng(len(name)).uniform(-1, 1, len(t))
+        if noise
+        else np.sin(2 * np.pi * freq * t)
+    )
+    wave = tone * np.exp(-((t * 8) % 1) * 20)
     folder.mkdir(parents=True, exist_ok=True)
     if container == "wav":
         soundfile.write(str(folder / name), wave, rate, subtype="PCM_16")
@@ -488,3 +495,88 @@ def test_variants_render_into_their_own_folders_and_list_together(
     hashes = {listed["report"]["score_hash"], by_name["synth-kit"]["report"]["score_hash"]}
     assert len(hashes) == 2
     assert feedback.latest(renders, "BM-DRUM-01", "supercollider")["engine"] == "supercollider"  # type: ignore[index]
+
+
+# --- the acid line (BM-BASS-01) ---------------------------------------------------------
+
+
+def test_acid_notes_slide_on_the_held_synth(tmp_path: Path) -> None:
+    loaded = score.load("BM-BASS-01")
+    plan = sc.Plan(loaded, kit.choose(loaded, None, tmp_path), 48000, tmp_path / "defs")
+    found = score.events(loaded)
+    messages = [(b.time_s, m) for b in sc.build(plan, found) for m in b.messages]
+    starts = [m for _, m in messages if m.address == "/s_new"]
+    glides = [m for _, m in messages if m.address == "/n_set" and "freq" in m.args]
+    slid = [e for e in found if e.step % 16 == 5]  # D#2 slides into C2 on step 5
+    assert len(glides) == len(slid) == 8  # once a bar
+    assert len(starts) == len(found) - len(glides)  # a slid note doesn't retrigger
+    for glide in glides:
+        _, name, hz, accent_name, accent = glide.args
+        assert (name, accent_name, accent) == ("freq", "acc", 0)
+        assert hz == pytest.approx(sc.hz(36))
+    first = starts[0].args
+    assert (
+        first[0] == "mph_acid"
+        and dict(zip(first[4::2], first[5::2], strict=True))["cutoff"] == 420.0
+    )
+    releases = [t for t, m in messages if m.address == "/n_set" and m.args[1:] == ("gate", 0)]
+    assert releases[0] == pytest.approx(round(loaded.step_s / 2 * 48000) / 48000)
+
+
+@pytest.mark.req("REQ-BEN-03")
+@pytest.mark.req("REQ-AUD-04")
+def test_acid_line_renders_in_supercollider_and_measures_its_notes(tmp_path: Path) -> None:
+    cfg = cfg_for(tmp_path)
+    home = renoise_ready(tmp_path, cfg)  # Renoise is ready, but a melodic part needs SuperCollider
+    outcome = render.run("BM-BASS-01", cfg, runner(), None, home=home)
+    report = outcome.report
+    assert report["engine"] == "supercollider"
+    measured = {m["name"]: m for m in report["measurements"]}  # type: ignore[attr-defined]
+    for name in (
+        "accent: acid louder (dB)",
+        "accent: acid brighter (centroid ratio)",
+        "slide: acid level change into a slid note (dB)",
+        "slide: acid pitch error once a glide settles (cents)",
+        "aliasing: acid inharmonic energy (dB)",
+    ):
+        assert measured[name]["passed"], measured[name]
+    assert [m for m in measured.values() if not m["passed"]] == []
+    assert (outcome.folder / "work" / "probe-acid.wav").is_file()
+    assert (outcome.folder / "work" / "glide-acid.wav").is_file()
+    with pytest.raises(sc.RenderError, match="only SuperCollider can play"):
+        render.run("BM-BASS-01", cfg, runner(), None, home=home, engine="renoise")
+    # A variant isn't held to brighter accents: its controls sit at the ends of their range.
+    wide = render.run("BM-BASS-01", cfg, runner(), None, home=home, variant="cutoff-high")
+    names = {m["name"] for m in wide.report["measurements"]}  # type: ignore[attr-defined]
+    assert "accent: acid brighter (centroid ratio)" not in names
+    assert wide.folder != outcome.folder
+
+
+def test_acid_templates_pair_each_accent_with_a_plain_note() -> None:
+    loaded = score.load("BM-BASS-01")
+    templates = render.template_events(loaded, score.events(loaded))
+    kinds = {(e.pitch, e.accent) for e in templates}
+    for pitch, accent in list(kinds):
+        if accent:
+            assert (pitch, False) in kinds
+    assert not any(e.tie for e in templates)
+
+
+@pytest.mark.req("REQ-BEN-05")
+def test_kit_passes_over_hats_that_whistle(conn: sqlite3.Connection, tmp_path: Path) -> None:
+    lib, hat = tmp_path / "lib", [("role", "hat")]
+    add_sample(conn, lib, "A Analogue Hat 17.wav", hat, seconds=0.05, freq=9000.0)  # whistles
+    loaded = score.load("BM-DRUM-01")
+    # With nothing else to choose, the tonal hat is still used.
+    only = {c.voice: c for c in kit.choose(loaded, conn, tmp_path / "data")}["chh"]
+    assert only.label.endswith("A Analogue Hat 17.wav") and "passing over" not in only.reason
+    add_sample(conn, lib, "B Closed Hat.wav", hat, seconds=0.05, noise=True)
+    chosen = {c.voice: c for c in kit.choose(loaded, conn, tmp_path / "data")}["chh"]
+    assert chosen.label.endswith("B Closed Hat.wav")
+    assert chosen.reason.endswith("passing over 1 that whistle rather than hiss")
+    # Other roles aren't judged this way: a kick is meant to have a pitch.
+    add_sample(conn, lib, "A Kick.wav", [("role", "kick")])
+    assert {c.voice: c for c in kit.choose(loaded, conn, tmp_path / "data")}["kick"].label.endswith(
+        "A Kick.wav"
+    )
+    assert not kit.tonal(tmp_path / "missing.wav")  # unreadable: left for the render to report

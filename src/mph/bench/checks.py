@@ -21,6 +21,10 @@ CHOKE_SETTLE_S = 0.006  # the 5 ms choke release, plus a sample or two
 EDGE_LIMIT = 3.0  # a hard cut is many times bigger than the jumps around it
 LEAD_IN_LIMIT_MS = 10.0  # REQ-AUD-06
 HUMANISE_SLACK = 0.02
+ACCENT_LOUDER_DB = 2.0
+SLIDE_DIP_DB = -3.0
+SLIDE_CENTS = 10.0
+ALIASING_LIMIT_DB = -60.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,7 +36,8 @@ class Check:
     note: str = ""
 
     def to_dict(self) -> dict[str, object]:
-        return asdict(self)
+        plain = asdict(self)  # numpy scalars become plain JSON types
+        return {**plain, "value": float(self.value), "passed": bool(self.passed)}
 
 
 def timing(matches: Mapping[str, Sequence[Match]]) -> Check:
@@ -178,3 +183,56 @@ def determinism(first: Audio, second: Audio, *, null_limit_db: float | None = No
         level <= null_limit_db,
         f"{differing} samples differ" if differing else "bit-identical",
     )
+
+
+def accents(
+    name: str, pairs: Sequence[tuple[Audio, Audio]], rate: int, frames: int, *, brighter: bool
+) -> list[Check]:
+    """Accented notes against the same notes unaccented: louder, and (when
+    ``brighter``) brighter."""
+    if not pairs:
+        return []
+    louder = min(audio.db(audio.rms(a[:frames]) / audio.rms(p[:frames])) for a, p in pairs)
+    found = [
+        Check(f"accent: {name} louder (dB)", round(louder, 2), f">= {ACCENT_LOUDER_DB}",
+              louder >= ACCENT_LOUDER_DB),
+    ]  # fmt: skip
+    if brighter:
+        ratio = min(
+            audio.centroid(a[:frames], rate) / audio.centroid(p[:frames], rate) for a, p in pairs
+        )
+        found.append(
+            Check(f"accent: {name} brighter (centroid ratio)", round(ratio, 3), "> 1", ratio > 1)
+        )
+    return found
+
+
+def slides(name: str, stem: Audio, slid: Sequence[Event], rate: int) -> list[Check]:
+    """A slid-into note keeps sounding: no retrigger dip where it starts."""
+    if not slid:
+        return []
+    dips = []
+    for event in slid:
+        at = event.sample(rate)
+        # Two cycles of the note either side of the slide, so the waveform's own
+        # shape doesn't count as a dip.
+        span = round(2 * rate / (440.0 * 2 ** ((event.pitch - 69) / 12)))
+        before, after = audio.rms(stem[at - span : at]), audio.rms(stem[at : at + span])
+        dips.append(audio.db(after / before) if before else float("-inf"))
+    worst = min(dips)
+    return [
+        Check(f"slide: {name} level change into a slid note (dB)", round(worst, 2),
+              f">= {SLIDE_DIP_DB}", worst >= SLIDE_DIP_DB),
+    ]  # fmt: skip
+
+
+def glide(name: str, cents: float) -> Check:
+    """A note slid into, then held, settles on its own pitch."""
+    return Check(f"slide: {name} pitch error once a glide settles (cents)", round(cents, 1),
+                 f"<= {SLIDE_CENTS}", cents <= SLIDE_CENTS)  # fmt: skip
+
+
+def aliasing(name: str, level_db: float) -> Check:
+    """REQ-AUD-04: energy between the harmonics of a high, open, resonant note."""
+    return Check(f"aliasing: {name} inharmonic energy (dB)", max(round(level_db, 1), -200.0),
+                 f"<= {ALIASING_LIMIT_DB}", level_db <= ALIASING_LIMIT_DB)  # fmt: skip

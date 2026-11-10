@@ -1,0 +1,28 @@
+# spec/components/benchmarks.md#bm-bass-01: a 303-style line
+id = "BM-BASS-01"
+title = "Acid line"
+bpm = 130
+bars = 8
+hear = "the squelch. Accented notes are louder and brighter, with a vocal \"wow\". Slid notes glide in pitch without retriggering. Turning cutoff up opens from muffled to buzzy, and resonance up makes it whistle and scream."
+
+[voices.acid]
+notes  = "C2 C2 C3 C2 D#2 C2 G2 C2 C2 A#2 C2 C3 C2 F2 C2 G2"
+accent = ".  .  X  .  .   .  X  .  .  .   .  X  .  .  .  X"
+slide  = ".  .  .  .  S   .  .  .  .  S   .  .  .  .  .  ."
+gate   = "x  x  x  .  x   x  x  x  x  x   .  x  x  x  x  x"
+sound = { synth = "mph_acid" }
+# Starting points for the live controls in the spec's table.
+params = { cutoff = 420.0, resonance = 0.6, envmod = 0.6, decay = 0.3, accent = 0.6 }
+
+# Where the cutoff and resonance controls go, to hear each end of their range.
+[variants.cutoff-low]
+title = "cutoff turned right down: muffled"
+voices = { acid = { params = { cutoff = 120.0 } } }
+
+[variants.cutoff-high]
+title = "cutoff opened up: buzzy"
+voices = { acid = { params = { cutoff = 2500.0 } } }
+
+[variants.resonance-high]
+title = "resonance near the edge: whistling"
+voices = { acid = { params = { resonance = 0.92 } } }

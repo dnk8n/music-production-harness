@@ -172,3 +172,50 @@ def test_determinism_is_bit_exact_for_supercollider_and_a_null_test_for_renoise(
     assert checks.determinism(first, first, null_limit_db=-120.0).note == "bit-identical"
     assert not checks.determinism(first, first[:50]).passed
     assert not checks.determinism(first, first[:50], null_limit_db=-120.0).passed
+
+
+# --- tone: pitch and aliasing (BM-BASS-01, REQ-AUD-04) -----------------------------------
+
+
+def harmonic_tone(freq: float, seconds: float = 0.2, harmonics: int = 10) -> np.ndarray:
+    t = np.arange(round(seconds * RATE)) / RATE
+    wave = sum(np.sin(2 * np.pi * n * freq * t) / n for n in range(1, harmonics + 1))
+    return np.stack([wave, wave], axis=1).astype(np.float32)
+
+
+def test_pitch_is_found_within_the_range_asked() -> None:
+    for freq in (65.41, 130.81, 523.25):
+        heard = audio.pitch_hz(harmonic_tone(freq), RATE, freq / 1.4, freq * 1.4)
+        assert abs(1200 * np.log2(heard / freq)) < 1  # cents
+    # Searching around the wrong note finds nothing near it.
+    assert audio.pitch_hz(harmonic_tone(65.41), RATE, 80, 120) not in range(64, 67)
+    assert audio.pitch_hz(np.zeros((9600, 2), np.float32), RATE, 50, 100) == 0.0
+    assert audio.pitch_hz(harmonic_tone(65.41, seconds=0.01), RATE, 50, 100) == 0.0
+
+
+@pytest.mark.req("REQ-AUD-04")
+def test_inharmonic_energy_shows_aliasing() -> None:
+    clean = harmonic_tone(523.25, seconds=1.0)
+    assert audio.inharmonic_db(clean, RATE, 523.25, (0.1, 0.9)) < -90
+    t = np.arange(len(clean)) / RATE
+    stray = 0.01 * np.sin(2 * np.pi * 7777.0 * t)  # a tone between harmonics
+    dirty = clean + np.stack([stray, stray], axis=1).astype(np.float32)
+    assert audio.inharmonic_db(dirty, RATE, 523.25, (0.1, 0.9)) == pytest.approx(-42, abs=3)
+
+
+def test_brightness_and_level() -> None:
+    dull, bright = harmonic_tone(200, harmonics=2), harmonic_tone(200, harmonics=12)
+    assert audio.centroid(bright, RATE) > audio.centroid(dull, RATE)
+    assert audio.rms(dull * 2) == pytest.approx(2 * audio.rms(dull))
+    assert audio.rms(np.zeros((0, 2), np.float32)) == 0.0
+
+
+@pytest.mark.req("REQ-BEN-05")
+def test_flatness_tells_a_hiss_from_a_whistle() -> None:
+    rng = np.random.default_rng(1)
+    hiss = rng.uniform(-1, 1, (RATE // 10, 2)).astype(np.float32)
+    whistle = harmonic_tone(9000.0, seconds=0.1, harmonics=1)
+    assert audio.flatness(hiss, RATE) > 0.5
+    assert audio.flatness(whistle, RATE) < 0.01
+    assert audio.flatness(np.zeros((RATE, 2), np.float32), RATE) == 1.0  # silence: not tonal
+    assert audio.flatness(hiss[:100], RATE) == 1.0  # too short to judge

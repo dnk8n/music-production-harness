@@ -4,7 +4,10 @@
 ``data_dir/synthdefs/<hash>/``. A render is an OSC score (``osc.py``) run by
 ``scsynth -N``: every hit is a timed ``/s_new``, chokes are ``/n_set gate 0``,
 and each voice writes its own pair of output channels, so stems come out of
-one deterministic pass. Processes are spawned only through ``mph.proc.Runner``.
+one deterministic pass. A melodic note is a ``/s_new`` with its pitch and
+accent, released by ``/n_set gate 0``; a slide is an ``/n_set`` of the held
+note's pitch, so nothing retriggers (BM-BASS-01). Processes are spawned only
+through ``mph.proc.Runner``.
 """
 
 from __future__ import annotations
@@ -26,6 +29,7 @@ MAC_SCLANG = f"{SC_APP}/Contents/MacOS/sclang"
 FIRST_NODE = 1000
 RANDOM_GENERATORS = 64  # scsynth default (-r); concurrent noisy hits stay well under it
 SLICE_FADE_S = 0.001  # click-free slice edges (BM-DRUM-09)
+WIRE_BUFFERS = 1024  # the acid voice's additive saw needs more than the default 64
 DONE = "compiled.ok"
 
 
@@ -113,6 +117,37 @@ def _hit_args(plan: Plan, index: int, voice: Voice, event: Event, node: int) -> 
     return args
 
 
+def hz(pitch: int) -> float:
+    return 440.0 * 2 ** ((pitch - 69) / 12)
+
+
+def _note_args(plan: Plan, index: int, voice: Voice, event: Event) -> list[Arg]:
+    gain = plan.gains[index] if plan.gains else 1.0
+    args: list[Arg] = ["out", 2 * index, "amp", event.velocity * gain]
+    for name, value in sorted({**plan.choices[index].params, **dict(voice.params)}.items()):
+        args += [name, float(value)]
+    return [*args, "freq", hz(event.pitch), "acc", int(event.accent)]
+
+
+def _note(
+    plan: Plan, index: int, event: Event, node: int, held: dict[str, int]
+) -> tuple[list[Message], list[Bundle]]:
+    """A melodic note: a new synth, or a glide on the held one. Returns the
+    messages for now and a release bundle for later, unless the note ties on."""
+    voice = plan.score.voices[index]
+    if event.voice in held:  # slid into: no retrigger
+        node = held.pop(event.voice)
+        now = [Message("/n_set", (node, "freq", hz(event.pitch), "acc", int(event.accent)))]
+    else:
+        name = plan.choices[index].synthdef
+        now = [Message("/s_new", (name, node, 1, 0, *_note_args(plan, index, voice, event)))]
+    if event.tie:
+        held[event.voice] = node
+        return now, []
+    end = round((event.time_s + event.length_s) * plan.rate) / plan.rate
+    return now, [Bundle(end, (Message("/n_set", (node, "gate", 0)),))]
+
+
 def build(plan: Plan, events: Sequence[Event]) -> list[Bundle]:
     """OSC bundles for one render. Times are whole samples, so hits land exactly."""
     index = {voice.name: n for n, voice in enumerate(plan.score.voices)}
@@ -124,9 +159,15 @@ def build(plan: Plan, events: Sequence[Event]) -> list[Bundle]:
     ]
     bundles = [Bundle(0.0, tuple(setup))]
     latest: dict[str, int] = {}  # voice -> its most recent node, for chokes
+    held: dict[str, int] = {}  # melodic voice -> the note sliding into the next
     for node, event in enumerate(events, start=FIRST_NODE):
         n = index[event.voice]
         voice = plan.score.voices[n]
+        at = event.sample(plan.rate) / plan.rate
+        if event.pitch:
+            now, later = _note(plan, n, event, node, held)
+            bundles += [Bundle(at, tuple(now)), *later]
+            continue
         messages = [
             Message("/n_set", (latest[target], "gate", 0))
             for target in voice.chokes
@@ -136,7 +177,7 @@ def build(plan: Plan, events: Sequence[Event]) -> list[Bundle]:
         messages.append(
             Message("/s_new", (name, node, 1, 0, *_hit_args(plan, n, voice, event, node)))
         )
-        bundles.append(Bundle(event.sample(plan.rate) / plan.rate, tuple(messages)))
+        bundles.append(Bundle(at, tuple(messages)))
         latest[event.voice] = node
     end = round(plan.score.length_s * plan.rate) / plan.rate
     bundles.append(Bundle(end, (Message("/c_set", (0, 0)),)))
@@ -148,7 +189,8 @@ def render(runner: Runner, tools: Tools, plan: Plan, events: Sequence[Event], ou
     out.parent.mkdir(parents=True, exist_ok=True)
     score_file = out.with_suffix(".osc")
     score_file.write_bytes(encode_score(build(plan, events)))
-    argv = [tools.scsynth, "-o", str(plan.channels), "-N", str(score_file), "_", str(out)]
+    argv = [tools.scsynth, "-o", str(plan.channels), "-w", str(WIRE_BUFFERS)]
+    argv += ["-N", str(score_file), "_", str(out)]
     result = runner.run([*argv, str(plan.rate), "WAV", "float"])
     if not result.ok or not out.is_file():
         detail = (result.stderr or result.stdout).strip()[-500:]

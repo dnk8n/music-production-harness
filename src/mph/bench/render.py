@@ -6,13 +6,16 @@ gains -> engine -> stems and master -> checks -> delivered AIFF -> ``report.json
 The engine is Renoise when its bridge tool is installed (ADR-0009): mph
 builds a small song with one track per voice, renders it, renders it again,
 then renders each track alone for its stem. Without Renoise, SuperCollider
-renders everything in one NRT pass, as in step 3. Either way, each voice is
+renders everything in one NRT pass, as in step 3. A score with a melodic
+voice (BM-BASS-01) always renders in SuperCollider, because its glides and
+per-note filter envelopes can't be one-shot samples yet. Either way, each voice is
 also rendered alone as a *template* for measuring. Everything for one render
 lives in ``data_dir/renders/<id>/<score hash>/``.
 """
 
 from __future__ import annotations
 
+import itertools
 import json
 import math
 import shutil
@@ -26,7 +29,7 @@ import numpy as np
 
 from mph import __version__, retention
 from mph.bench import audio, checks, kit, levels, sc
-from mph.bench.score import MAIN, Event, Score, events, load, variant_of
+from mph.bench.score import MAIN, Event, Score, Voice, events, load, midi, variant_of
 from mph.catalogue.scanner import utc_now
 from mph.config import Config
 from mph.deliver import deliver
@@ -35,6 +38,15 @@ from mph.renoise import bridge
 from mph.renoise import plan as song_plan
 
 TEMPLATE_GAP_S = 2.0  # each template hit gets this long to itself
+NOTE_PART = 0.5  # of a step: how much of each note the accent check compares
+PROBE_PITCH = 72  # C5: high enough that aliasing would show
+PROBE_S = 1.0
+PROBE_TAIL_S = 0.2
+GLIDE_FROM_S = 0.3  # the slide starts here
+GLIDE_HOLD_S = 0.6  # and the note slid into is held this long
+GLIDE_MEASURE_S = 0.15  # its last part, once the glide and filter have settled
+GLIDE_SEARCH = 2**0.5  # look for the pitch within half an octave of the target
+PROBE_PARAMS = {"cutoff": 8000.0, "resonance": 0.9, "envmod": 0.0, "accent": 0.0}
 DELIVERY_CEILING_DBTP = -1.0  # benchmarks aren't mastered: keep them clear of clipping
 RENDERS = "renders"
 ONESHOT_S = 2.0  # room for a synth voice's one-shot
@@ -65,6 +77,7 @@ class Rendered:
     templates: list[Event]
     tools: dict[str, str] = field(default_factory=dict)
     files: dict[str, str] = field(default_factory=dict)  # extra files for the report
+    extra_checks: list[checks.Check] = field(default_factory=list)  # engine-specific
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,12 +117,38 @@ def slice_edges(score: Score, found: Sequence[Event]) -> list[float]:
 # --- templates ------------------------------------------------------------------------
 
 
+def _slid_into(own: Sequence[Event], event: Event) -> bool:
+    """A note the previous one ties into: it glides in, with no onset of its own."""
+    before = [e for e in own if e.time_s < event.time_s]
+    return bool(before) and before[-1].tie
+
+
+def _onsets(own: Sequence[Event]) -> list[Event]:
+    return [e for e in own if not (e.pitch and _slid_into(own, e))]
+
+
+def _kinds(own: Sequence[Event]) -> list[Event]:
+    """One event per distinct sound of a voice: one, one per break slice, or one
+    per pitch and accent. Every accented note also gets an unaccented twin, so
+    the accent can be measured against the same note."""
+    seen: dict[tuple[int, int, bool], Event] = {}
+    for event in _onsets(own):
+        seen.setdefault(event.kind, replace(event, tie=False))
+    for event in list(seen.values()):
+        if event.accent:
+            plain = replace(event, accent=False)
+            seen.setdefault(plain.kind, plain)
+    return [seen[k] for k in sorted(seen)]
+
+
 def template_events(score: Score, found: Sequence[Event]) -> list[Event]:
-    """Each voice's distinct sounds (one, or one per break slice), alone, at full velocity."""
+    """Each voice's distinct sounds, alone, at full velocity, one per gap."""
     out = []
     for voice in score.voices:
-        kinds = sorted({e.slice for e in found if e.voice == voice.name})
-        out += [Event(voice.name, 0, n * TEMPLATE_GAP_S, 1.0, k) for n, k in enumerate(kinds)]
+        kinds = _kinds([e for e in found if e.voice == voice.name])
+        out += [
+            replace(e, step=0, time_s=n * TEMPLATE_GAP_S, velocity=1.0) for n, e in enumerate(kinds)
+        ]
     return sorted(out, key=lambda e: (e.time_s, e.voice))
 
 
@@ -124,16 +163,20 @@ def spaced_templates(score: Score, found: Sequence[Event]) -> list[Event]:
     lines = math.ceil(TEMPLATE_GAP_S / score.step_s)
     out: list[Event] = []
     for voice in score.voices:
-        for kind in sorted({e.slice for e in found if e.voice == voice.name}):
+        for kind in _kinds([e for e in found if e.voice == voice.name]):
             slot = len(out)
-            out.append(Event(voice.name, 0, slot * lines * score.step_s, 1.0, kind))
+            out.append(replace(kind, step=0, time_s=slot * lines * score.step_s, velocity=1.0))
     return out
 
 
 def _template(
-    stems: dict[str, audio.Audio], templates: Sequence[Event], voice: str, kind: int, rate: int
+    stems: dict[str, audio.Audio],
+    templates: Sequence[Event],
+    voice: str,
+    kind: tuple[int, int, bool],
+    rate: int,
 ) -> audio.Audio:
-    hit = next(e for e in templates if e.voice == voice and e.slice == kind)
+    hit = next(e for e in templates if e.voice == voice and e.kind == kind)
     start = hit.sample(rate)
     return stems[voice][start : start + round(TEMPLATE_GAP_S * rate)]
 
@@ -153,17 +196,38 @@ def measure(
     matches: dict[str, list[audio.Match]] = {}
     peaks: dict[str, float] = {}
     for voice in score.voices:
-        own = [e for e in found if e.voice == voice.name]
+        onsets = _onsets([e for e in found if e.voice == voice.name])
         matches[voice.name] = []
-        for kind in sorted({e.slice for e in own}):
+        for kind in sorted({e.kind for e in onsets}):
             tpl = _template(reference, templates, voice.name, kind, rate)
             peaks[voice.name] = max(peaks.get(voice.name, 0.0), float(np.abs(tpl).max()))
-            group = [e for e in own if e.slice == kind]
+            group = [e for e in onsets if e.kind == kind]
             matches[voice.name] += audio.match_hits(stems[voice.name], tpl, group, rate)
     found_checks = [checks.timing(matches), checks.velocity(matches)]
     found_checks += checks.swing(score, matches)
     found_checks += checks.chokes(score, found, stems, peaks, rate)
     found_checks += checks.humanise(score, matches)
+    for voice in (v for v in score.voices if v.melodic):
+        own = [e for e in found if e.voice == voice.name]
+        pairs = [
+            (
+                _template(reference, templates, voice.name, t.kind, rate),
+                _template(reference, templates, voice.name, replace(t, accent=False).kind, rate),
+            )
+            for t in templates
+            if t.voice == voice.name and t.accent
+        ]
+        # The variants push controls to the ends of their range, where an accent
+        # needn't get brighter (the filter is already open), so only main is held to it.
+        found_checks += checks.accents(
+            voice.name,
+            pairs,
+            rate,
+            round(score.step_s * NOTE_PART * rate),
+            brighter=score.variant == MAIN,
+        )
+        slid = [e for e in own if _slid_into(own, e)]
+        found_checks += checks.slides(voice.name, stems[voice.name], slid, rate)
     for voice in score.voices:
         if voice.slices:
             edges = slice_edges(score, [e for e in found if e.voice == voice.name])
@@ -174,9 +238,16 @@ def measure(
 # --- engines --------------------------------------------------------------------------
 
 
-def pick_engine(requested: str, home: Path) -> str:
+def pick_engine(requested: str, home: Path, *, melodic: bool = False) -> str:
     if requested not in ENGINES:
         raise sc.RenderError(f"engine must be one of {', '.join(ENGINES)}")
+    if melodic:
+        if requested == "renoise":
+            raise sc.RenderError(
+                "this benchmark has a melodic part (glides and filter envelopes), "
+                "which only SuperCollider can play so far"
+            )
+        return "supercollider"
     if requested == "supercollider":
         return requested
     state = bridge.status(home)
@@ -210,7 +281,57 @@ def _render_supercollider(runner: Runner, tools: sc.Tools, setup: Setup) -> Rend
         reference=audio.split(audio.read(ref_file)[0], names),
         templates=templates,
         tools={"scsynth": sc.version(runner, tools)},
+        extra_checks=probe(runner, tools, plan, work),
     )
+
+
+def _probe_render(
+    runner: Runner, tools: sc.Tools, plan: sc.Plan, voice: Voice, *, notes: list[Event], out: Path
+) -> audio.Audio:
+    """Some notes from one voice, alone, with that voice's controls set as given."""
+    voices = tuple(voice if v.name == voice.name else v for v in plan.score.voices)
+    length = max(e.time_s + e.length_s for e in notes) + PROBE_TAIL_S
+    score = replace(plan.score, voices=voices, bars=0, tail_s=length)
+    data, _ = audio.read(sc.render(runner, tools, replace(plan, score=score), notes, out))
+    return audio.split(data, [v.name for v in voices])[voice.name]
+
+
+def probe(runner: Runner, tools: sc.Tools, plan: sc.Plan, work: Path) -> list[checks.Check]:
+    """Each melodic voice alone, in two short renders: a high, open, resonant
+    note, measured for energy between its harmonics (aliasing, REQ-AUD-04);
+    and the score's first slide, with the note slid into held until it
+    settles, measured for pitch."""
+    found = []
+    for voice in (v for v in plan.score.voices if v.melodic):
+        opened = replace(
+            voice, params=tuple(sorted({**dict(voice.params), **PROBE_PARAMS}.items()))
+        )
+        note = Event(voice.name, 0, 0.0, 1.0, pitch=PROBE_PITCH, length_s=PROBE_S)
+        stem = _probe_render(
+            runner, tools, plan, opened, notes=[note], out=work / f"probe-{voice.name}.wav"
+        )
+        level = audio.inharmonic_db(stem, plan.rate, sc.hz(PROBE_PITCH), (0.2, PROBE_S - 0.05))
+        found.append(checks.aliasing(voice.name, level))
+        own = [e for e in events(plan.score) if e.voice == voice.name]
+        pairs = [(a, b) for a, b in itertools.pairwise(own) if a.tie]
+        if not pairs:
+            continue
+        first, second = pairs[0]
+        notes = [
+            replace(first, step=0, time_s=0.0, velocity=1.0),
+            replace(second, step=1, time_s=GLIDE_FROM_S, velocity=1.0, length_s=GLIDE_HOLD_S),
+        ]
+        stem = _probe_render(
+            runner, tools, plan, voice, notes=notes, out=work / f"glide-{voice.name}.wav"
+        )
+        end = GLIDE_FROM_S + GLIDE_HOLD_S
+        settled = stem[round((end - GLIDE_MEASURE_S) * plan.rate) : round(end * plan.rate)]
+        target = sc.hz(second.pitch)
+        heard = audio.pitch_hz(settled, plan.rate, target / GLIDE_SEARCH, target * GLIDE_SEARCH)
+        found.append(
+            checks.glide(voice.name, abs(1200 * math.log2(heard / target)) if heard else math.inf)
+        )
+    return found
 
 
 def renoise_tracks(setup: Setup) -> list[song_plan.Track]:
@@ -321,7 +442,13 @@ def synth_oneshots(runner: Runner, tools: sc.Tools, plan: sc.Plan, folder: Path)
     synths = [c.voice for c in plan.choices if not c.is_sample]
     if not synths:
         return {}
-    hits = [Event(name, 0, 0.0, 1.0) for name in synths]
+    melodic = {v.name: v for v in score.voices if v.melodic}
+    hits = [
+        Event(name, 0, 0.0, 1.0, pitch=midi(melodic[name].notes[0]), length_s=score.step_s)
+        if name in melodic
+        else Event(name, 0, 0.0, 1.0)
+        for name in synths
+    ]
     solo = replace(plan, score=replace(template_score(score, hits), tail_s=ONESHOT_S), gains=())
     rendered, _ = audio.read(sc.render(runner, tools, solo, hits, folder / "work" / "sounds.wav"))
     stems = audio.split(rendered, [v.name for v in score.voices])
@@ -400,7 +527,7 @@ def run(
 ) -> Outcome:
     home = Path.home() if home is None else home
     score, chosen_variant = variant_of(load(benchmark_id), variant)
-    chosen = pick_engine(chosen_variant.engine or engine, home)
+    chosen = pick_engine(chosen_variant.engine or engine, home, melodic=score.melodic)
     choices = kit.choose(score, conn, cfg.data_dir)
     setup, tools, gains = _prepare(cfg, runner, score, choices, chosen)
     folder, rate = setup.folder, setup.rate
@@ -420,6 +547,7 @@ def run(
         templates=rendered.templates,
         rate=rate,
     )
+    found_checks += rendered.extra_checks
     null_limit = RENOISE_NULL_DB if chosen == "renoise" else None
     found_checks.append(
         checks.determinism(rendered.master, rendered.again, null_limit_db=null_limit)

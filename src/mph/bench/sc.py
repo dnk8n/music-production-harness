@@ -44,8 +44,13 @@ class Tools:
 
 
 def find_tools(runner: Runner) -> Tools | None:
-    scsynth = runner.which("scsynth") or (MAC_SCSYNTH if Path(MAC_SCSYNTH).is_file() else None)
-    sclang = runner.which("sclang") or (MAC_SCLANG if Path(MAC_SCLANG).is_file() else None)
+    """scsynth and sclang from PATH, else from inside SuperCollider.app.
+
+    Both lookups go through the runner (``which`` of an absolute path checks
+    that file), so a fake runner never sees the real disk (REQ-ENG-03).
+    """
+    scsynth = runner.which("scsynth") or runner.which(MAC_SCSYNTH)
+    sclang = runner.which("sclang") or runner.which(MAC_SCLANG)
     return Tools(scsynth, sclang) if scsynth and sclang else None
 
 

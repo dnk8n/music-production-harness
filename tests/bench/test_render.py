@@ -140,6 +140,14 @@ def test_tools_are_found_or_reported_missing() -> None:
     assert sc.find_tools(FakeRunner()) is None
 
 
+def test_tools_are_found_inside_the_mac_app_through_the_runner() -> None:
+    """The app-bundle fallback asks the runner, never the real disk, so this
+    holds on a Mac with SuperCollider.app installed too."""
+    in_app = FakeRunner(on_path={sc.MAC_SCSYNTH: sc.MAC_SCSYNTH, sc.MAC_SCLANG: sc.MAC_SCLANG})
+    assert sc.find_tools(in_app) == sc.Tools(sc.MAC_SCSYNTH, sc.MAC_SCLANG)
+    assert sc.find_tools(FakeRunner(on_path={sc.MAC_SCSYNTH: sc.MAC_SCSYNTH})) is None
+
+
 def test_synthdefs_compile_once(tmp_path: Path) -> None:
     fake = runner()
     tools = sc.find_tools(fake)

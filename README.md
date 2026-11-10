@@ -87,10 +87,10 @@ Once Dean signs off the benchmarks, the first track gets its own spec.
 ## Development
 
 ```sh
-uv run ruff format . && uv run ruff check .
-uv run mypy
-uv run pytest --cov=mph
-uv run mph spec check
+uv sync && uv run pre-commit install   # once per checkout
+uv run pre-commit run --all-files      # format, lint, types, spec gate
+uv run pytest --cov=mph                # also runs before each push
+scripts/mac-check [origin/main]        # on the Mac: doctor + every test, real tools
 ```
 
 Work is tracked in GitHub issues with `type:`, `area:` and `step:` labels.

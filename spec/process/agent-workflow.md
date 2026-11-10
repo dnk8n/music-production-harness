@@ -51,6 +51,25 @@ The label set lives in `.github/labels.yml` and is synced by a workflow.
 - **Why:** labels stay consistent and reviewable, with no drift from clicking around in the UI.
 - **Verify:** inspect
 
+### REQ-PRC-05: PRs merge only when tested against the latest main
+`main` is protected: changes arrive by pull request, the CI checks must
+pass, and the branch must be up to date with `main` before it can merge.
+Force pushes and deletion of `main` are blocked.
+- **Why:** two PRs can each pass alone and still break `main` together
+  (PRs #24 and #25 did). Requiring an up-to-date branch makes CI test the
+  combination before it lands.
+- **Verify:** inspect (repository ruleset on GitHub)
+
+### REQ-PRC-06: Where work runs
+Code changes are made and checked in cloud copies of the repo, each on its
+own branch, so several pieces of work can run side by side without tying
+up Dean's Mac. Anything that needs Renoise, demucs, SuperCollider with
+Dean's plugins, the Keychain or the real sample folders runs on Dean's Mac
+over Remote Control, from the local checkout, after the PR is pushed.
+- **Why:** the cloud has no Mac apps or samples, and the Mac shouldn't be
+  shared between parallel threads.
+- **Verify:** inspect
+
 ## Labels
 
 | Group | Labels | Meaning |

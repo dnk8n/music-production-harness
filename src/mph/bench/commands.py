@@ -44,7 +44,6 @@ def dispatch(args: argparse.Namespace, cfg: Config, runner: Runner, home: Path) 
         engine=args.engine,
         home=home,
         variants=args.variant,
-        every_variant=args.variants,
     )
 
 
@@ -64,48 +63,54 @@ def render_on_demand(cfg: Config, runner: Runner, home: Path) -> jit.RenderOne:
     return render_one
 
 
-def latest_report(cfg: Config, benchmark_id: str) -> dict[str, Any] | None:
-    return feedback.latest(cfg.data_dir / RENDERS, benchmark_id)
+def latest_reports(cfg: Config, benchmark_id: str) -> list[dict[str, Any]]:
+    """The newest report of each of the benchmark's takes that has one."""
+    return feedback.newest_takes(cfg.data_dir / RENDERS, benchmark_id)
 
 
 def cmd_list(cfg: Config) -> int:
     for benchmark_id in score.available():
         loaded = score.load(benchmark_id)
-        report = latest_report(cfg, benchmark_id)
+        found = latest_reports(cfg, benchmark_id)
         state = "not rendered"
-        if report:
-            state = ("pass" if report["passed"] else "FAIL") + f" ({report['rendered_at']})"
-        print(f"{benchmark_id:<11} {loaded.title:<30} {loaded.bpm:g} BPM   {state}")
+        if found:
+            passed = sum(bool(r["passed"]) for r in found)
+            state = f"{passed} of {len(found)} takes measure well"
+        print(
+            f"{benchmark_id:<11} {loaded.title:<30} {loaded.bpm:g} BPM  "
+            f"{loaded.project:<14} {state}"
+        )
     return 0
 
 
 def cmd_report(cfg: Config, benchmark_id: str) -> int:
-    report = latest_report(cfg, benchmark_id)
-    if report is None:
+    found = latest_reports(cfg, benchmark_id)
+    if not found:
         print(f"{benchmark_id} hasn't been rendered: run `mph bench render {benchmark_id}`")
         return 1
-    print_report(report)
+    for report in found:
+        print_report(report)
     return 0
 
 
-def _jobs(
-    ids: Sequence[str], variants: Sequence[str], *, every_variant: bool
-) -> list[tuple[str, str]]:
-    """(benchmark, variant) pairs to render; unknown ids are left for render to report."""
+def _jobs(ids: Sequence[str], variants: Sequence[str]) -> list[tuple[str, str, bool]]:
+    """(benchmark, variant, named) to render: every take unless some are named.
+    A named take must render; the others are skipped when they can't (REQ-BEN-07).
+    Unknown ids are left for render to report."""
     jobs = []
     for benchmark_id in ids:
-        names: Sequence[str] = variants or [score.MAIN]
-        if every_variant and benchmark_id in score.available():
-            names = [v.name for v in score.all_variants(score.load(benchmark_id))]
-        jobs += [(benchmark_id, name) for name in names]
+        if variants or benchmark_id not in score.available():
+            jobs += [(benchmark_id, name, True) for name in variants or [""]]
+            continue
+        takes = score.all_variants(score.load(benchmark_id))
+        jobs += [(benchmark_id, v.name, False) for v in takes]
     return jobs
 
 
 def print_report(report: dict[str, Any]) -> None:
     verdict = "pass" if report["passed"] else "FAIL"
-    variant = report.get("variant", score.MAIN)
-    shown = "" if variant == score.MAIN else f" [{variant}]"
-    print(f"{report['id']} {report['title']}{shown}: {verdict}   score {report['score_hash']}")
+    variant = feedback.variant_of_report(report)
+    print(f"{report['id']} {report['title']} [{variant}]: {verdict}   score {report['score_hash']}")
     for entry in report["kit"]:
         print(f"  sound  {entry['voice']:<7} {entry['sound']}  ({entry['why']})")
     for check in report["measurements"]:
@@ -128,7 +133,6 @@ def cmd_render(
     engine: str = "auto",
     home: Path | None = None,
     variants: Sequence[str] = (),
-    every_variant: bool = False,
 ) -> int:
     from mph.bench import kit, render, sc  # noqa: PLC0415 - heavy audio imports, on demand
     from mph.renoise import bridge  # noqa: PLC0415
@@ -141,7 +145,10 @@ def cmd_render(
     failed = 0
     session = bridge.Session()  # one Renoise, started by mph, for every job (REQ-REN-03)
     with closing(db.connect(catalogue)) if catalogue.is_file() else nullcontext() as conn:
-        for benchmark_id, variant in _jobs(chosen, variants, every_variant=every_variant):
+        for benchmark_id, variant, named in _jobs(chosen, variants):
+            if not named and (why := _cannot(benchmark_id, variant, home)):
+                print(f"{benchmark_id} [{variant}]: skipped, {why}")
+                continue
             try:
                 outcome = render.run(
                     benchmark_id,
@@ -154,7 +161,7 @@ def cmd_render(
                     session=session,
                 )
             except (score.ScoreError, kit.KitError, sc.RenderError, bridge.BridgeError) as exc:
-                print(f"{benchmark_id} ({variant}): {exc}", file=sys.stderr)
+                print(f"{benchmark_id} [{variant or 'first take'}]: {exc}", file=sys.stderr)
                 failed += 1
                 continue
             print_report(outcome.report)
@@ -162,3 +169,11 @@ def cmd_render(
             failed += not outcome.passed
     print("\nlisten and give verdicts: mph bench serve")
     return 1 if failed else 0
+
+
+def _cannot(benchmark_id: str, variant: str, home: Path | None) -> str:
+    from mph.bench import render  # noqa: PLC0415 - heavy audio imports, on demand
+
+    loaded = score.load(benchmark_id)
+    _, take = score.variant_of(loaded, variant)
+    return render.can_render(take, Path.home() if home is None else home, melodic=loaded.melodic)

@@ -151,6 +151,11 @@ MIGRATIONS: tuple[str, ...] = (
     );
     CREATE INDEX verdict_render ON verdict (benchmark, score_hash);
     """,
+    # 8: a verdict is for one take, or one of a set given to the whole benchmark (REQ-FBK-02).
+    """
+    ALTER TABLE verdict ADD COLUMN scope TEXT NOT NULL DEFAULT 'take'
+        CHECK (scope IN ('take', 'all'));
+    """,
 )
 
 

@@ -3,6 +3,7 @@ id = "BM-DRUM-10"
 title = "Speed garage drive"
 hear = "four-to-the-floor with a pushy shuffle, and a snare flam that builds into each phrase."
 bpm = 130
+project = "Drum patterns"
 bars = 8
 swing = 0.55
 

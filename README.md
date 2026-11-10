@@ -48,9 +48,9 @@ a 48 kHz / 24-bit AIFF:
 ```sh
 uv run mph renoise install # once; then restart Renoise
 uv run mph bench list
-uv run mph bench render BM-DRUM-02
+uv run mph bench render BM-DRUM-02                       # every take of it
 uv run mph bench render --all
-uv run mph bench render BM-DRUM-01 --variants   # every variant, to compare and rate
+uv run mph bench render BM-DRUM-01 --variant synth-kit   # just one take
 uv run mph bench serve     # listen, compare, give verdicts, open in Renoise
 ```
 

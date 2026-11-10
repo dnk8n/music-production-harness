@@ -20,6 +20,8 @@ render the listening page plays. Every other render is superseded. With
 `retention.prune_after_render` (default true), a finished render prunes the
 superseded renders of its own benchmark variant straight away, and never
 prunes itself, whatever `keep_renders` says.
+A render of the `main` variant, from before takes were equal (REQ-BEN-07),
+is superseded too, because no take plays it.
 - **Why:** a 96 kHz float render with stems is hundreds of megabytes, and
   every tweak of a score makes a new one. The page only ever plays the newest
   of each variant, so older ones fill the disk without being heard.

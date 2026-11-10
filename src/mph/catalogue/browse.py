@@ -191,7 +191,7 @@ class App:
             return text(HTTPStatus.NOT_IMPLEMENTED, "rendering isn't available from this page")
         try:
             started = self._renderer.start(
-                str(payload.get("id", "")), str(payload.get("variant", "main"))
+                str(payload.get("id", "")), str(payload.get("variant", ""))
             )
         except jit.JitError as exc:
             return text(HTTPStatus.CONFLICT, str(exc))

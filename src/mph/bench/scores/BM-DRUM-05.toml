@@ -3,6 +3,7 @@ id = "BM-DRUM-05"
 title = "Dub techno with ghost notes"
 hear = "a soft, deep kick with a quiet rimshot dancing around it. Some rims are barely audible, more felt than heard (Basic Channel feel)."
 bpm = 124
+project = "Drum patterns"
 bars = 8
 
 [voices.kick]

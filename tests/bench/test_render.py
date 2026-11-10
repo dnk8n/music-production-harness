@@ -280,11 +280,12 @@ def test_cli_render_list_and_report(
     assert "hasn't been rendered" in capsys.readouterr().out
     assert run_cli(tmp_path, "render", "BM-DRUM-01") == 0
     out = capsys.readouterr().out
-    assert "BM-DRUM-01 Detroit four-to-the-floor: pass" in out
+    assert "BM-DRUM-01 Detroit four-to-the-floor [supercollider]: pass" in out
     assert "✓ timing" in out and "files" in out
     assert run_cli(tmp_path, "list") == 0
     listing = capsys.readouterr().out
-    assert "BM-DRUM-01" in listing and "pass (" in listing and "not rendered" in listing
+    assert "3 of 3 takes measure well" in listing and "not rendered" in listing
+    assert "Drum patterns" in listing
     assert run_cli(tmp_path, "report", "BM-DRUM-01") == 0
     assert "sound  kick" in capsys.readouterr().out
 
@@ -295,7 +296,7 @@ def test_cli_render_errors(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -
     assert "no score for BM-NOPE" in capsys.readouterr().err
     (tmp_path / "data" / "renders" / "BM-DRUM-01" / "x").mkdir(parents=True)
     (tmp_path / "data" / "renders" / "BM-DRUM-01" / "x" / "report.json").write_text("{bad")
-    assert commands.latest_report(cfg_for(tmp_path), "BM-DRUM-01") is None
+    assert commands.latest_reports(cfg_for(tmp_path), "BM-DRUM-01") == []
 
 
 def test_cli_renders_against_the_catalogue_when_there_is_one(
@@ -490,18 +491,23 @@ def test_variants_render_into_their_own_folders_and_list_together(
     assert run_cli(tmp_path, "render", "BM-DRUM-01", "--variant", "synth-kit") == 0
     out = capsys.readouterr().out
     assert "BM-DRUM-01 Detroit four-to-the-floor [synth-kit]: pass" in out
-    assert run_cli(tmp_path, "render", "BM-DRUM-01", "--variants") == 1  # renoise isn't installed
-    err = capsys.readouterr().err
-    assert "BM-DRUM-01 (renoise): Renoise can't render yet" in err
+    # Every take by default; Renoise isn't installed here, so that take is skipped, not failed.
+    assert run_cli(tmp_path, "render", "BM-DRUM-01") == 0
+    out = capsys.readouterr().out
+    assert "BM-DRUM-01 [renoise]: skipped, Renoise isn't set up here" in out
+    assert "[supercollider]: pass" in out and "[other-hat]: pass" in out
+    assert run_cli(tmp_path, "render", "BM-DRUM-01", "--variant", "renoise") == 1  # named: must
+    assert "BM-DRUM-01 [renoise]: Renoise can't render yet" in capsys.readouterr().err
     renders = cfg_for(tmp_path).data_dir / "renders"
     listed = next(b for b in feedback.listing(renders, None) if b["id"] == "BM-DRUM-01")
-    assert listed["report"]["variant"] == "main"
-    by_name = {v["name"]: v for v in listed["variants"]}
-    assert set(by_name) == {"supercollider", "renoise", "synth-kit", "other-hat"}
+    by_name = {v["name"]: v for v in listed["takes"]}
+    assert list(by_name) == ["renoise", "supercollider", "synth-kit", "other-hat"]
     assert by_name["renoise"]["report"] is None
     assert by_name["synth-kit"]["report"]["variant_title"] == "every part a SuperCollider synth"
-    hashes = {listed["report"]["score_hash"], by_name["synth-kit"]["report"]["score_hash"]}
-    assert len(hashes) == 2
+    hashes = {v["report"]["score_hash"] for v in by_name.values() if v["report"]}
+    assert len(hashes) == 3
+    assert run_cli(tmp_path, "report", "BM-DRUM-01") == 0
+    assert capsys.readouterr().out.count("BM-DRUM-01 Detroit four-to-the-floor [") == 3
     assert feedback.latest(renders, "BM-DRUM-01", "supercollider")["engine"] == "supercollider"  # type: ignore[index]
 
 

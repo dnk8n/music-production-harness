@@ -34,7 +34,7 @@ def make_render(
     digest: str,
     *,
     benchmark: str = "BM-DRUM-01",
-    variant: str = "main",
+    variant: str = "renoise",
     at: str = "2026-11-08T10:00:00Z",
     kit: tuple[str, ...] = (),
     work: bool = True,
@@ -197,7 +197,7 @@ def test_prune_shows_the_list_and_deletes_only_with_yes(
 @pytest.mark.req("REQ-RET-03")
 def test_a_render_tidies_up_after_itself(tmp_path: Path) -> None:
     cfg = cfg_for(tmp_path)
-    old = make_render(cfg.data_dir, "a" * 16, at="2000-01-01T00:00:00Z")
+    old = make_render(cfg.data_dir, "a" * 16, variant="supercollider", at="2000-01-01T00:00:00Z")
     other = make_render(cfg.data_dir, "c" * 16, variant="synth-kit", at="2000-01-01T00:00:00Z")
     outcome = render.run("BM-DRUM-01", cfg, runner(), None, home=tmp_path)
     assert not (outcome.folder / "work").exists()
@@ -229,12 +229,12 @@ def test_renders_on_demand_one_at_a_time() -> None:
     assert renderer.status().state == jit.IDLE
     assert renderer.start("BM-DRUM-01", "synth-kit").state == jit.RENDERING
     with pytest.raises(jit.JitError, match="already rendering BM-DRUM-01 synth-kit"):
-        renderer.start("BM-DRUM-02", "main")
+        renderer.start("BM-DRUM-02", "renoise")
     queued.pop()()  # type: ignore[operator]
     assert made == [("BM-DRUM-01", "synth-kit")]
     assert renderer.status().state == jit.DONE
     with pytest.raises(jit.JitError, match="no benchmark"):
-        renderer.start("no-such-benchmark", "main")
+        renderer.start("no-such-benchmark", "renoise")
     with pytest.raises(jit.JitError, match="no variant"):
         renderer.start("BM-DRUM-01", "nope")
 
@@ -242,11 +242,11 @@ def test_renders_on_demand_one_at_a_time() -> None:
         raise RuntimeError("Renoise is already open")
 
     failing = jit.Renderer(broken, spawn=lambda work: work())
-    failing.start("BM-DRUM-01", "main")
+    failing.start("BM-DRUM-01", "renoise")
     assert failing.status().to_dict() == {
         "state": "failed",
         "id": "BM-DRUM-01",
-        "variant": "main",
+        "variant": "renoise",
         "message": "Renoise is already open",
     }
 
@@ -256,10 +256,10 @@ def test_the_page_starts_a_render_and_reports_progress(tmp_path: Path) -> None:
     made: list[tuple[str, str]] = []
     renderer = jit.Renderer(lambda b, v: made.append((b, v)), spawn=lambda work: work())
     app = browse.App(tmp_path / db.FILENAME, tmp_path, FakeRunner(), PORT, renderer)
-    body = json.dumps({"id": "BM-DRUM-01", "variant": "main"}).encode()
+    body = json.dumps({"id": "BM-DRUM-01", "variant": "renoise"}).encode()
     started = app.handle_post("/api/render", POST, body)
     assert started.status == HTTPStatus.OK
-    assert made == [("BM-DRUM-01", "main")]
+    assert made == [("BM-DRUM-01", "renoise")]
     status = json.loads(app.handle("/api/render-status", LOCAL).body)
     assert status["state"] == "done"
     refused = app.handle_post("/api/render", POST, json.dumps({"id": "nope"}).encode())
@@ -328,7 +328,9 @@ def test_sizes_read_like_finder() -> None:
 
 @pytest.mark.req("REQ-RET-01")
 @pytest.mark.parametrize("old_style", ["missing", "null"])
-def test_renders_from_before_variants_count_as_main(tmp_path: Path, old_style: str) -> None:
+def test_renders_from_before_takes_were_equal_are_superseded(
+    tmp_path: Path, old_style: str
+) -> None:
     old = make_render(tmp_path, "a" * 16, at="2026-11-08T21:39:00Z", work=False)
     report = json.loads((old / "report.json").read_text())
     if old_style == "missing":
@@ -337,5 +339,12 @@ def test_renders_from_before_variants_count_as_main(tmp_path: Path, old_style: s
         report["variant"] = None
     (old / "report.json").write_text(json.dumps(report))
     age(old)
-    make_render(tmp_path, "b" * 16, at="2026-11-09T06:41:00Z", work=False)
-    assert kinds(retention.plan(tmp_path, POLICY)) == {old: retention.SUPERSEDED}
+    assert kinds(retention.plan(tmp_path, POLICY)) == {
+        old: retention.SUPERSEDED
+    }  # no take plays it
+    main = make_render(tmp_path, "b" * 16, variant="main", at="2026-11-09T06:41:00Z", work=False)
+    take = make_render(tmp_path, "c" * 16, at="2026-11-09T06:42:00Z", work=False)
+    planned = retention.plan(tmp_path, POLICY)
+    assert kinds(planned) == {old: retention.SUPERSEDED, main: retention.SUPERSEDED}
+    assert take not in kinds(planned)
+    assert any("from before takes were equal" in i.why for i in planned.items)

@@ -3,6 +3,7 @@ id = "BM-DRUM-02"
 title = "Jersey garage shuffle"
 hear = "the same four-on-the-floor, but every second 16th hat arrives late, so the hats skip and bounce. Open hats on the offbeat give the Jersey and Paradise Garage lift (Tony Humphries, Kerri Chandler)."
 bpm = 122
+project = "Drum patterns"
 bars = 8
 swing = 0.58
 

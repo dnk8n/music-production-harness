@@ -2,6 +2,7 @@
 id = "BM-BASS-01"
 title = "Acid line"
 bpm = 130
+project = "Bass"
 bars = 8
 hear = "the squelch. Accented notes are louder and brighter, with a vocal \"wow\". Slid notes glide in pitch without retriggering. Turning cutoff up opens from muffled to buzzy, and resonance up makes it whistle and scream."
 

@@ -1,0 +1,104 @@
+#!/bin/bash
+# Full check on Dean's Mac, with the real apps (REQ-ENG-08).
+#
+#   scripts/mac-check            check this checkout as it is
+#   scripts/mac-check REF        check a branch, tag or commit (e.g. origin/main)
+#                                in a temporary worktree; this checkout is untouched
+#   scripts/mac-check --allow-skips [REF]
+#                                don't fail when tests skip (a missing tool)
+#
+# Runs, in order: mph doctor, the pre-commit hooks, then every test with no
+# marker deselected, so the SuperCollider and macOS tests run against the
+# software installed on this Mac. Any skipped test fails the check, because a
+# skip means something a real run needs is missing. The full log goes to
+# ~/Library/Logs/mph/. Read-only towards sources, Keychain and renders: tests
+# write only to temporary folders.
+#
+# Written for macOS's /bin/bash 3.2: no bash 4 features.
+set -u
+
+allow_skips=0
+if [ "${1:-}" = "--allow-skips" ]; then
+  allow_skips=1
+  shift
+fi
+ref="${1:-}"
+
+if [ "$(uname -s)" != "Darwin" ]; then
+  echo "mac-check runs on macOS only (this is $(uname -s)). Linux checks run in CI." >&2
+  exit 2
+fi
+command -v uv >/dev/null || { echo "uv isn't installed: brew install uv" >&2; exit 2; }
+
+repo="$(cd "$(dirname "$0")/.." && pwd)"
+stamp="$(date +%Y%m%d-%H%M%S)"
+log_dir="$HOME/Library/Logs/mph"
+mkdir -p "$log_dir"
+log="$log_dir/mac-check-$stamp.log"
+junit="$log_dir/mac-check-$stamp.xml"
+
+workdir="$repo"
+worktree=""
+# shellcheck disable=SC2329 # called by the trap below
+cleanup() {
+  if [ -n "$worktree" ]; then
+    git -C "$repo" worktree remove --force "$worktree" >/dev/null 2>&1
+  fi
+}
+trap cleanup EXIT
+
+if [ -n "$ref" ]; then
+  git -C "$repo" fetch --quiet origin || { echo "git fetch failed" >&2; exit 2; }
+  worktree="$(mktemp -d "${TMPDIR:-/tmp}/mph-check.XXXXXX")"
+  rmdir "$worktree"
+  git -C "$repo" worktree add --quiet --detach "$worktree" "$ref" || exit 2
+  workdir="$worktree"
+fi
+cd "$workdir" || exit 2
+
+results=""
+failed=0
+step() { # step NAME COMMAND...: run, log, remember the outcome
+  name="$1"
+  shift
+  printf '\n== %s ==\n' "$name" | tee -a "$log"
+  if "$@" 2>&1 | tee -a "$log"; [ "${PIPESTATUS[0]}" -eq 0 ]; then
+    results="$results  ok    $name\n"
+  else
+    results="$results  FAIL  $name\n"
+    failed=1
+  fi
+}
+
+{
+  echo "mac-check $stamp"
+  echo "commit: $(git rev-parse --short HEAD) ($(git log -1 --format=%s))"
+  echo "macOS:  $(sw_vers -productVersion) $(uname -m)"
+} | tee "$log"
+
+step "install locked dependencies" uv sync --locked
+step "doctor (installed apps and config)" uv run mph doctor
+step "format, lint, types, spec gate" uv run pre-commit run --all-files --show-diff-on-failure
+step "every test, real tools included" \
+  uv run pytest -m "" -rs --cov=mph --junitxml="$junit"
+
+skipped="$(grep -o '<skipped' "$junit" 2>/dev/null | wc -l | tr -d ' ')"
+skipped="${skipped:-0}"
+if [ "$skipped" -gt 0 ]; then
+  if [ "$allow_skips" -eq 1 ]; then
+    results="$results  note  $skipped test(s) skipped (allowed)\n"
+  else
+    results="$results  FAIL  $skipped test(s) skipped: something a real run needs is missing\n"
+    failed=1
+  fi
+fi
+
+{
+  printf '\n== summary ==\n'
+  printf '%b' "$results"
+  if [ "$skipped" -gt 0 ]; then
+    echo "  Skipped tests and why are listed under 'short test summary info' above."
+  fi
+  echo "  log: $log"
+} | tee -a "$log"
+exit "$failed"

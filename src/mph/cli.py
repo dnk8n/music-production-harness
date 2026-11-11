@@ -341,12 +341,17 @@ def cmd_doctor(
     return 0 if report.healthy else 1
 
 
+def _plan_header(component: components.Component, detection: components.Detection) -> str:
+    broken = f"{component.name} is installed but {detection.problem}\n" if detection.problem else ""
+    return f"{broken}Install plan for {component.name}: {component.purpose}"
+
+
 def cmd_install(component: components.Component, ctx: Context, *, run: bool) -> int:
     detection = component.detector.detect(ctx)
-    if detection.found and component.version_ok(detection):
+    if component.ready(detection):
         print(f"{component.name} already installed ({detection.version or 'version unknown'})")
         return 0
-    print(f"Install plan for {component.name}: {component.purpose}")
+    print(_plan_header(component, detection))
     for number, step in enumerate(component.steps, start=1):
         kind = " ".join(step.argv) if step.automatable else "manual"
         print(f"  {number}. {step.description}  [{kind}]")

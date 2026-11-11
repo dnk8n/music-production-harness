@@ -51,3 +51,18 @@ Ollama, GitHub CLI.
 - **Why:** these are the tools the architecture depends on. Versions below
   the minimum lack features we use (Renoise 3.5 Lua API, SC 3.13 NRT fixes).
 - **Verify:** test
+
+### REQ-DOC-08: Installed means it runs
+A program installed with `uv tool install` (Demucs) is checked by starting
+it (`demucs --help` must exit cleanly), and its version comes from
+`uv tool list`. One that is there but won't start is a warning, or a failure
+if required, with the error's last line and `mph install <id>`, which
+reinstalls it. An app bundle with no real version (UVR's says 0.0.0) is
+reported as found, saying that the app doesn't state its version.
+- **Why:** on Dean's Mac (2026-11-11), `demucs` was on PATH but every run
+  failed with `ModuleNotFoundError: No module named 'numpy'`, while doctor
+  said OK. Demucs 4.1 lists numpy as a dependency only on Intel Macs and
+  imports it everywhere, so `uv tool install demucs` leaves it out on Apple
+  Silicon. The install step now adds it. Finding a file proves little for a
+  Python program; starting it proves its dependencies are there.
+- **Verify:** test

@@ -249,7 +249,9 @@ chh   x . x x x . x x x . x x x . x x
 ```
 Hear: no kick on beats 2 and 4. The kick skips, landing on 1 and the "and"
 of 3, so the groove limps forward. A heavily swung hat carries it.
+The snare is a garage one from the catalogue (words `garage`), as in BM-DRUM-10.
 - **Why:** checks that the system handles broken kick patterns, not just 4/4.
+  The garage snare: see BM-DRUM-10.
 - **Verify:** measure, listen
 
 ### BM-DRUM-04: Electro syncopation
@@ -287,8 +289,16 @@ ohh   . . o . . . o . . . o . . . o .
 ```
 Hear: busy, jacking 909 hats with an open hat cutting through on each offbeat.
 The open hat is choked (cut short) by the next closed hat.
+Measured: from 8 ms after each closed hat that chokes it, until the open hat
+plays again (50 ms at most), the open hat stays at least 60 dB below its
+peak. The same check runs wherever a score chokes a voice (BM-DRUM-02, 10).
 - **Why:** tests hat choke groups. An open hat ringing over a closed one is a
-  classic programming error.
+  classic programming error. A choke fades out rather than clicking off:
+  SuperCollider's release takes 5 ms, and Renoise's note-off fade measured
+  6.6 to 7.2 ms in the renders of 2026-11-10. With the check starting at
+  6 ms, four Renoise-made takes failed (BM-DRUM-02 and 10 synth-kit, BM-DRUM-06
+  renoise and synth-kit) while Dean passed all four by ear. 8 ms covers both
+  engines. A hat that keeps ringing still fails.
 - **Verify:** measure, listen
 
 ### BM-DRUM-07: Tribal techno, 3 against 4
@@ -340,7 +350,19 @@ Snare roll velocity ramps from 60% to 100% over the last 4 steps of every
 4th bar.
 Hear: four-to-the-floor with a pushy shuffle, and a snare flam that builds
 into each phrase.
+The snare is a garage one from the catalogue (words `garage`), as in BM-DRUM-03.
 - **Why:** tests velocity ramps and phrase-level variation (every 4th bar).
+  Dean failed the Renoise and SuperCollider takes of BM-DRUM-03 and
+  BM-DRUM-10 because "bass is distorted" (2026-11-10), and passed their
+  synth-kit takes. The one catalogue sound those four takes shared that no
+  passing benchmark used was the snare. It was IB_Snare_13, from a dubstep
+  pack, picked only because its pack's name sorts first among equally good
+  snares. 43% of its energy is below 400 Hz (20% below 150 Hz, where the
+  kick is), against 0.1% for the clap in the benchmarks Dean passed. The
+  kick and closed hat were the same sounds as in BM-DRUM-01, 02 and 06, and
+  the open hat as in 02 and 06, all of which he passed. Both patterns are
+  garage, so the snare comes from a garage pack, like the kick and hats:
+  its layered snare-clap has 1.6% of its energy below 400 Hz.
 - **Verify:** measure, listen
 
 ## Bass

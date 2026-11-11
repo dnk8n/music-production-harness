@@ -1,7 +1,7 @@
 # spec/components/benchmarks.md#bm-sc-01: BM-DRUM-01, the BM-BASS-01 acid line and a pad, ducked by the kick
 id = "BM-SC-01"
 title = "Kick-triggered ducking"
-hear = "the pad and bass \"breathe\" with the kick. They pump, rising between kicks and dipping as each kick lands. The kick punches through cleanly, with no low-end smear. At 0 dB depth (bypass), the kick sounds buried, which proves the effect."
+hear = "the pad and bass pump with the kick. They dip as each kick lands and swell back up before the next one, and the kick punches through cleanly. The exaggerated take makes the pump obvious. In bypass, the pad and bass hold steady under the kick."
 bpm = 130
 project = "Sidechain"
 bars = 8
@@ -38,10 +38,15 @@ params = { cutoff = 1800.0, resonance = 0.2, third = 3.0, fifth = 7.0 }
 [sidechain]
 trigger = "kick"
 targets = ["pad", "acid"]
-depth_db = 6.0
+depth_db = 12.0
 attack_ms = 2.0
-release_ms = 200.0
+release_ms = 400.0
+
+# Either side of the score's own duck, for A/B (REQ-BEN-07).
+[variants.exaggerated]
+title = "exaggerated (24 dB, 430 ms release): the pump is impossible to miss"
+sidechain = { depth_db = 24.0, release_ms = 430.0 }
 
 [variants.bypass]
-title = "sidechain bypassed (0 dB): the kick sounds buried"
+title = "sidechain bypassed (0 dB): the pad and bass hold steady"
 sidechain = { depth_db = 0.0 }

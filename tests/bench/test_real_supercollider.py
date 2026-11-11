@@ -40,3 +40,15 @@ def test_synth_kit_benchmarks_pass_with_real_supercollider(
     )
     failures = [m for m in outcome.report["measurements"] if not m["passed"]]  # type: ignore[attr-defined]
     assert failures == []
+
+
+@pytest.mark.req("REQ-BEN-12")
+@pytest.mark.parametrize("take", ["exaggerated", "bypass"])
+def test_bm_sc_01_takes_pass_with_real_supercollider(
+    real: SubprocessRunner, tmp_path: Path, take: str
+) -> None:
+    outcome = render.run(
+        "BM-SC-01", cfg_for(tmp_path, rate=96000), real, None, engine="supercollider", variant=take
+    )
+    failures = [m for m in outcome.report["measurements"] if not m["passed"]]  # type: ignore[attr-defined]
+    assert failures == []

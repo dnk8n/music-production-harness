@@ -20,6 +20,7 @@ import numpy as np
 import pyloudnorm
 import soundfile
 import soxr
+from pyloudnorm.iirfilter import IIRfilter
 
 from mph.bench.score import Event
 
@@ -220,6 +221,46 @@ def dips(
                 step_db=float(steps.max()) if steps.size else 0.0,
             )
         )
+    return found
+
+
+def k_weighted(data: Audio, rate: int) -> Audio:
+    """``data`` through ITU-R BS.1770's K-weighting (a high shelf, then a
+    high pass), the filters pyloudnorm applies before measuring loudness, so
+    a level compares as loudness does: sub-bass counts for less."""
+    out = np.array(data, dtype=np.float64)
+    for stage in (
+        IIRfilter(4.0, 1 / math.sqrt(2), 1500.0, rate, "high_shelf"),
+        IIRfilter(0.0, 0.5, 38.0, rate, "high_pass"),
+    ):
+        for channel in range(out.shape[1]):
+            out[:, channel] = stage.apply_filter(out[:, channel])
+    return out
+
+
+def window_changes(
+    wet: Audio,
+    dry: Audio,
+    hits_s: Sequence[float],
+    *,
+    rate: int,
+    start_s: float,
+    end_s: float,
+) -> list[float]:
+    """For each hit, how much louder ``wet`` is than ``dry`` (dB, negative
+    when quieter) over the window from ``start_s`` to ``end_s`` after it.
+    Hits whose dry window is silent are left out."""
+    found = []
+    for at in hits_s:
+        first, last = round((at + start_s) * rate), round((at + end_s) * rate)
+        dry_part, wet_part = dry[first:last], wet[first:last]
+        if dry_part.size == 0 or wet_part.size == 0:
+            continue
+        dry_power = float(np.mean(np.square(dry_part, dtype=np.float64)))
+        if dry_power <= SILENCE**2:
+            continue
+        wet_power = float(np.mean(np.square(wet_part, dtype=np.float64)))
+        found.append(10 * math.log10(max(wet_power, 1e-30) / dry_power))
     return found
 
 

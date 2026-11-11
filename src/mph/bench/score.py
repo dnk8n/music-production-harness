@@ -82,6 +82,7 @@ class Voice:
 
 Params = tuple[tuple[str, float], ...]
 HOLD = "-"  # in a melodic gate: hold the note before it for one more step
+SIDECHAIN_CHANGES = ("depth_db", "attack_ms", "release_ms")  # what a variant may change
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,13 +111,15 @@ class Variant:
     gains: tuple[tuple[str, float], ...] = ()  # voice -> gain_db
     every_voice_synth: bool = False
     params: tuple[tuple[str, Params], ...] = ()  # voice -> synth controls changed
-    sidechain_depth_db: float | None = None  # None keeps the score's own depth
+    sidechain: tuple[tuple[str, float], ...] = ()  # SIDECHAIN_CHANGES field -> its new value
 
     @property
     def as_scored(self) -> bool:
-        """True when it plays the score's own sounds, levels and controls."""
+        """True when every voice plays the score's own sounds, levels and
+        controls. A sidechain change doesn't count: it changes what happens
+        to the voices afterwards, not what they play."""
         changed = self.sounds or self.gains or self.params or self.every_voice_synth
-        return not changed and self.sidechain_depth_db is None
+        return not changed
 
 
 @dataclass(frozen=True, slots=True)
@@ -252,7 +255,12 @@ def _variant(name: str, raw: dict[str, Any], voices: dict[str, Voice]) -> Varian
             sounds.append((voice, _sound(merged)))
     gains = [(v, float(c["gain_db"])) for v, c in changes.items() if "gain_db" in c]
     params = [(v, _params(c["params"])) for v, c in changes.items() if "params" in c]
-    depth = raw.get("sidechain", {}).get("depth_db")
+    sidechain = raw.get("sidechain", {})
+    if unknown := set(sidechain) - set(SIDECHAIN_CHANGES):
+        raise ScoreError(
+            f"variant {name} changes {sorted(unknown)} of the sidechain; "
+            f"it can change {', '.join(SIDECHAIN_CHANGES)}"
+        )
     return Variant(
         name,
         str(raw.get("title", name)),
@@ -260,7 +268,7 @@ def _variant(name: str, raw: dict[str, Any], voices: dict[str, Voice]) -> Varian
         tuple(sounds),
         tuple(gains),
         params=tuple(params),
-        sidechain_depth_db=None if depth is None else float(depth),
+        sidechain=tuple((k, float(sidechain[k])) for k in SIDECHAIN_CHANGES if k in sidechain),
     )
 
 
@@ -317,11 +325,31 @@ def _sidechain(raw: dict[str, Any], voices: dict[str, Voice]) -> Sidechain:
         raise ScoreError(f"the sidechain names unknown voices {sorted(unknown)}")
     if not found.targets or found.trigger in found.targets:
         raise ScoreError("the sidechain needs targets other than its trigger")
+    return _shaped(found, "the sidechain")
+
+
+def _shaped(found: Sidechain, where: str) -> Sidechain:
     if found.depth_db < 0 or found.attack_ms <= 0 or found.release_ms <= 0:
         raise ScoreError(
-            "the sidechain needs a depth of 0 dB or more, and a positive attack and release"
+            f"{where} needs a depth of 0 dB or more, and a positive attack and release"
         )
     return found
+
+
+def _changed_sidechain(sidechain: Sidechain | None, variant: Variant) -> Sidechain | None:
+    """The score's sidechain with a variant's changes (REQ-BEN-07, REQ-BEN-12)."""
+    if not variant.sidechain:
+        return sidechain
+    if sidechain is None:
+        raise ScoreError(f"variant {variant.name} changes a sidechain the score doesn't have")
+    changes = dict(variant.sidechain)
+    changed = replace(
+        sidechain,
+        depth_db=changes.get("depth_db", sidechain.depth_db),
+        attack_ms=changes.get("attack_ms", sidechain.attack_ms),
+        release_ms=changes.get("release_ms", sidechain.release_ms),
+    )
+    return _shaped(changed, f"variant {variant.name}'s sidechain")
 
 
 def parse(raw: dict[str, Any]) -> Score:
@@ -344,6 +372,8 @@ def parse(raw: dict[str, Any]) -> Score:
             _variant(str(name), table, by_name) for name, table in raw.get("variants", {}).items()
         )
         sidechain = _sidechain(raw["sidechain"], by_name) if "sidechain" in raw else None
+        for variant in declared:
+            _changed_sidechain(sidechain, variant)  # a mistake is reported on load
         score = replace(score, variants=declared, sidechain=sidechain)
     except (KeyError, TypeError) as exc:
         raise ScoreError(f"score is missing or mistypes {exc}") from exc
@@ -533,7 +563,5 @@ def variant_of(score: Score, name: str) -> tuple[Score, Variant]:
                 params=changed,
             )
         )
-    sidechain = score.sidechain
-    if sidechain and found.sidechain_depth_db is not None:
-        sidechain = replace(sidechain, depth_db=found.sidechain_depth_db)
+    sidechain = _changed_sidechain(score.sidechain, found)
     return replace(score, voices=tuple(voices), variant=found.name, sidechain=sidechain), found

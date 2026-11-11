@@ -350,16 +350,15 @@ def _sidechain(
     hits = [e.sample(plan.rate) / plan.rate for e in setup.found if e.voice == chain.trigger]
     found = []
     for target in chain.targets:
-        found += checks.sidechain(
-            chain,
-            target,
-            stems[target],
-            dry[target],
-            hits,
-            rate=plan.rate,
-            recover_s=2 * score.step_s,  # the next 8th note
-        )
-    return dry, found
+        found += checks.sidechain(chain, target, stems[target], dry[target], hits, rate=plan.rate)
+    # The whole mix, ducked and as bypass would have it, weighted as loudness is.
+    ducked = audio.k_weighted(audio.mixdown(stems), plan.rate)
+    bypass = audio.k_weighted(audio.mixdown({**stems, **dry}), plan.rate)
+    under, after = (
+        audio.window_changes(ducked, bypass, hits, rate=plan.rate, start_s=lo, end_s=hi)
+        for lo, hi in (checks.MIX_UNDER_KICK_S, checks.MIX_AFTER_KICK_S)
+    )
+    return dry, found + checks.sidechain_mix(under, after, len(hits))
 
 
 def _probe_render(

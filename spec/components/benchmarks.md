@@ -241,8 +241,16 @@ ohh   . . o . . . o . . . o . . . o .
 ```
 Hear: busy, jacking 909 hats with an open hat cutting through on each offbeat.
 The open hat is choked (cut short) by the next closed hat.
+Measured: from 8 ms after each closed hat that chokes it, until the open hat
+plays again (50 ms at most), the open hat stays at least 60 dB below its
+peak. The same check runs wherever a score chokes a voice (BM-DRUM-02, 10).
 - **Why:** tests hat choke groups. An open hat ringing over a closed one is a
-  classic programming error.
+  classic programming error. A choke fades out rather than clicking off:
+  SuperCollider's release takes 5 ms, and Renoise's note-off fade measured
+  6.6 to 7.2 ms in the renders of 2026-11-10. With the check starting at
+  6 ms, four Renoise-made takes failed (BM-DRUM-02 and 10 synth-kit, BM-DRUM-06
+  renoise and synth-kit) while Dean passed all four by ear. 8 ms covers both
+  engines. A hat that keeps ringing still fails.
 - **Verify:** measure, listen
 
 ### BM-DRUM-07: Tribal techno, 3 against 4

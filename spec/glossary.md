@@ -18,4 +18,5 @@
 | **Gate** | A check a change must pass: deterministic, advisory AI, human. |
 | **Licence marker** | `licence:clear` when every ingredient of a render has a publishable licence, otherwise `licence:private`. |
 | **Doctor** | `mph doctor`: read-only diagnosis of installation and config, with a fix for each problem. |
+| **Query channel** | `mph mcp`: a read-only MCP server through which Claude asks about the catalogue, benchmarks, renders and health. |
 | **Stage** | A pipeline phase: core, catalogue, synthesis, vocals, renoise, mastering, ai. |

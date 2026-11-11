@@ -19,6 +19,9 @@ from mph.catalogue import commands as catalogue_commands
 from mph.components import Context, Stage
 from mph.platform_info import current_host
 from mph.proc import SubprocessRunner
+from mph.query import commands as query_commands
+from mph.query import tools as query_tools
+from mph.query.answers import Library
 from mph.renoise import commands as renoise_commands
 
 RENDER_TIMEOUT_S = 900.0
@@ -93,6 +96,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_search(cat_sub)
     _add_provenance(cat_sub)
     _add_bench(sub)
+    _add_mcp(sub)
     renoise = sub.add_parser("renoise", help="the Renoise bridge tool")
     renoise_sub = renoise.add_subparsers(dest="action", required=True)
     renoise_sub.add_parser("install", help="copy the bridge tool into Renoise's Tools folder")
@@ -188,6 +192,22 @@ def _add_bench(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None
     serve.add_argument("--no-open", action="store_true", help="just print the address")
 
 
+def _add_mcp(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    mcp = sub.add_parser(
+        "mcp",
+        help="let Claude query the catalogue, benchmarks and renders (read-only)",
+        description="A read-only MCP server for Claude Code. See spec/components/query-channel.md.",
+    )
+    mcp_sub = mcp.add_subparsers(dest="action", required=True)
+    mcp_sub.add_parser("serve", help="the MCP server on stdin/stdout (Claude Code starts it)")
+    mcp_sub.add_parser("install", help="register it for every Claude Code session on this Mac")
+    call = mcp_sub.add_parser("call", help="run one tool and print what Claude would see")
+    call.add_argument("tool", choices=[t.name for t in query_tools.TOOLS])
+    call.add_argument(
+        "arguments", nargs="?", default="{}", help='a JSON object, e.g. \'{"roles": ["kick"]}\''
+    )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "spec":
@@ -217,12 +237,20 @@ def dispatch(
             return cmd_doctor(cfg, ctx, store, stages, as_json=args.json)
         case "install":
             return cmd_install(components.by_id(args.component), ctx, run=args.yes)
-        case "catalogue":
-            return catalogue_commands.dispatch(args, cfg, ctx.runner, store)
+        case "catalogue" | "mcp":
+            return _library_commands(args, cfg, ctx, store)
         case "bench" | "renoise" | "prune":
             return _audio_commands(args, cfg, ctx)
         case _:
             return cmd_secrets(store, args.action, getattr(args, "name", None))
+
+
+def _library_commands(
+    args: argparse.Namespace, cfg: config.Config, ctx: Context, store: secrets.SecretStore | None
+) -> int:
+    if args.command == "mcp":
+        return query_commands.dispatch(args, Library(cfg, ctx, store), ctx.runner)
+    return catalogue_commands.dispatch(args, cfg, ctx.runner, store)
 
 
 def _audio_commands(args: argparse.Namespace, cfg: config.Config, ctx: Context) -> int:

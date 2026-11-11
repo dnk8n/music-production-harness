@@ -1,0 +1,400 @@
+"""The query channel's tools (spec/components/query-channel.md).
+
+A tool is a name, a description written for the model, a JSON Schema for its
+arguments and the answer it runs. Nothing here knows about MCP, so the same
+tools can be offered over another protocol, or to an LLM through the Claude
+API or Ollama, which describe tools in the same shape (issue #31).
+
+``run`` checks the arguments against the schema (the small part of JSON
+Schema the tools use), fills in defaults, answers, and keeps every answer
+under ``MAX_ANSWER_CHARS`` (REQ-QRY-05).
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import sqlite3
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from typing import Any
+
+from mph.catalogue import names
+from mph.components import Stage
+from mph.query import Unanswerable, answers
+from mph.query.answers import Answer, Library
+
+MAX_ANSWER_CHARS = 40_000
+Schema = dict[str, Any]
+Arguments = dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class Tool:
+    name: str
+    title: str
+    description: str
+    schema: Schema
+    answer: Callable[[Library, Arguments], Answer]
+
+
+def run(tool: Tool, library: Library, arguments: Mapping[str, Any]) -> str:
+    """The answer as compact JSON. Raises Unanswerable with a reason Claude can act on."""
+    problems = check(tool.schema, arguments)
+    if problems:
+        raise Unanswerable("bad arguments: " + "; ".join(problems))
+    try:
+        answer = tool.answer(library, with_defaults(tool.schema, arguments))
+    except (sqlite3.Error, OSError) as exc:  # the catalogue busy, a report half-written...
+        raise Unanswerable(f"could not read what this needs ({exc}); try again") from exc
+    text = json.dumps(answer, ensure_ascii=False, separators=(",", ":"))
+    if len(text) > MAX_ANSWER_CHARS:
+        raise Unanswerable(
+            f"the answer would be {len(text):,} characters, over the {MAX_ANSWER_CHARS:,} limit: "
+            "ask for less (a lower limit or max_rows, or narrower filters)"
+        )
+    return text
+
+
+def by_name(name: str) -> Tool:
+    return next(t for t in TOOLS if t.name == name)
+
+
+def with_defaults(schema: Schema, arguments: Mapping[str, Any]) -> Arguments:
+    defaults = {
+        name: spec["default"]
+        for name, spec in schema.get("properties", {}).items()
+        if "default" in spec
+    }
+    return {**defaults, **arguments}
+
+
+# --- argument checks ------------------------------------------------------------------
+
+KINDS: dict[str, tuple[str, Callable[[object], bool]]] = {
+    "object": ("an object", lambda v: isinstance(v, dict)),
+    "array": ("a list", lambda v: isinstance(v, list)),
+    "string": ("a string", lambda v: isinstance(v, str)),
+    "integer": ("a whole number", lambda v: isinstance(v, int) and not isinstance(v, bool)),
+    "number": ("a number", lambda v: isinstance(v, int | float) and not isinstance(v, bool)),
+    "boolean": ("true or false", lambda v: isinstance(v, bool)),
+}
+
+
+def check(schema: Schema, value: object, where: str = "") -> list[str]:
+    """What's wrong with ``value`` for ``schema``; empty when nothing is."""
+    label = where or "arguments"
+    kind = schema.get("type", "")
+    if kind and not KINDS[kind][1](value):
+        return [f"{label} must be {KINDS[kind][0]}"]
+    if "enum" in schema and value not in schema["enum"]:
+        return [f"{label} must be one of: {', '.join(map(str, schema['enum']))}"]
+    if isinstance(value, dict):
+        return _check_object(schema, value, where)
+    more = CHECKS.get(type(value))  # by exact type, so true and false are not numbers
+    return more(schema, value, label) if more else []
+
+
+def _check_object(schema: Schema, value: Mapping[str, Any], where: str) -> list[str]:
+    properties: dict[str, Schema] = schema.get("properties", {})
+    prefix = f"{where}." if where else ""
+    problems = [
+        f"{prefix}{name} is needed" for name in schema.get("required", ()) if name not in value
+    ]
+    for name, item in value.items():
+        if name in properties:
+            problems += check(properties[name], item, prefix + name)
+        elif schema.get("additionalProperties") is False:
+            expected = ", ".join(properties) or "none"
+            problems.append(f"unknown argument {prefix}{name} (arguments: {expected})")
+    return problems
+
+
+def _check_list(schema: Schema, value: Sequence[object], label: str) -> list[str]:
+    most = schema.get("maxItems")
+    problems = (
+        [f"{label} takes at most {most} items"] if most is not None and len(value) > most else []
+    )
+    for index, item in enumerate(value):
+        problems += check(schema.get("items", {}), item, f"{label}[{index}]")
+    return problems
+
+
+def _check_text(schema: Schema, value: str, label: str) -> list[str]:
+    if len(value) > schema.get("maxLength", len(value)):
+        return [f"{label} is longer than {schema['maxLength']} characters"]
+    if len(value) < schema.get("minLength", 0):
+        return [f"{label} is empty"]
+    if "pattern" in schema and not re.search(schema["pattern"], value):
+        return [f"{label} should look like {schema.get('examples', [schema['pattern']])[0]}"]
+    return []
+
+
+def _check_number(schema: Schema, value: float, label: str) -> list[str]:
+    if "minimum" in schema and value < schema["minimum"]:
+        return [f"{label} must be at least {schema['minimum']}"]
+    if "maximum" in schema and value > schema["maximum"]:
+        return [f"{label} must be at most {schema['maximum']}"]
+    return []
+
+
+CHECKS: dict[type, Callable[[Schema, Any, str], list[str]]] = {
+    list: _check_list,
+    str: _check_text,
+    int: _check_number,
+    float: _check_number,
+}
+
+
+# --- the tools ------------------------------------------------------------------------
+
+
+def _args(properties: Schema | None = None, required: Sequence[str] = ()) -> Schema:
+    schema: Schema = {"type": "object", "properties": properties or {}}
+    if required:
+        schema["required"] = list(required)
+    schema["additionalProperties"] = False
+    return schema
+
+
+def _limit(default: int, most: int, what: str) -> Schema:
+    return {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": most,
+        "default": default,
+        "description": f"at most this many {what} (default {default}, up to {most})",
+    }
+
+
+def _number(low: float, high: float, description: str) -> Schema:
+    return {"type": "number", "minimum": low, "maximum": high, "description": description}
+
+
+def _words(description: str) -> Schema:
+    return {
+        "type": "array",
+        "items": {"type": "string", "minLength": 1, "maxLength": 100},
+        "maxItems": 12,
+        "description": description,
+    }
+
+
+BENCHMARK_ID: Schema = {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 40,
+    "examples": ["BM-DRUM-02"],
+    "description": "a benchmark ID, such as BM-DRUM-02 (benchmarks lists them)",
+}
+ORIGINS = ["folder", "filename", "analysis", "human"]
+# The roles names give sounds (labels name=role shows how many of each).
+ROLES = list(dict.fromkeys(value for tag, value in names.VOCAB.values() if tag == "role"))
+
+TOOLS: tuple[Tool, ...] = (
+    Tool(
+        "overview",
+        "Overview of mph",
+        "Start here. A summary of everything mph knows on this Mac: config files and the data "
+        "folder, sample sources, the catalogue's size (sounds, files, hours, how many are "
+        "analysed, top packs, roles, formats), benchmarks per project with how many takes are "
+        "rendered, pass their measurements and what Dean's verdicts say, and the disk renders use.",
+        _args(),
+        lambda lib, a: answers.overview(lib),
+    ),
+    Tool(
+        "labels",
+        "Sound labels",
+        "The tag vocabulary that describes the sounds, for exploring the catalogue by label. "
+        "Without name: every tag name (role, pack, bpm, key, form, character) with how many "
+        "sounds carry it, by origin: folder and filename are hints parsed from names, analysis "
+        "is measured from the audio, human is set by Dean. With name: that tag's values and how "
+        "many sounds have each, most common first.",
+        _args(
+            {
+                "name": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "description": "a tag name, such as role, pack, bpm, key, form or character",
+                },
+                "origin": {"type": "string", "enum": ORIGINS, "description": "only this origin"},
+                "limit": _limit(100, 500, "values"),
+            }
+        ),
+        lambda lib, a: answers.labels(lib, a.get("name"), a.get("origin"), a["limit"]),
+    ),
+    Tool(
+        "search_sounds",
+        "Search sounds",
+        "Find sounds in the catalogue, ranked by fit, with the reasons behind each score. "
+        "Filters are hard: roles, form, loudness (integrated LUFS, only for analysed sounds), "
+        "length, licence and words, which must all appear in the path or tags. bpm and key "
+        "filter and rank: half and double time and neighbouring keys match, and one-shots and "
+        "sounds without a key pass. Each hit has a hash to pass to the sound tool.",
+        _args(
+            {
+                "roles": _words(f"any of these roles: {', '.join(ROLES)}"),
+                "words": _words("words that must all appear in the path or tags, e.g. 909"),
+                "bpm": _number(20, 400, "target tempo"),
+                "bpm_tolerance": {
+                    **_number(0.1, 50, "how far off the tempo may be, in percent (default 3)"),
+                    "default": 3.0,
+                },
+                "key": {
+                    "type": "string",
+                    "maxLength": 20,
+                    "description": "target key, such as Dm, F#, 'Ab minor'",
+                },
+                "form": {"type": "string", "enum": ["oneshot", "loop", "phrase"]},
+                "min_lufs": _number(-100, 10, "quietest integrated loudness, LUFS"),
+                "max_lufs": _number(-100, 10, "loudest integrated loudness, LUFS"),
+                "min_seconds": _number(0, 36_000, "shortest length, seconds"),
+                "max_seconds": _number(0, 36_000, "longest length, seconds"),
+                "licence": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "description": "such as commercial-pack, cc0, cc-by, public-domain",
+                },
+                "limit": _limit(20, 200, "hits"),
+            }
+        ),
+        answers.search_sounds,
+    ),
+    Tool(
+        "sound",
+        "One sound in full",
+        "Everything mph knows about one sound: format and length, every file it lives at (one "
+        "sound can be in several packs), every tag with its origin and confidence, analysis "
+        "(BPM, key, loudness, peak, spectral centroid, onsets, low-end and percussive share, "
+        "form), licence and download source, what it was made from, stashes, whether it is on "
+        "disk, and which benchmark renders used it.",
+        _args(
+            {
+                "ref": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000,
+                    "description": "a hash, a unique hash prefix of 6 or more characters, or the "
+                    "sound's path (inside its source, or in full)",
+                }
+            },
+            required=["ref"],
+        ),
+        lambda lib, a: answers.sound(lib, a["ref"]),
+    ),
+    Tool(
+        "benchmarks",
+        "Benchmarks and takes",
+        "Every benchmark, grouped by project, with each take (one way of making it: renoise, "
+        "supercollider, synth-kit, or a variant the score declares): whether it is rendered, "
+        "its score hash and engine, whether its measurements pass, whether its audio is still "
+        "on disk, and the verdict that stands for it (its own, else the whole-benchmark one).",
+        _args({"project": {"type": "string", "maxLength": 100, "description": "only this one"}}),
+        lambda lib, a: answers.benchmarks(lib, a.get("project")),
+    ),
+    Tool(
+        "benchmark",
+        "One benchmark in full",
+        "One benchmark in full: what Dean should hear, its score file (TOML: tempo, swing, bars, "
+        "voices and their grids and sounds, variants), each take's newest render in brief (kit, "
+        "failed measurements, levels), the newest renders, and Dean's verdicts with their notes "
+        "(long notes clipped; verdicts has them whole). report has a render's full report.",
+        _args({"id": BENCHMARK_ID}, required=["id"]),
+        lambda lib, a: answers.benchmark(lib, a["id"]),
+    ),
+    Tool(
+        "report",
+        "One render's report",
+        "One render's full report.json: the sounds used and why, their gains, every "
+        "measurement with its value and limit, loudness and true peak, the licence marker, "
+        "tool versions and files, plus the verdicts given on that render. Name a take for its "
+        "newest render, or a score_hash (from benchmark or verdicts) for that exact one, "
+        "including renders whose audio was pruned.",
+        _args(
+            {
+                "id": BENCHMARK_ID,
+                "take": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "description": "a take, such as renoise, supercollider or synth-kit",
+                },
+                "score_hash": {
+                    "type": "string",
+                    "pattern": r"^[0-9a-f]{16}$",
+                    "examples": ["0123456789abcdef"],
+                    "description": "an exact render",
+                },
+            },
+            required=["id"],
+        ),
+        lambda lib, a: answers.report(lib, a["id"], a.get("take"), a.get("score_hash")),
+    ),
+    Tool(
+        "verdicts",
+        "Dean's verdicts",
+        "Dean's verdicts on benchmark renders, newest first: pass, close or fail, with notes "
+        "(often with times, such as '0:42 hats too loud'), for one take or for the whole "
+        "benchmark, with the take each render was.",
+        _args(
+            {
+                "benchmark": BENCHMARK_ID,
+                "verdict": {"type": "string", "enum": ["pass", "close", "fail"]},
+                "since": {
+                    "type": "string",
+                    "pattern": r"^\d{4}-\d{2}-\d{2}",
+                    "examples": ["2026-11-10"],
+                    "description": "only verdicts from this date (YYYY-MM-DD) on",
+                },
+                "limit": _limit(50, 500, "verdicts"),
+            }
+        ),
+        lambda lib, a: answers.verdicts(
+            lib, a.get("benchmark"), a.get("verdict"), a.get("since"), a["limit"]
+        ),
+    ),
+    Tool(
+        "schema",
+        "Database schema",
+        "The catalogue database's tables and indexes: columns, row counts, and the CREATE "
+        "statements with their comments, plus notes on how the tables fit together. Read this "
+        "before writing sql.",
+        _args(),
+        lambda lib, a: answers.schema(lib),
+    ),
+    Tool(
+        "sql",
+        "Read-only SQL",
+        "Run one read-only SQL query (SELECT, or WITH ... SELECT) on the catalogue database "
+        "(SQLite, with JSON functions) and get its rows. Writes, PRAGMA, ATTACH and "
+        "transactions are refused. It returns at most max_rows rows (truncated says there were "
+        "more) and stops after 5 seconds. Render reports are files, not tables: use benchmark "
+        "and report for those.",
+        _args(
+            {
+                "query": {"type": "string", "minLength": 1, "maxLength": 20_000},
+                "max_rows": _limit(100, 1000, "rows"),
+            },
+            required=["query"],
+        ),
+        lambda lib, a: answers.sql(lib, a["query"], a["max_rows"]),
+    ),
+    Tool(
+        "doctor",
+        "Installs and settings",
+        "The mph doctor checks: which tools and apps are installed and their versions "
+        "(SuperCollider, Renoise, ffmpeg, SoX, Demucs and more), whether the sample sources are "
+        "there, and whether each credential is set (never its value), each with a fix. Takes a "
+        "few seconds.",
+        _args(
+            {
+                "stages": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": [s.value for s in Stage]},
+                    "maxItems": len(Stage),
+                    "description": "only these stages (default: all)",
+                }
+            }
+        ),
+        lambda lib, a: answers.health(lib, a.get("stages", ())),
+    ),
+)

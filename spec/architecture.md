@@ -45,6 +45,7 @@
 | renoise bridge | Generate, control and render Renoise songs | [renoise.md](components/renoise.md) | 4 |
 | retention | Keep fresh renders, prune the rest, render again on demand | [retention.md](components/retention.md) | 3 |
 | mastering | Loudness, true peak, delivery QA | [mastering.md](components/mastering.md) | 4 |
+| query channel | Read-only tools through which Claude asks about the catalogue, benchmarks, renders and health | [query-channel.md](components/query-channel.md) | 3 |
 
 ## Boundaries
 
@@ -58,6 +59,8 @@
 - **SoX/libsoxr** does exactly one job: the delivery SRC and dither (ADR-0003).
 - **External processes** are only spawned through `mph.proc.Runner`, so every
   component is testable without the real tools (REQ-ENG-03).
+- **Claude** reads what mph knows through the query channel, a local MCP
+  server over stdio that can only read (ADR-0011).
 
 ## Data ownership
 

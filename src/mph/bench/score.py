@@ -311,11 +311,16 @@ def available() -> list[str]:
     )
 
 
-def load(benchmark_id: str) -> Score:
+def source(benchmark_id: str) -> str:
+    """The score file's text, as written."""
     if benchmark_id not in available():
         raise ScoreError(f"no score for {benchmark_id} (have: {', '.join(available())})")
     path = resources.files("mph.bench").joinpath("scores", f"{benchmark_id}.toml")
-    return load_text(path.read_text("utf-8"))
+    return path.read_text("utf-8")
+
+
+def load(benchmark_id: str) -> Score:
+    return load_text(source(benchmark_id))
 
 
 # --- events ---------------------------------------------------------------------------

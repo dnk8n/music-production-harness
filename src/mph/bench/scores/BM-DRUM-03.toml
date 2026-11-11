@@ -13,7 +13,7 @@ sound = { role = "kick" }
 
 [voices.snare]
 grid = ". . . . X . . . . . . . X . . ."
-sound = { role = "snare" }
+sound = { role = "snare", words = ["garage"] }
 
 [voices.chh]
 grid = "x . x x x . x x x . x x x . x x"

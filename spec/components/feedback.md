@@ -16,6 +16,8 @@ instead, to compare one spot. A "Match loudness" switch (on by default)
 plays every take at the loudness of the quietest rendered take on the page
 (integrated LUFS, ITU-R BS.1770), by turning the player down, never by
 changing the files; a part played on its own gets its render's setting.
+The loudness is that of the file the page plays: the master's, plus the
+delivery trim a render needed to stay under the ceiling (REQ-BEN-06).
 Each sound the render used can be played
 inline: the catalogue sample on its own, and that voice's stem from the render.
 Every rendered variant of a benchmark (REQ-BEN-07) is a take, shown as an
@@ -32,7 +34,8 @@ saving a verdict or finishing a render redraws the page with every fold and
 the scroll position as they were, and a reload keeps them too.
 - **Why:** Dean needs to judge output without looking at code. A louder take
   tends to sound better whatever else differs, so fair comparison needs
-  matched loudness.
+  matched loudness. Before the trim was counted, BM-SC-01's bypass take
+  played about 1.2 dB too quiet in Dean's A/B (2026-11-11).
 - **Verify:** test
 
 ### REQ-FBK-02: Verdicts are recorded

@@ -268,6 +268,10 @@ def test_the_page_matches_loudness_and_starts_takes_from_the_top() -> None:
     assert "Match loudness" in page and "Keep the playhead when switching takes" in page
     assert "10 ** ((quietest - lufs) / 20)" in page  # turned down to the quietest take
     assert "Math.min(1," in page  # never louder than the file
+    # The loudness of what plays: a delivered file trimmed under the ceiling is that
+    # much quieter than its master (REQ-BEN-06), and a stem isn't trimmed at all.
+    assert "value + trimOf(r)" in page
+    assert "matchedVolume(r) * 10 ** (trimOf(r) / 20)" in page
 
 
 def takes_of(app: browse.App, benchmark_id: str = "BM-DRUM-02") -> dict[str, dict[str, object]]:

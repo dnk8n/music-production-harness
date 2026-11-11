@@ -64,7 +64,10 @@ covers those choices.
 `mph bench render BM-...` writes to `data_dir/renders/<id>/<score hash>/`:
 one stem per voice and a `master.wav` (32-bit float at the production rate,
 REQ-AUD-02), the delivered `<id>.aiff` (48 kHz / 24-bit through the single
-SRC and dither, REQ-AUD-03) and `report.json`. A Renoise render (REQ-BEN-10)
+SRC and dither, REQ-AUD-03) and `report.json`. Benchmarks aren't mastered,
+so if the master's true peak is above -1 dBTP, the delivered file is turned
+down to it, and `report.json` gives that trim as `delivery_gain_db`. A
+Renoise render (REQ-BEN-10)
 also writes the song, `<id>.xrns`, with its samples inside. Intermediate
 files go in `work/`, which is deleted when the render finishes (REQ-RET-03).
 - **Why:** the feedback page and the AI reviewer find everything for one
@@ -83,13 +86,15 @@ standard variants:
 | `supercollider` | the score as written, rendered in SuperCollider (ADR-0009's fallback engine) |
 | `synth-kit` | every part a SuperCollider synth voice (not for scores with a break) |
 
-A score with a melodic voice has only `supercollider` as a standard variant,
-because it always renders there (REQ-BEN-10).
+A score with a melodic voice or a sidechain has only `supercollider` as a
+standard variant, because it always renders there (REQ-BEN-10, REQ-BEN-12).
 
 A score can add its own under `[variants.<name>]`: a title, an engine,
 and per-voice changes to `sound` (role, words, `synth`, or `pick`, the Nth
 best catalogue match), `gain_db` and synth `params` (such as a filter
-cutoff). A declared variant with no engine uses the engine REQ-BEN-10 picks.
+cutoff). A score with a sidechain can also change its `depth_db`, `attack_ms`
+and `release_ms` (REQ-BEN-12). A declared variant with no engine uses the
+engine REQ-BEN-10 picks.
 `mph bench render BM-...` renders every variant; one whose engine isn't
 installed here is skipped with a note, not counted as a failure.
 `--variant NAME` renders just that one, and fails if it can't. Each variant
@@ -144,7 +149,8 @@ come from a second small song with each voice's sounds spaced apart. Without
 Renoise, or with `--engine supercollider`, the render runs in SuperCollider
 alone as before. A score with a melodic voice (glides, per-note filter
 envelopes) renders in SuperCollider either way, and asking for Renoise is
-refused with a plain reason. The report names the engine and its version.
+refused with a plain reason. So does a score with a sidechain (REQ-BEN-12).
+The report names the engine and its version.
 - **Why:** what Dean hears is the song he can open and change, while CI and
   machines without Renoise can still render and test every benchmark.
 - **Verify:** test
@@ -157,6 +163,46 @@ piece of work (a track, a set of experiments) can be its own project. The
 listening page groups benchmarks by project (REQ-FBK-01).
 - **Why:** the list keeps growing (Dean, 2026-11-10), and a project groups
   what is judged together, so the rest can be folded away.
+- **Verify:** test
+
+### REQ-BEN-12: Sidechain ducking
+A score can sidechain voices to a trigger voice: `[sidechain]` names the
+`trigger` (such as the kick), the `targets`, the `depth_db`, and the
+`attack_ms` and `release_ms` of the dip. Every trigger hit in the score
+starts the dip at that hit's exact sample, so the ducking follows the
+pattern, not a detector listening to the kick (like a volume-shaper plugin
+synced to the kick). The gain falls by the depth over the attack, then
+rises back along a half-cosine curve over the release. Overlapping dips
+add up, but never past the depth. A declared variant can change the depth,
+attack and release, such as `sidechain = { depth_db = 24, release_ms = 430 }`.
+A depth of 0 dB bypasses it. Sidechained scores render in SuperCollider for
+now (asking for Renoise is refused with a plain reason), where a ducker
+after each target's synths applies the gain.
+
+To measure it, mph also renders the targets with the sidechain bypassed.
+The note timing checks use that dry render, and two kinds of measurement
+compare against it:
+- **Each target.** The gain is the ratio of the ducked target to the dry
+  one, in 0.5 ms windows. At every hit, the target dips by the depth
+  (±1 dB) within 5 ms. It is back within 0.5 dB of full level 10 ms after
+  the release ends. On the way back, the gain never changes by more than
+  0.5 dB from one window to the next.
+- **The whole mix.** The ducked mix is compared with the same mix holding
+  the dry targets, which is exactly what bypass sounds like. Both are
+  K-weighted, as loudness is measured (ITU-R BS.1770). The comparison
+  looks at two windows after every hit: under the kick (5 to 35 ms) and
+  after it (100 to 200 ms). After the kick, the median over the hits must
+  be at least 2 dB down. That's about twice the smallest change in level
+  people notice, so it's heard as pumping. The window under the kick is
+  reported alongside it.
+- **Why:** pumping is a musical choice, so it should land exactly where the
+  pattern says, every time, and stay deterministic (REQ-AUD-05). Measuring
+  against the same target without the ducking shows the envelope itself,
+  whatever the pad or bass is playing. The envelope can pass while nothing
+  is heard, so the mix is measured too. Dean couldn't hear a 6 dB dip
+  released over 200 ms (2026-11-11). It changed the mix by about 0.5 dB:
+  the kick masks the first 100 ms after each hit, and by then the dip was
+  nearly over.
 - **Verify:** test
 
 ## Drum patterns
@@ -399,16 +445,41 @@ stutter roll that tightens into the next bar, landing exactly on beat 1.
 ## Sidechain
 
 ### BM-SC-01: Kick-triggered ducking
-BM-DRUM-01 plus a sustained pad and the acid bass, both sidechained to the kick.
-Expected envelope on the pad: ducks 6 dB (±1 dB) within 5 ms of each kick,
-recovers to full level by the next 8th note (230 ms at 130 BPM), using a
-smooth release curve.
-Hear: the pad and bass "breathe" with the kick. They pump, rising between
-kicks and dipping as each kick lands. The kick punches through cleanly, with
-no low-end smear. At 0 dB depth (bypass), the kick sounds buried, which
-proves the effect.
-- **Why:** sidechain is the backbone of club mix clarity. The measurement
-  checks depth and timing, and the bypass A/B checks Dean's ear.
+130 BPM, straight. BM-DRUM-01's kick, clap and hats, the BM-BASS-01 acid
+line, and a sustained pad: a C minor chord (C3, E♭3, G3) held for 15 steps
+of every bar, so it's sounding when each kick lands. In a melodic gate row,
+`-` holds the note before it for one more step, so the pad's gate is `x`
+then fourteen `-` and a rest. The pad and the acid are sidechained to the
+kick (REQ-BEN-12): 12 dB deep, with a 2 ms attack and a 400 ms release.
+```
+kick  X . . . X . . . X . . . X . . .
+clap  . . . . x . . . . . . . x . . .
+chh   . . x . . . x . . . x . . . x .
+```
+Expected envelope on the pad and the acid:
+- It ducks 12 dB (±1 dB) within 5 ms of each kick.
+- It swells back along a smooth curve, with no step between 0.5 ms
+  windows bigger than 0.5 dB.
+- It is within 0.5 dB of full level by 412 ms (the end of the release,
+  plus 10 ms), before the next kick at 462 ms.
+- In the whole mix, from 100 to 200 ms after each kick, it is at least
+  2 dB quieter than bypass.
+
+Two more takes bracket it:
+- `exaggerated` is the same duck at 24 dB with a 430 ms release, so the
+  pump is impossible to miss.
+- `bypass` sets the depth to 0 dB, for A/B.
+
+Hear: the pad and bass pump with the kick. They dip as each kick lands and
+swell back up before the next one, and the kick punches through cleanly.
+The exaggerated take makes the pump obvious. In bypass, the pad and bass
+hold steady under the kick.
+- **Why:** sidechain is the backbone of club mix clarity, and in house the
+  pump is a sound in its own right. The measurements check depth, timing
+  and that the mix audibly changes, and the three takes let Dean hear it
+  from none to too much. Dean failed the first version (6 dB, 200 ms
+  release) on 2026-11-11: "Cannot hear a real difference". The mix
+  measurement agreed: it changed the mix by about 0.5 dB.
 - **Verify:** measure, listen
 
 ## Vocals

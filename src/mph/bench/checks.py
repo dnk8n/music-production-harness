@@ -6,12 +6,14 @@ Each check is a named number with a limit and a pass flag, written to
 
 from __future__ import annotations
 
+import math
+import statistics
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 
 from mph.bench import audio
 from mph.bench.audio import Audio, Match
-from mph.bench.score import Event, Score
+from mph.bench.score import Event, Score, Sidechain
 
 TIMING_LIMIT_MS = 1.0  # REQ-BEN-01
 VELOCITY_LIMIT = 0.1
@@ -25,6 +27,16 @@ ACCENT_LOUDER_DB = 2.0
 SLIDE_DIP_DB = -3.0
 SLIDE_CENTS = 10.0
 ALIASING_LIMIT_DB = -60.0
+DUCK_WINDOW_S = 0.0005  # REQ-BEN-12: the gain is measured in windows this long
+DUCK_DEPTH_SLACK_DB = 1.0
+DUCK_REACH_MS = 5.0
+DUCK_RECOVERED_DB = -0.5
+DUCK_RECOVER_AFTER_S = 0.01  # back to full level this long after the release ends
+DUCK_STEP_DB = 0.5
+DUCK_DIP_SEARCH_S = 0.02  # after the attack, where the deepest point can be
+MIX_UNDER_KICK_S = (0.005, 0.035)  # REQ-BEN-12: the whole mix, under the kick
+MIX_AFTER_KICK_S = (0.1, 0.2)  # and after it, where the pump is heard
+MIX_AUDIBLE_DB = 2.0  # quieter than bypass after the kick: twice a just-noticeable change
 
 
 @dataclass(frozen=True, slots=True)
@@ -236,3 +248,69 @@ def aliasing(name: str, level_db: float) -> Check:
     """REQ-AUD-04: energy between the harmonics of a high, open, resonant note."""
     return Check(f"aliasing: {name} inharmonic energy (dB)", max(round(level_db, 1), -200.0),
                  f"<= {ALIASING_LIMIT_DB}", level_db <= ALIASING_LIMIT_DB)  # fmt: skip
+
+
+def sidechain(
+    sidechain: Sidechain,
+    target: str,
+    wet: Audio,
+    dry: Audio,
+    triggers_s: Sequence[float],
+    *,
+    rate: int,
+) -> list[Check]:
+    """REQ-BEN-12 and BM-SC-01: at each trigger hit, the target dips by the
+    depth (within the slack) quickly, and is back to full level just after
+    the release ends, along a smooth curve. Measured as the ducked target
+    against the same target rendered dry."""
+    after_ms = DUCK_RECOVER_AFTER_S * 1000
+    dips = audio.dips(
+        wet,
+        dry,
+        triggers_s,
+        rate=rate,
+        window_s=DUCK_WINDOW_S,
+        search_s=sidechain.attack_ms / 1000 + DUCK_DIP_SEARCH_S,
+        recover_s=(sidechain.attack_ms + sidechain.release_ms + after_ms) / 1000,
+        reached_db=sidechain.depth_db - DUCK_DEPTH_SLACK_DB,
+    )
+    name = f"sidechain: {target}"
+    if not dips:
+        return [Check(f"{name} dip (dB)", 0.0, "measurable", False, "silent at every hit")]
+    worst_depth = max((d.depth_db for d in dips), key=lambda v: abs(v - sidechain.depth_db))
+    reach = max(d.reach_ms for d in dips)
+    recovered = [d.recovered_db for d in dips if not math.isnan(d.recovered_db)]
+    level = min(recovered, default=0.0)
+    step = max(d.step_db for d in dips)
+    note = f"{len(dips)} of {len(triggers_s)} hits measured"
+    return [
+        Check(f"{name} dip (dB)", round(worst_depth, 2),
+              f"{sidechain.depth_db:g} ± {DUCK_DEPTH_SLACK_DB:g}",
+              abs(worst_depth - sidechain.depth_db) <= DUCK_DEPTH_SLACK_DB, note),
+        Check(f"{name} dip reached (ms)", round(reach, 2), f"<= {DUCK_REACH_MS:g}",
+              reach <= DUCK_REACH_MS),
+        Check(f"{name} level {after_ms:g} ms after the release (dB)", round(level, 2),
+              f">= {DUCK_RECOVERED_DB:g}", level >= DUCK_RECOVERED_DB),
+        Check(f"{name} biggest step on the way back (dB per 0.5 ms)", round(step, 3),
+              f"<= {DUCK_STEP_DB:g}", step <= DUCK_STEP_DB),
+    ]  # fmt: skip
+
+
+def sidechain_mix(under: Sequence[float], after: Sequence[float], hits: int) -> list[Check]:
+    """REQ-BEN-12: how much the ducking changes the whole mix, against the
+    same mix with the sidechain bypassed, K-weighted. ``under`` and ``after``
+    hold one change (dB) per trigger hit, in the windows under the kick and
+    after it. Only the one after the kick must be big enough to hear: under
+    the kick, the kick itself covers the dip."""
+    name = "sidechain: whole mix 100-200 ms after the kick (dB)"
+    if not after:
+        return [Check(name, 0.0, "measurable", False, "silent after every hit")]
+    change = statistics.median(after)
+    below = f"{statistics.median(under):+.1f} dB" if under else "silent"
+    note = (
+        f"against bypass, median of {len(after)} of {hits} hits, weighted as loudness; "
+        f"under the kick (5-35 ms): {below}"
+    )
+    return [
+        Check(name, round(change, 2), f"<= -{MIX_AUDIBLE_DB:g}", change <= -MIX_AUDIBLE_DB, note)
+    ]

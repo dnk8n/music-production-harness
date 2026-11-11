@@ -28,12 +28,27 @@ def real() -> SubprocessRunner:
 @pytest.mark.req("REQ-BEN-01")
 @pytest.mark.req("REQ-AUD-05")
 @pytest.mark.req("REQ-AUD-04")
-@pytest.mark.parametrize("benchmark_id", ["BM-DRUM-02", "BM-DRUM-06", "BM-DRUM-08", "BM-BASS-01"])
+@pytest.mark.req("REQ-BEN-12")
+@pytest.mark.parametrize(
+    "benchmark_id", ["BM-DRUM-02", "BM-DRUM-06", "BM-DRUM-08", "BM-BASS-01", "BM-SC-01"]
+)
 def test_synth_kit_benchmarks_pass_with_real_supercollider(
     real: SubprocessRunner, tmp_path: Path, benchmark_id: str
 ) -> None:
     outcome = render.run(
         benchmark_id, cfg_for(tmp_path, rate=96000), real, None, engine="supercollider"
+    )
+    failures = [m for m in outcome.report["measurements"] if not m["passed"]]  # type: ignore[attr-defined]
+    assert failures == []
+
+
+@pytest.mark.req("REQ-BEN-12")
+@pytest.mark.parametrize("take", ["exaggerated", "bypass"])
+def test_bm_sc_01_takes_pass_with_real_supercollider(
+    real: SubprocessRunner, tmp_path: Path, take: str
+) -> None:
+    outcome = render.run(
+        "BM-SC-01", cfg_for(tmp_path, rate=96000), real, None, engine="supercollider", variant=take
     )
     failures = [m for m in outcome.report["measurements"] if not m["passed"]]  # type: ignore[attr-defined]
     assert failures == []

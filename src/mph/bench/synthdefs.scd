@@ -130,6 +130,48 @@ write.(SynthDef(\mph_acid, { |out = 0, amp = 1, gate = 1, freq = 65.41, acc = 0,
     OffsetOut.ar(out, ((filtered * 1.5).tanh * level * 0.7) ! 2);
 }));
 
+// Pad (BM-SC-01): a chord of band-limited saws (root, third and fifth, each
+// as two oscillators detuned apart) through a gentle low-pass. The saws are
+// sums of harmonics, like the acid's, so there's no aliasing (REQ-AUD-04).
+// chord 0 plays the root alone, and detune 0 one oscillator per note: the
+// aliasing probe uses both, so the energy it measures is aliasing, not chord.
+~padHarmonics = 40;
+write.(SynthDef(\mph_pad, { |out = 0, amp = 1, gate = 1, freq = 130.81, acc = 0,
+    cutoff = 1800, resonance = 0.2, third = 3, fifth = 7, chord = 1, detune = 8,
+    attack = 0.06, release = 0.06|
+    var top = min(20000, SampleRate.ir * 0.45);
+    var saw = { |f|
+        Mix.fill(~padHarmonics, { |i|
+            var h = f * (i + 1);
+            SinOsc.ar(h, 0, ((top - h) / 1000).clip(0, 1) / (i + 1))
+        }) * (2 / pi)
+    };
+    var pair = { |f| (saw.(f * (detune / 100).midiratio.sqrt)
+        + saw.(f / (detune / 100).midiratio.sqrt)) * 0.5 };
+    var notes = pair.(freq) + ((pair.(freq * third.midiratio)
+        + pair.(freq * fifth.midiratio)) * chord);
+    var filtered = MoogFF.ar(notes / (1 + (2 * chord)), cutoff.clip(30, 18000),
+        resonance.linlin(0, 1, 0, 3.5));
+    var level = EnvGen.ar(Env.asr(attack, 1, release, \sin), gate, doneAction: 2) * amp;
+    OffsetOut.ar(out, (filtered * level * 0.8) ! 2);
+}));
+
+// Sidechain (REQ-BEN-12). Each trigger hit starts an mph_duck at its own
+// sample: it writes how much level to take away (0 to depth) to a private
+// bus, rising over the attack and falling back along a half cosine over the
+// release. An mph_ducker per target runs after the voices and scales that
+// target's two channels by 1 minus the bus, never past the depth, so
+// overlapping dips add up but stop at the full depth.
+write.(SynthDef(\mph_duck, { |bus = 512, depth = 0.5, attack = 0.002, release = 0.2|
+    var env = EnvGen.ar(Env([0, depth, 0], [attack, release], [\lin, \sin]), doneAction: 2);
+    OffsetOut.ar(bus, env);
+}));
+
+write.(SynthDef(\mph_ducker, { |out = 0, bus = 512, depth = 0.5|
+    var gain = 1 - In.ar(bus, 1).clip(0, depth);
+    ReplaceOut.ar(out, In.ar(out, 2) * gain);
+}));
+
 "mph: synthdefs written to %".format(dir).postln;
 0.exit;
 )

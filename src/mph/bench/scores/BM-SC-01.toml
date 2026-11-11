@@ -1,0 +1,52 @@
+# spec/components/benchmarks.md#bm-sc-01: BM-DRUM-01, the BM-BASS-01 acid line and a pad, ducked by the kick
+id = "BM-SC-01"
+title = "Kick-triggered ducking"
+hear = "the pad and bass pump with the kick. They dip as each kick lands and swell back up before the next one, and the kick punches through cleanly. The exaggerated take makes the pump obvious. In bypass, the pad and bass hold steady under the kick."
+bpm = 130
+project = "Sidechain"
+bars = 8
+
+[voices.kick]
+grid = "X . . . X . . . X . . . X . . ."
+sound = { role = "kick", words = ["909"] }
+
+[voices.clap]
+grid = ". . . . x . . . . . . . x . . ."
+sound = { role = "clap", words = ["909"] }
+
+[voices.chh]
+grid = ". . x . . . x . . . x . . . x ."
+sound = { role = "hat", words = ["909"] }
+seconds = 0.25
+
+# The BM-BASS-01 line, as scored there.
+[voices.acid]
+notes  = "C2 C2 C3 C2 D#2 C2 G2 C2 C2 A#2 C2 C3 C2 F2 C2 G2"
+accent = ".  .  X  .  .   .  X  .  .  .   .  X  .  .  .  X"
+slide  = ".  .  .  .  S   .  .  .  .  S   .  .  .  .  .  ."
+gate   = "x  x  x  .  x   x  x  x  x  x   .  x  x  x  x  x"
+sound = { synth = "mph_acid" }
+params = { cutoff = 420.0, resonance = 0.6, envmod = 0.6, decay = 0.3, accent = 0.6 }
+
+# C minor (C3, Eb3, G3), held for 15 steps of every bar.
+[voices.pad]
+notes = "C3 - - - - - - - - - - - - - - -"
+gate  = "x  - - - - - - - - - - - - - - ."
+sound = { role = "pad", synth = "mph_pad" }
+params = { cutoff = 1800.0, resonance = 0.2, third = 3.0, fifth = 7.0 }
+
+[sidechain]
+trigger = "kick"
+targets = ["pad", "acid"]
+depth_db = 12.0
+attack_ms = 2.0
+release_ms = 400.0
+
+# Either side of the score's own duck, for A/B (REQ-BEN-07).
+[variants.exaggerated]
+title = "exaggerated (24 dB, 430 ms release): the pump is impossible to miss"
+sidechain = { depth_db = 24.0, release_ms = 430.0 }
+
+[variants.bypass]
+title = "sidechain bypassed (0 dB): the pad and bass hold steady"
+sidechain = { depth_db = 0.0 }

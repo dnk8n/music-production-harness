@@ -56,7 +56,15 @@ GLIDE_FROM_S = 0.3  # the slide starts here
 GLIDE_HOLD_S = 0.6  # and the note slid into is held this long
 GLIDE_MEASURE_S = 0.15  # its last part, once the glide and filter have settled
 GLIDE_SEARCH = 2**0.5  # look for the pitch within half an octave of the target
-PROBE_PARAMS = {"cutoff": 8000.0, "resonance": 0.9, "envmod": 0.0, "accent": 0.0}
+# A pad plays its root alone, undetuned, so the energy between harmonics is aliasing.
+PROBE_PARAMS = {
+    "cutoff": 8000.0,
+    "resonance": 0.9,
+    "envmod": 0.0,
+    "accent": 0.0,
+    "chord": 0.0,
+    "detune": 0.0,
+}
 DELIVERY_CEILING_DBTP = -1.0  # benchmarks aren't mastered: keep them clear of clipping
 RENDERS = "renders"
 ONESHOT_S = 2.0  # room for a synth voice's one-shot
@@ -88,6 +96,7 @@ class Rendered:
     tools: dict[str, str] = field(default_factory=dict)
     files: dict[str, str] = field(default_factory=dict)  # extra files for the report
     extra_checks: list[checks.Check] = field(default_factory=list)  # engine-specific
+    dry: dict[str, audio.Audio] = field(default_factory=dict)  # sidechain targets, unducked
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,7 +174,8 @@ def template_events(score: Score, found: Sequence[Event]) -> list[Event]:
 def template_score(score: Score, templates: Sequence[Event]) -> Score:
     longest = max(e.time_s for e in templates) + TEMPLATE_GAP_S
     voices = tuple(replace(v, chokes=()) for v in score.voices)
-    return replace(score, bars=0, tail_s=longest, voices=voices)
+    # Templates sit side by side, so a sidechain would duck one with another's hit.
+    return replace(score, bars=0, tail_s=longest, voices=voices, sidechain=None)
 
 
 def spaced_templates(score: Score, found: Sequence[Event]) -> list[Event]:
@@ -250,14 +260,15 @@ def measure(
 # --- engines --------------------------------------------------------------------------
 
 
-def pick_engine(requested: str, home: Path, *, melodic: bool = False) -> str:
+def pick_engine(requested: str, home: Path, *, only: str = "") -> str:
+    """The engine to render in. ``only`` says why the score needs SuperCollider,
+    if it does (``Score.supercollider_only``)."""
     if requested not in ENGINES:
         raise sc.RenderError(f"engine must be one of {', '.join(ENGINES)}")
-    if melodic:
+    if only:
         if requested == "renoise":
             raise sc.RenderError(
-                "this benchmark has a melodic part (glides and filter envelopes), "
-                "which only SuperCollider can play so far"
+                f"this benchmark has {only}, which only SuperCollider can play so far"
             )
         return "supercollider"
     if requested == "supercollider":
@@ -270,12 +281,12 @@ def pick_engine(requested: str, home: Path, *, melodic: bool = False) -> str:
     return "renoise" if state == "ready" else "supercollider"
 
 
-def can_render(variant: Variant, home: Path, *, melodic: bool = False) -> str:
+def can_render(variant: Variant, home: Path, *, only: str = "") -> str:
     """Why this take can't render here, or "" when it can (REQ-BEN-07)."""
     if variant.engine != "renoise":
         return ""  # SuperCollider, or the engine REQ-BEN-10 picks, which falls back to it
-    if melodic:
-        return "a melodic part renders only in SuperCollider so far"
+    if only:
+        return f"{only} renders only in SuperCollider so far"
     if bridge.status(home) != "ready":
         return "Renoise isn't set up here (run `mph renoise install`)"
     return ""
@@ -283,7 +294,9 @@ def can_render(variant: Variant, home: Path, *, melodic: bool = False) -> str:
 
 def first_take(score: Score, home: Path, engine: str = "auto") -> Variant:
     """The first take that can render here, in the engine asked for if one was."""
-    takes = [v for v in all_variants(score) if not can_render(v, home, melodic=score.melodic)]
+    takes = [
+        v for v in all_variants(score) if not can_render(v, home, only=score.supercollider_only)
+    ]
     if engine != "auto":
         takes = [v for v in takes if v.engine == engine] or [v for v in takes if not v.engine]
     return next(iter(takes), all_variants(score)[0])
@@ -305,6 +318,7 @@ def _render_supercollider(runner: Runner, tools: sc.Tools, setup: Setup) -> Rend
     ref_file = sc.render(runner, tools, ref_plan, templates, work / "templates.wav")
     names = [v.name for v in score.voices]
     stems = audio.split(rendered, names)
+    dry, ducking = _sidechain(runner, tools, setup, stems)
     return Rendered(
         master=audio.mixdown(stems),
         again=audio.mixdown(audio.split(again, names)),
@@ -312,8 +326,39 @@ def _render_supercollider(runner: Runner, tools: sc.Tools, setup: Setup) -> Rend
         reference=audio.split(audio.read(ref_file)[0], names),
         templates=templates,
         tools={"scsynth": sc.version(runner, tools)},
-        extra_checks=probe(runner, tools, plan, work),
+        extra_checks=probe(runner, tools, setup.plan, work) + ducking,
+        dry=dry,
     )
+
+
+def _sidechain(
+    runner: Runner, tools: sc.Tools, setup: Setup, stems: dict[str, audio.Audio]
+) -> tuple[dict[str, audio.Audio], list[checks.Check]]:
+    """REQ-BEN-12: the targets again with the sidechain bypassed, and the dip
+    measured as the ducked targets against those."""
+    score, plan = setup.score, setup.plan
+    chain = score.sidechain
+    if chain is None or not chain.active:
+        return {}, []
+    bypassed = replace(plan, score=replace(score, sidechain=replace(chain, depth_db=0.0)))
+    out = setup.folder / "work" / "dry.wav"
+    rendered = audio.split(
+        audio.read(sc.render(runner, tools, bypassed, setup.found, out))[0],
+        [v.name for v in score.voices],
+    )
+    dry = {name: rendered[name] for name in chain.targets}
+    hits = [e.sample(plan.rate) / plan.rate for e in setup.found if e.voice == chain.trigger]
+    found = []
+    for target in chain.targets:
+        found += checks.sidechain(chain, target, stems[target], dry[target], hits, rate=plan.rate)
+    # The whole mix, ducked and as bypass would have it, weighted as loudness is.
+    ducked = audio.k_weighted(audio.mixdown(stems), plan.rate)
+    bypass = audio.k_weighted(audio.mixdown({**stems, **dry}), plan.rate)
+    under, after = (
+        audio.window_changes(ducked, bypass, hits, rate=plan.rate, start_s=lo, end_s=hi)
+        for lo, hi in (checks.MIX_UNDER_KICK_S, checks.MIX_AFTER_KICK_S)
+    )
+    return dry, found + checks.sidechain_mix(under, after, len(hits))
 
 
 def _probe_render(
@@ -474,8 +519,17 @@ def synth_oneshots(runner: Runner, tools: sc.Tools, plan: sc.Plan, folder: Path)
     if not synths:
         return {}
     melodic = {v.name: v for v in score.voices if v.melodic}
+    first = {e.voice: e for e in reversed(events(score))}  # each voice's first note
     hits = [
-        Event(name, 0, 0.0, 1.0, pitch=midi(melodic[name].notes[0]), length_s=score.step_s)
+        Event(
+            name,
+            0,
+            0.0,
+            1.0,
+            pitch=midi(melodic[name].notes[0]),
+            # at least a step; a held pad note whole, so its level is measured settled
+            length_s=max(score.step_s, first[name].length_s if name in first else 0.0),
+        )
         if name in melodic
         else Event(name, 0, 0.0, 1.0)
         for name in synths
@@ -560,7 +614,7 @@ def run(
     home = Path.home() if home is None else home
     loaded = load(benchmark_id)
     score, chosen_variant = variant_of(loaded, variant or first_take(loaded, home, engine).name)
-    chosen = pick_engine(chosen_variant.engine or engine, home, melodic=score.melodic)
+    chosen = pick_engine(chosen_variant.engine or engine, home, only=score.supercollider_only)
     choices = kit.choose(score, conn, cfg.data_dir)
     setup, tools, gains = _prepare(cfg, runner, score, choices, chosen)
     folder, rate = setup.folder, setup.rate
@@ -575,7 +629,7 @@ def run(
     found_checks = measure(
         score,
         setup.found,
-        stems=rendered.stems,
+        stems={**rendered.stems, **rendered.dry},  # note timing, before any ducking
         reference=rendered.reference,
         templates=rendered.templates,
         rate=rate,

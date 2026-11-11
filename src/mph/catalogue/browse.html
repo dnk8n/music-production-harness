@@ -282,9 +282,15 @@ let quietest = null;       // LUFS of the quietest rendered take on the page
 let benchData = [];        // the last /api/bench answer
 let renderWatch = null;    // polls a render started from this page
 const listening = load("mph.listening", { match: true, keep: false });
+// The trim a render's delivered file got to stay under the ceiling (dB, REQ-BEN-06).
+function trimOf(r) {
+  const trim = r?.delivery_gain_db;
+  return Number.isFinite(trim) ? trim : 0;
+}
+// The loudness of the file a take plays: its master's, with that trim.
 function lufsOf(r) {
   const value = r?.levels?.integrated_lufs;
-  return Number.isFinite(value) ? value : null;
+  return Number.isFinite(value) ? value + trimOf(r) : null;
 }
 // Loudness-matched playback: every take is turned down to the quietest one's
 // loudness (ITU-R BS.1770 integrated LUFS), so a louder take can't win just by
@@ -415,7 +421,8 @@ function playStem(b, r, voice) {
   stopLayer();
   player.src = `/bench/${b.id}/${r.score_hash}/stems/${voice}.wav`;
   player.loop = $("q-loop").checked;
-  player.volume = matchedVolume(r);  // the part at the level it has in its matched render
+  // The part at the level it has in its matched render; stems aren't trimmed.
+  player.volume = Math.min(1, matchedVolume(r) * 10 ** (trimOf(r) / 20));
   player.play().catch(() => {});
   playingTake = null;
   $("now").textContent = `▶ ${b.id} · ${voice} part only (${r.variant})`;

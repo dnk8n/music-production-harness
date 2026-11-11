@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from mph import components, config, doctor
+from mph import cli, components, config, doctor
 from mph.components import Binary, Bundle, Component, Context, Probe, Stage
 from mph.doctor import Status
 from mph.platform_info import Host, parse_version
@@ -202,3 +202,64 @@ def test_placeholder_bundle_version_is_unknown(mac_host: Host, placeholder: str)
     found = components.by_id("uvr").detector.detect(Context(FakeRunner(), mac_host))
     assert found.found
     assert found.version is None
+
+
+# --- REQ-DOC-08: installed means it runs ---------------------------------------------
+
+UV_TOOLS = Result(0, "demucs v4.1.0\n- demucs\nruff v0.8.0\n- ruff\n")
+NO_NUMPY = Result(
+    1,
+    "",
+    "Traceback (most recent call last):\n  ...\nModuleNotFoundError: No module named 'numpy'\n",
+)
+
+
+@pytest.mark.req("REQ-DOC-08")
+def test_a_uv_tool_must_start_and_gets_its_version_from_uv(mac_host: Host) -> None:
+    runner = FakeRunner(
+        on_path={"demucs": "/u/demucs", "uv": "/u/uv"},
+        responses={"uv": UV_TOOLS, "demucs": Result(0, "usage: demucs.separate [-h] ...")},
+    )
+    found = components.by_id("demucs").detector.detect(Context(runner, mac_host))
+    assert found == components.Detection(True, "4.1.0", "/u/demucs")
+    assert ("/u/demucs", "--help") in [argv for argv, _ in runner.calls]
+    finding = doctor.check_component(components.by_id("demucs"), Context(runner, mac_host))
+    assert (finding.status, finding.detail) == (Status.OK, "Demucs 4.1.0 at /u/demucs")
+
+
+@pytest.mark.req("REQ-DOC-08")
+def test_a_tool_that_cannot_start_warns_and_install_reinstalls_it(
+    mac_host: Host, capsys: pytest.CaptureFixture[str]
+) -> None:
+    ctx = Context(
+        FakeRunner(
+            on_path={"demucs": "/u/demucs", "uv": "/u/uv"},
+            responses={"uv": UV_TOOLS, "demucs": NO_NUMPY},
+        ),
+        mac_host,
+    )
+    demucs = components.by_id("demucs")
+    finding = doctor.check_component(demucs, ctx)
+    assert finding.status is Status.WARN  # optional, so a warning, like a missing one
+    assert finding.detail == (
+        "Demucs 4.1.0 at /u/demucs doesn't start: ModuleNotFoundError: No module named 'numpy'"
+    )
+    assert finding.fix == "mph install demucs"
+    assert cli.cmd_install(demucs, ctx, run=False) == 0  # not "already installed"
+    out = capsys.readouterr().out
+    assert "Demucs is installed but doesn't start" in out
+    assert "uv tool install --force --with numpy demucs" in out
+    silent = Context(
+        FakeRunner(on_path={"demucs": "/u/demucs"}, responses={"demucs": Result(2)}), mac_host
+    )
+    assert demucs.detector.detect(silent).problem == "doesn't start: exit code 2"
+
+
+@pytest.mark.req("REQ-DOC-08")
+def test_an_app_without_a_real_version_says_so(mac_host: Host) -> None:
+    make_bundle(mac_host.roots[0], "/Applications/Ultimate Vocal Remover.app", "0.0.0")
+    finding = doctor.check_component(components.by_id("uvr"), Context(FakeRunner(), mac_host))
+    assert finding.status is Status.OK
+    assert finding.detail.startswith(
+        "Ultimate Vocal Remover (the app doesn't state its version) at "
+    )

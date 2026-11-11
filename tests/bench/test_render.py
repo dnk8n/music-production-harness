@@ -616,3 +616,15 @@ def test_kit_passes_over_hats_that_whistle(conn: sqlite3.Connection, tmp_path: P
         "A Kick.wav"
     )
     assert not kit.tonal(tmp_path / "missing.wav")  # unreadable: left for the render to report
+
+
+@pytest.mark.req("REQ-BEN-05")
+def test_garage_patterns_take_a_garage_snare(conn: sqlite3.Connection, tmp_path: Path) -> None:
+    """Dean failed BM-DRUM-03 and 10 for a dubstep snare that won on its name (2026-11-10)."""
+    lib, snare = tmp_path / "lib", [("role", "snare")]
+    add_sample(conn, lib, "A Dubstep Snare 13.wav", snare)  # sorts first among equals
+    add_sample(conn, lib, "Bass House And Garage Snare Clap 03.wav", snare)
+    for benchmark in ("BM-DRUM-03", "BM-DRUM-10"):
+        chosen = {c.voice: c for c in kit.choose(score.load(benchmark), conn, tmp_path / "data")}
+        assert chosen["snare"].label == "Bass House And Garage Snare Clap 03.wav"
+        assert chosen["snare"].reason == "catalogue: best snare oneshot matching garage"

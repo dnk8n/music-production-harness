@@ -73,6 +73,18 @@ uv run mph secrets set freesound   # client ID + client secret
 uv run mph secrets set gemini      # API key
 ```
 
+Let Claude look things up for you: one command gives every Claude Code
+session on this Mac read-only tools for the catalogue, benchmarks, renders,
+verdicts and health (spec/components/query-channel.md). Claude can then
+answer questions like "which kicks have I never used in a render?" without
+being able to change anything.
+
+```sh
+uv run mph mcp install         # once; `claude mcp list` then shows mph connected
+uv run mph mcp call overview   # see what Claude sees
+uv run mph mcp call search_sounds '{"roles": ["kick"], "limit": 5}'
+```
+
 ## Plan
 
 | Step | Outcome | Status |

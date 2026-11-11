@@ -7,7 +7,8 @@ wires dependencies, calls one module and renders the result.
 
 ### REQ-CLI-01: Commands
 `mph status`, `mph doctor`, `mph install <component>`, `mph secrets
-list|set|delete`, `mph prune` (REQ-RET-05), `mph spec check`. Later steps add `mph catalogue ...`,
+list|set|delete`, `mph prune` (REQ-RET-05), `mph mcp serve|install|call`
+(spec/components/query-channel.md), `mph spec check`. Later steps add `mph catalogue ...`,
 `mph bench ...`, `mph render ...`.
 - **Why:** one entry point that's discoverable with `--help`.
 - **Verify:** test

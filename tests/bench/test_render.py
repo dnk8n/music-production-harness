@@ -12,7 +12,7 @@ import pytest
 import soundfile
 
 from mph import cli, config
-from mph.bench import audio, commands, kit, levels, osc, render, sc, score
+from mph.bench import audio, checks, commands, kit, levels, osc, render, sc, score
 from mph.catalogue import db
 from mph.proc import Result
 from mph.renoise import bridge
@@ -133,6 +133,26 @@ def test_kit_errors(tmp_path: Path) -> None:
 
 
 # --- SuperCollider seam ---------------------------------------------------------------
+
+
+@pytest.mark.parametrize(("fade_s", "passes"), [(0.005, True), (0.0072, True), (0.02, False)])
+def test_a_choke_may_fade_but_not_ring(fade_s: float, passes: bool) -> None:
+    """SuperCollider releases a choked hat in 5 ms, Renoise in about 7 ms (BM-DRUM-06)."""
+    loaded, rate = score.load("BM-DRUM-06"), 48000
+    found = score.events(loaded)
+    ohh = np.zeros(round(loaded.length_s * rate))
+    ring = np.exp(-np.arange(round(0.3 * rate)) / rate / 0.2)  # rings well past the closed hat
+    for hit in (e for e in found if e.voice == "ohh"):
+        start = round(hit.time_s * rate)
+        piece = ring[: len(ohh) - start].copy()
+        cut = next(e.time_s for e in found if e.voice == "chh" and e.time_s > hit.time_s)
+        at, length = round((cut - hit.time_s) * rate), round(fade_s * rate)
+        piece[at : at + length] *= np.linspace(1.0, 0.0, length)[: len(piece[at : at + length])]
+        piece[at + length :] = 0.0
+        ohh[start : start + len(piece)] = piece
+    stems = {"ohh": ohh[:, None]}
+    (check,) = checks.chokes(loaded, found, stems, {"ohh": float(np.abs(ohh).max())}, rate)
+    assert check.passed is passes
 
 
 def test_tools_are_found_or_reported_missing() -> None:

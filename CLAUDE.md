@@ -15,7 +15,10 @@ is the short version so every new session starts with the same rules.
    copy of the repo, on its own branch. Anything that needs Renoise, demucs,
    real SuperCollider renders, the Keychain or Dean's samples runs on Dean's
    Mac over Remote Control, in `/Users/dean/src/music-production-harness`,
-   after the PR is pushed.
+   after the PR is pushed. To look something up there (sounds, labels,
+   benchmarks, verdicts, health), use the read-only `mph` MCP tools, or
+   `uv run mph mcp call TOOL` where they aren't loaded
+   (spec/components/query-channel.md).
 4. **One branch per PR, cut from the latest `main`.** Don't stack PRs. Before
    merging, update the branch with `main` and let CI pass again (REQ-PRC-05).
 5. **Track work in GitHub issues** with labels from `.github/labels.yml`:

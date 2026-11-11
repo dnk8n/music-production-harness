@@ -66,7 +66,19 @@ def check_component(component: Component, ctx: Context) -> Finding:
             f"{component.name} {version} < {component.min_version}",
             f"upgrade {component.name}",
         )
-    return Finding(check, Status.OK, f"{component.name} {version} at {detection.location}")
+    named = (
+        f"{component.name} {detection.version}"
+        if detection.version
+        else f"{component.name} ({detection.note or 'version unknown'})"
+    )
+    if detection.problem:  # there, but broken: as bad as missing (REQ-DOC-08)
+        return Finding(
+            check,
+            Status.FAIL if component.required else Status.WARN,
+            f"{named} at {detection.location} {detection.problem}",
+            f"mph install {component.id}",
+        )
+    return Finding(check, Status.OK, f"{named} at {detection.location}")
 
 
 def check_source(source: Source) -> Finding:

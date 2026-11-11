@@ -34,6 +34,8 @@ class Detection:
     found: bool
     version: str | None = None
     location: str | None = None
+    problem: str | None = None  # there, but doesn't work (REQ-DOC-08)
+    note: str | None = None  # why there's no version, when that's known
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,7 +83,41 @@ class Bundle:
         found = ctx.host.find(*self.candidates)
         if found is None:
             return Detection(False)
-        return Detection(True, bundle_version(found), str(found))
+        version = bundle_version(found)
+        note = None if version else "the app doesn't state its version"
+        return Detection(True, version, str(found), note=note)
+
+
+@dataclass(frozen=True, slots=True)
+class UvTool:
+    """A program installed with ``uv tool install`` (REQ-DOC-08). Being on PATH
+    isn't enough: it has to start (``smoke`` exits cleanly), and its version
+    comes from ``uv tool list``, since such programs rarely print one."""
+
+    name: str
+    smoke: tuple[str, ...] = ("--help",)
+
+    def detect(self, ctx: Context) -> Detection:
+        location = ctx.runner.which(self.name)
+        if location is None:
+            return Detection(False)
+        version = self._version(ctx)
+        started = ctx.runner.run([location, *self.smoke])
+        if started.ok:
+            return Detection(True, version, location)
+        lines = (started.stderr or started.stdout).strip().splitlines()
+        why = lines[-1].strip() if lines else f"exit code {started.code}"
+        return Detection(True, version, location, problem=f"doesn't start: {why}")
+
+    def _version(self, ctx: Context) -> str | None:
+        uv = ctx.runner.which("uv")
+        if uv is None:
+            return None
+        for line in ctx.runner.run([uv, "tool", "list"]).stdout.splitlines():
+            name, _, rest = line.partition(" ")
+            if name == self.name:
+                return ".".join(map(str, parse_version(rest))) or None
+        return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,6 +161,10 @@ class Component:
         if self.min_version is None or detection.version is None:
             return True
         return parse_version(detection.version) >= parse_version(self.min_version)
+
+    def ready(self, detection: Detection) -> bool:
+        """Installed, new enough, and working: nothing for ``mph install`` to do."""
+        return detection.found and self.version_ok(detection) and not detection.problem
 
 
 def brew(formula: str, *, cask: bool = False) -> Step:
@@ -246,8 +286,14 @@ REGISTRY: tuple[Component, ...] = (
         "Demucs",
         Stage.VOCALS,
         "Separates vocals from full mixes",
-        Binary("demucs"),
-        steps=(Step("Install as an isolated tool", ("uv", "tool", "install", "demucs")),),
+        UvTool("demucs"),
+        steps=(
+            Step(
+                # Demucs 4.1 declares numpy only for Intel Macs, but imports it everywhere.
+                "Install as an isolated tool, with numpy",
+                ("uv", "tool", "install", "--force", "--with", "numpy", "demucs"),
+            ),
+        ),
     ),
     Component(
         "uvr",

@@ -21,14 +21,14 @@ import math
 import shutil
 import sqlite3
 from collections.abc import Sequence
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
 from mph import __version__, retention
-from mph.bench import audio, checks, kit, levels, sc
+from mph.bench import audio, checks, feedback, kit, levels, rerender, sc
 from mph.bench.score import (
     Event,
     Score,
@@ -291,6 +291,19 @@ def can_render(variant: Variant, home: Path, *, only: str = "") -> str:
     if bridge.status(home) != "ready":
         return "Renoise isn't set up here (run `mph renoise install`)"
     return ""
+
+
+def take(benchmark_id: str, variant: str, engine: str, home: Path) -> tuple[Score, Variant, str]:
+    """A take's score, its variant, and the engine it renders in."""
+    loaded = load(benchmark_id)
+    score, chosen_variant = variant_of(loaded, variant or first_take(loaded, home, engine).name)
+    chosen = pick_engine(chosen_variant.engine or engine, home, only=score.supercollider_only)
+    return score, chosen_variant, chosen
+
+
+def take_inputs(cfg: Config, score: Score, engine: str) -> str:
+    """What shapes this take, as its report records it (REQ-BEN-14)."""
+    return rerender.inputs(score, engine, asdict(cfg.audio))
 
 
 def first_take(score: Score, home: Path, engine: str = "auto") -> Variant:
@@ -611,12 +624,12 @@ def run(
     variant: str = "",
     session: bridge.Session | None = None,
 ) -> Outcome:
-    """Render one take; with no variant named, the benchmark's first (REQ-BEN-07)."""
+    """Render one take; with no variant named, the benchmark's first (REQ-BEN-07).
+    A take that passed keeps its sounds (REQ-BEN-15)."""
     home = Path.home() if home is None else home
-    loaded = load(benchmark_id)
-    score, chosen_variant = variant_of(loaded, variant or first_take(loaded, home, engine).name)
-    chosen = pick_engine(chosen_variant.engine or engine, home, only=score.supercollider_only)
-    choices = kit.choose(score, conn, cfg.data_dir)
+    score, chosen_variant, chosen = take(benchmark_id, variant, engine, home)
+    made, verdict = feedback.standing(renders_dir(cfg), conn, score.id, chosen_variant.name)
+    choices = kit.choose(score, conn, cfg.data_dir, keep=rerender.kept_sounds(made, verdict))
     setup, tools, gains = _prepare(cfg, runner, score, choices, chosen)
     folder, rate = setup.folder, setup.rate
     if chosen == "renoise":
@@ -659,6 +672,7 @@ def run(
         "variant": score.variant,
         "variant_title": chosen_variant.title,
         "score_hash": folder.name,
+        "inputs": take_inputs(cfg, score, chosen),
         "rendered_at": utc_now(),
         "engine": chosen,
         "tools": {"mph": __version__, **rendered.tools},
@@ -673,6 +687,7 @@ def run(
                 "hash": c.digest,
                 "licence": c.licence,
                 "why": c.reason,
+                "request": kit.request_of(score.voice(c.voice)),
                 "gain_db": gains[c.voice],
             }
             for c in choices

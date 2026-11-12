@@ -6,6 +6,7 @@ import sqlite3
 from collections.abc import Iterator
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -628,3 +629,82 @@ def test_garage_patterns_take_a_garage_snare(conn: sqlite3.Connection, tmp_path:
         chosen = {c.voice: c for c in kit.choose(score.load(benchmark), conn, tmp_path / "data")}
         assert chosen["snare"].label == "Bass House And Garage Snare Clap 03.wav"
         assert chosen["snare"].reason == "catalogue: best snare oneshot matching garage"
+
+
+# --- a pass is a pass (REQ-BEN-14, REQ-BEN-15) -------------------------------------------
+
+
+def _kit(tmp_path: Path) -> dict[str, dict[str, Any]]:
+    from mph.bench import feedback  # noqa: PLC0415
+
+    made = feedback.latest(cfg_for(tmp_path).data_dir / "renders", "BM-DRUM-01", "supercollider")
+    assert made is not None
+    return {entry["voice"]: {**entry, "score_hash": made["score_hash"]} for entry in made["kit"]}
+
+
+@pytest.mark.req("REQ-BEN-14")
+@pytest.mark.req("REQ-BEN-15")
+def test_a_pass_is_a_pass_and_keeps_its_sounds(
+    conn: sqlite3.Connection, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from mph.bench import feedback  # noqa: PLC0415
+
+    lib = tmp_path / "lib"
+    add_sample(conn, lib, "Kick B.wav", [("role", "kick")])
+    take = ("render", "BM-DRUM-01", "--variant", "supercollider")
+    assert run_cli(tmp_path, *take) == 0
+    assert "[supercollider]: rendering, never rendered" in capsys.readouterr().out
+    first = _kit(tmp_path)["kick"]
+    assert first["sound"] == "Kick B.wav"
+    assert first["request"] == {"role": "kick", "words": ["909"], "synth": "", "pick": 1}
+
+    assert run_cli(tmp_path, *take) == 0  # rendered, not judged yet: nothing new
+    assert "skipped, waiting for your verdict" in capsys.readouterr().out
+
+    renders = cfg_for(tmp_path).data_dir / "renders"
+    feedback.record(conn, renders, {"id": "BM-DRUM-01", "scope": "all", "verdict": "pass"})
+    assert run_cli(tmp_path, *take) == 0
+    out = capsys.readouterr().out
+    assert "[supercollider]: skipped, passed, and nothing changed" in out
+    assert "1 skipped: a pass is a pass. --force-rerender renders them anyway." in out
+
+    # A new sound that sorts first would win a fresh choice, but the passed take keeps its kick.
+    add_sample(conn, lib, "A Kick.wav", [("role", "kick")])
+    assert run_cli(tmp_path, *take, "--force-rerender") == 0
+    assert "rendering, asked to (--force-rerender)" in capsys.readouterr().out
+    again = _kit(tmp_path)["kick"]
+    assert again["sound"] == "Kick B.wav"
+    assert again["why"].endswith(f"; kept from passed render {first['score_hash']}")
+    assert again["score_hash"] == first["score_hash"]  # same render, so the pass still stands
+
+    # Notes on a pass are feedback still to act on.
+    feedback.record(
+        conn, renders, {"id": "BM-DRUM-01", "scope": "all", "verdict": "pass", "notes": "hats"}
+    )
+    assert run_cli(tmp_path, *take) == 0
+    assert "rendering, your notes are still to act on: hats" in capsys.readouterr().out
+
+
+@pytest.mark.req("REQ-BEN-15")
+def test_a_kept_sound_gives_way_to_a_new_request_or_a_missing_file(
+    conn: sqlite3.Connection, tmp_path: Path
+) -> None:
+    lib, data = tmp_path / "lib", tmp_path / "data"
+    old = add_sample(conn, lib, "Kick B.wav", [("role", "kick")])
+    add_sample(conn, lib, "A Kick.wav", [("role", "kick")])
+    loaded = score.load("BM-DRUM-01")
+    kick = loaded.voice("kick")
+    asked = kit.request_of(kick)
+
+    def chosen(kept: kit.Kept) -> str:
+        return {c.voice: c for c in kit.choose(loaded, conn, data, keep={"kick": kept})}[
+            "kick"
+        ].label
+
+    kept = kit.Kept(old, "Kick B.wav", "catalogue: best kick oneshot", "feedfacefeedface", asked)
+    assert chosen(kept) == "Kick B.wav"
+    assert chosen(replace(kept, request=None)) == "Kick B.wav"  # not recorded: kept
+    assert chosen(replace(kept, request={**asked, "words": ["808"]})) == "A Kick.wav"
+    assert chosen(replace(kept, digest="00" * 32)) == "A Kick.wav"  # not in the catalogue
+    (lib / "Kick B.wav").unlink()
+    assert chosen(kept) == "A Kick.wav"  # gone from disk

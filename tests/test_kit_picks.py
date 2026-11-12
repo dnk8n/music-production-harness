@@ -79,6 +79,17 @@ def test_role_changes_group_downloads_by_source(
 
 
 @pytest.mark.req("REQ-ENG-08")
+def test_sounds_right_inside_a_pack_group_by_the_pack(kit_picks: ModuleType) -> None:
+    where = {"s1": "Stab Pack/Stab 1.wav", "s2": "Stab Pack/Stab 2.wav"}
+    before = {"roles": {"s1": ["stab"], "s2": ["stab"]}, "paths": where}
+    after = {"roles": {"s1": ["bass", "stab"], "s2": ["bass", "stab"], "f00d": ["kick"]}}
+    assert kit_picks.changed_roles(before, {**after, "paths": where}) == {
+        "+ bass       Stab Pack": ["Stab Pack/Stab 1.wav", "Stab Pack/Stab 2.wav"],
+        "+ kick       f00d": ["f00d"],  # a sound with no path goes by its hash
+    }
+
+
+@pytest.mark.req("REQ-ENG-08")
 def test_changed_picks_list_only_the_voices_that_change(kit_picks: ModuleType) -> None:
     before = {"picks": {"BM-1 a": {"kick": "K1", "hat": "H1"}}}
     after = {"picks": {"BM-1 a": {"kick": "K2", "hat": "H1"}, "BM-2 a": {"bell": "mph_bell"}}}

@@ -110,7 +110,7 @@ def changed_roles(before: dict[str, Any], after: dict[str, Any]) -> dict[str, li
     for digest in sorted(set(before["roles"]) | set(after["roles"])):
         old, new = set(before["roles"].get(digest, ())), set(after["roles"].get(digest, ()))
         path = where.get(digest, digest)
-        top = "/".join(PurePosixPath(path).parts[:2])
+        top = "/".join(PurePosixPath(path).parent.parts[:2]) or path  # a hash has no folder
         for sign, roles_ in (("-", old - new), ("+", new - old)):
             for role in sorted(roles_):
                 groups[f"{sign} {role:10} {top}"].append(path)

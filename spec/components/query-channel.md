@@ -24,17 +24,20 @@ Implementation: `src/mph/query/`.
 
 | Tool | What it answers |
 |---|---|
-| `overview` | Start here: config, sources, catalogue size and how much is analysed, benchmarks per project with verdict counts, disk used by renders |
+| `overview` | Start here: config, sources (download stores too) and how much of each is analysed, catalogue size, roles counted two ways (REQ-QRY-11), benchmarks per project with verdict counts, disk used by renders |
 | `labels` | The tag vocabulary (role, pack, bpm, key, form, character) with counts by origin, or the values of one tag |
-| `search_sounds` | The catalogue search (REQ-CAT-05): hard filters, then hits ranked by fit with their reasons |
+| `search_sounds` | The catalogue search (REQ-CAT-05): hard filters, then hits ranked by fit with their reasons and licence |
 | `sound` | Everything about one sound: files, tags, analysis, licence and download, lineage, stashes, renders that used it |
-| `benchmarks` | Every benchmark and its takes: rendered or not, measurements passed, the verdict that stands |
-| `benchmark` | One benchmark: what to hear, its score file, each take's newest render in brief (kit, failed measurements, levels), render history, verdicts |
+| `benchmarks` | Every benchmark and its takes: rendered or not, which measurements failed, the verdict that stands with its notes (REQ-QRY-10) |
+| `benchmark` | One benchmark: what to hear, its score file, each take's newest render in brief (kit, failed measurements, levels), render history, verdicts as given |
 | `report` | One render's full report: kit, levels, measurements, files |
-| `verdicts` | Verdict history across benchmarks, newest first |
+| `verdicts` | Verdict history across benchmarks, newest first, each as given |
 | `schema` | The database's tables, columns, row counts and comments |
 | `sql` | One read-only query against the database |
 | `doctor` | The `mph doctor` findings |
+
+The benchmark tools also read what was rendered from other branches
+(REQ-QRY-09).
 
 The tools are plain functions with JSON Schema arguments and know nothing
 about MCP, so the site and API in issue #31 can offer the same tools over
@@ -89,9 +92,10 @@ than 1 MB.
 ### REQ-QRY-05: Bounded answers
 Every list has a limit, and no answer is longer than 40,000 characters. A
 longer answer is refused with a note to narrow the question or lower the
-limit. It is never cut off. The one shortening is in summaries: `benchmark`
-shows the first 300 characters of a long verdict note, marked as clipped,
-and `verdicts` shows it whole.
+limit, in the tool's own terms (`benchmarks`: one project at a time). It is
+never cut off. The one shortening is in summaries: `benchmarks` and
+`benchmark` show the first 300 characters of a long verdict note, marked as
+clipped, and `verdicts` shows it whole.
 - **Why:** Claude Code moves tool results over 50,000 characters into a file
   instead of showing them, and long answers crowd out the conversation. A
   refusal says how to ask better; a cut-off answer misleads without saying so.
@@ -124,4 +128,53 @@ and how to remove it.
 and prints its answer. A tool error is printed with exit code 1.
 - **Why:** Dean, or a check over Remote Control, can see exactly what Claude
   would get, without involving Claude.
+- **Verify:** test
+
+### REQ-QRY-09: Renders from other branches
+Threads render benchmarks from the branch they work on, while the checkout
+the channel runs from is often on `main`. So the benchmark tools read every
+render under `data_dir/renders`, not only those of the scores in this
+checkout. A benchmark this checkout has no score for is listed after the
+others, under the project "Not in this checkout", with its title, tempo and
+takes taken from its reports, and no score file or "hear" text. A take the
+score here doesn't declare is listed after the declared ones. Both are marked
+`in_checkout: false`, and `benchmark`, `report`, `verdicts` and `sound` take
+them like any other. A render from before takes were equal (take `main`) is
+still not a take.
+- **Why:** BM-SC-01 was rendered and judged from PR #29 while the Mac's
+  checkout was on `main`. Its renders and Dean's verdicts were on disk, but
+  every benchmark tool refused it (2026-11-11). The north star benchmarks and
+  the Renoise takes of issue #30 will be rendered from branches the same way.
+- **Verify:** test
+
+### REQ-QRY-10: Verdicts as Dean gave them
+A verdict for the whole benchmark is stored once per take (REQ-FBK-02).
+`verdicts` and `benchmark` list it once, with every take and render it
+covered, and count it once. In `benchmarks` and `benchmark`, a take's
+standing verdict carries its notes when it is the take's own. A
+whole-benchmark verdict that stands for some takes is given once per
+benchmark, with its notes and those takes, and the takes point to it. A
+verdict on a `main` render counts the same way, because it covers every
+take rendered by then. `benchmarks` also lists each take's failed
+measurements, with value, limit and note.
+- **Why:** one whole-benchmark verdict showed up once per take, so its notes
+  repeated and the counts grew with the number of takes. And to see what
+  failed and what Dean said, Claude had to ask about each benchmark in turn
+  (2026-11-11).
+- **Verify:** test
+
+### REQ-QRY-11: Counts say what they count
+`overview` counts each role two ways, side by side, and says which is which:
+`strongest` counts each sound once, under its most confident role (as
+`mph catalogue stats` does), and `labelled` counts every sound that has the
+role among its labels (as `labels` does), so a sound with two roles counts
+under both. `labels` gives both for roles. Every source says how many of its
+sounds aren't analysed yet. A download store, which `mph catalogue fetch`
+fills for each connector, is shown as one, with how many sounds it holds,
+when it last fetched and the command that analyses them, not as a source
+missing from the config.
+- **Why:** overview said 292 perc sounds and labels said 396, with nothing
+  to say why (2026-11-11). The 13 Freesound and LibriVox downloads showed as
+  `configured: false`, which reads as a mistake to fix, when what they
+  needed was analysing.
 - **Verify:** test

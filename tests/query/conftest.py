@@ -1,7 +1,8 @@
 """A small library for the query channel's tests: a catalogue with five sounds
 (one in two packs, one trimmed from another, one downloaded), BM-DRUM-02
-rendered three times, and verdicts on those renders. Nothing here is audio:
-the channel never opens sound files."""
+rendered three times, and verdicts on those renders. ``wider`` adds what
+other branches rendered, and a verdict for the whole benchmark. Nothing here
+is audio: the channel never opens sound files."""
 
 from __future__ import annotations
 
@@ -29,6 +30,11 @@ OLD_RENOISE = "2222222222222222"  # its audio was pruned
 SYNTH_KIT = "3333333333333333"
 GONE = "feedfacefeedface"  # a render whose folder is gone
 LONG_NOTE = "0:42 hats too loud. " * 25
+SC_TAKE = "4444444444444444"  # BM-DRUM-02 supercollider, failing a measurement
+LOUD_HATS = "5555555555555555"  # a BM-DRUM-02 take only another branch's score declares
+NEW_RENOISE_TAKE = "6666666666666666"  # BM-BRANCHED-01, a benchmark only another branch defines
+NEW_SC_TAKE = "7777777777777777"
+WHOLE_AT = "2026-11-10T12:00:00Z"  # a verdict on the whole of BM-DRUM-02
 
 
 def make_cfg(tmp_path: Path, samples: Path | None = None) -> config.Config:
@@ -58,6 +64,7 @@ def render(
     passed: bool = True,
     audio: bool = True,
     benchmark_id: str = "BM-DRUM-02",
+    **more: Any,
 ) -> Path:
     """A render folder as `mph bench render` leaves it, minus the audio."""
     folder = data_dir / "renders" / benchmark_id / render_hash
@@ -65,6 +72,7 @@ def render(
     if audio:
         (folder / f"{benchmark_id}.aiff").write_bytes(b"FORM....")
     report = {
+        **more,
         "id": benchmark_id,
         "variant": variant,
         "score_hash": render_hash,
@@ -193,6 +201,56 @@ def full(tmp_path: Path) -> Library:
     )
     render(cfg.data_dir, SYNTH_KIT, variant="synth-kit", at="2026-11-09T10:30:00Z", kit=[])
     return library_for(cfg, tmp_path)
+
+
+@pytest.fixture
+def wider(full: Library) -> Library:
+    """``full``, plus renders from other branches: a BM-DRUM-02 take the score here
+    doesn't declare, and BM-BRANCHED-01, which has no score here at all. A verdict on
+    the whole of BM-DRUM-02 covers four takes, and stands for the two without
+    their own verdict."""
+    data = full.cfg.data_dir
+    kick = kit_entry("kick", KICK, "dj:Pack/Kicks/Kick 909.wav")
+    render(
+        data, SC_TAKE, variant="supercollider", at="2026-11-10T08:00:00Z", kit=[kick], passed=False
+    )
+    render(
+        data,
+        LOUD_HATS,
+        variant="loud-hats",
+        at="2026-11-10T09:00:00Z",
+        kit=[kick],
+        variant_title="Hats up 3 dB",
+    )
+    for render_hash, take, at in (
+        (NEW_RENOISE_TAKE, "renoise", "2026-11-10T10:00:00Z"),
+        (NEW_SC_TAKE, "supercollider", "2026-11-10T10:05:00Z"),
+    ):
+        render(
+            data,
+            render_hash,
+            variant=take,
+            at=at,
+            kit=[kick],
+            benchmark_id="BM-BRANCHED-01",
+            title="Bell timeline",
+            bpm=122.0,
+            variant_title=f"in {take}",
+        )
+    rows = [
+        ("BM-DRUM-02", h, "pass", "every take grooves", WHOLE_AT, "all")
+        for h in (NEW_RENOISE, SYNTH_KIT, SC_TAKE, LOUD_HATS)
+    ]
+    rows.append(
+        ("BM-BRANCHED-01", NEW_RENOISE_TAKE, "fail", "0:10 bell too loud", WHOLE_AT, "take")
+    )
+    with closing(db.connect(full.catalogue)) as conn, conn:
+        conn.executemany(
+            "INSERT INTO verdict (benchmark, score_hash, verdict, notes, created_at, scope) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            rows,
+        )
+    return full
 
 
 @pytest.fixture

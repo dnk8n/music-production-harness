@@ -1,0 +1,49 @@
+#!/bin/bash
+# Which sounds the benchmarks would pick, and how the catalogue would label
+# them, if Dean's Mac ran another commit (REQ-BEN-05, REQ-CAT-03).
+#
+#   scripts/kit-diff REF [BASE]   compare REF with BASE (default origin/main)
+#
+# Each commit gets a temporary worktree and its own copy of the catalogue,
+# scanned with that commit's naming rules. Then it lists every take whose
+# voices would pick a different sound, and the sounds whose roles would
+# change, grouped by their top two folders. Dean's catalogue, sources,
+# renders and this checkout are only read.
+#
+# Written for macOS's /bin/bash 3.2: no bash 4 features.
+set -u
+
+ref="${1:-}"
+base="${2:-origin/main}"
+if [ -z "$ref" ]; then
+  echo "usage: scripts/kit-diff REF [BASE]" >&2
+  exit 2
+fi
+command -v uv >/dev/null || { echo "uv isn't installed: brew install uv" >&2; exit 2; }
+
+here="$(cd "$(dirname "$0")" && pwd)"
+helper="$here/kit_picks.py"
+repo="$(git -C "$here" rev-parse --show-toplevel)" || exit 2
+work="$(mktemp -d "${TMPDIR:-/tmp}/mph-kit-diff.XXXXXX")"
+
+# shellcheck disable=SC2329 # called by the trap below
+cleanup() {
+  for side in base ref; do
+    if [ -d "$work/$side" ]; then
+      git -C "$repo" worktree remove --force "$work/$side" >/dev/null 2>&1
+    fi
+  done
+  rm -rf "$work"
+}
+trap cleanup EXIT
+
+git -C "$repo" fetch --quiet origin || { echo "git fetch failed" >&2; exit 2; }
+for side in base ref; do
+  if [ "$side" = base ]; then commit="$base"; else commit="$ref"; fi
+  git -C "$repo" worktree add --quiet --detach "$work/$side" "$commit" || exit 2
+  echo "$side: $commit, $(git -C "$work/$side" log -1 --format='%h %s')"
+  uv run --quiet --directory "$work/$side" python "$helper" \
+    "$work/$side.sqlite" "$work/$side.json" || exit 1
+done
+echo
+uv run --quiet --directory "$work/ref" python "$helper" --compare "$work/base.json" "$work/ref.json"

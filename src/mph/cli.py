@@ -116,7 +116,7 @@ def _add_search(cat_sub: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         help="find sounds by role, tempo, key, loudness, length or words",
         description="e.g. mph catalogue search --role hat --bpm 128 open",
     )
-    find.add_argument("text", nargs="*", help="words that must appear in the path or tags")
+    find.add_argument("text", nargs="*", help="whole words that must appear in the path or labels")
     find.add_argument(
         "--role", action="append", default=[], help="kick, hat, bass ... (repeatable)"
     )

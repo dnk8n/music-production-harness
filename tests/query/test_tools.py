@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -151,6 +152,10 @@ def test_long_answers_are_refused_not_cut_off(lib: Library) -> None:
         Unanswerable, match=r"40,001 characters, over the 40,000 limit: ask for less"
     ):
         tools.run(stub(lambda a: {"text": "x" * (room + 1)}), lib, {})
+    big = replace(stub(lambda a: {"text": "x" * (room + 1)}), narrower="one project at a time")
+    with pytest.raises(Unanswerable, match=r"ask for less \(one project at a time\)"):
+        tools.run(big, lib, {})
+    assert "one project" in tools.by_name("benchmarks").narrower
 
 
 @pytest.mark.req("REQ-QRY-05")

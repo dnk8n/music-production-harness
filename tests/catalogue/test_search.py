@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from mph import cli, config
+from mph.bench import kit
 from mph.catalogue import commands, db, search
 from mph.catalogue.search import Query
 
@@ -163,6 +164,62 @@ def test_filters_loudness_length_licence_text_form(library: sqlite3.Connection) 
     assert search.search(library, Query(min_seconds=1, max_seconds=1.5)).hits == []
 
 
+@pytest.mark.req("REQ-CAT-05")
+@pytest.mark.parametrize(
+    ("text", "found"),
+    [
+        (("dub",), ["Dub Techno/Chord 1.wav"]),  # not DUBSTEP
+        (("m1",), ["Korg M1/Organ 2.wav"]),  # not Tom1
+        (("hand",), ["Hand Drums/Conga.wav"]),  # not Ghandi
+        (("909",), ["Pack/Hats/Open Hat 909.wav", "TR909/ClosedHat.wav"]),  # TR909 is tr 909
+        (("closed", "hats"), ["TR909/ClosedHat.wav"]),  # joined-up words, plurals
+        (("tom",), ["Toms/Tom1.wav"]),
+        (("crash",), ["Crashes/Big.wav"]),
+        (("open hat",), ["Pack/Hats/Open Hat 909.wav"]),  # a phrase, in order
+        (("hat open",), ["Pack/Hats/Open Hat 909.wav"]),  # ... or a label, hat_open
+        (("techno", "dubstep"), []),
+    ],
+)
+def test_words_match_whole_words(
+    library: sqlite3.Connection, text: tuple[str, ...], found: list[str]
+) -> None:
+    for n, path in enumerate(
+        (
+            "DUBSTEP/Kick 1.wav",
+            "Dub Techno/Chord 1.wav",
+            "Toms/Tom1.wav",
+            "Korg M1/Organ 2.wav",
+            "Ghandi/Speech.wav",
+            "Hand Drums/Conga.wav",
+            "TR909/ClosedHat.wav",
+            "Crashes/Big.wav",
+        )
+    ):
+        add(library, f"w{n}", path, [])
+    assert sorted(paths(search.search(library, Query(text=text)))) == found
+
+
+@pytest.mark.req("REQ-CAT-05")
+def test_hits_carry_the_licence_a_render_would_record(library: sqlite3.Connection) -> None:
+    with library:
+        library.execute("INSERT INTO source VALUES ('freesound', 'remote', '/d', 'varies', NULL)")
+        library.execute("INSERT INTO asset (hash, bytes, origin) VALUES ('rain', 1, 'download')")
+        library.execute(
+            "INSERT INTO source_file VALUES ('freesound', '9/rain.wav', 1, 1, 'rain', 0)"
+        )
+        library.execute(
+            "INSERT INTO download VALUES ('freesound', '9', 'rain', '9/rain.wav', 'u', 'p', "
+            "'Rain', 'someone', 'cc-by', 'l', 't')"
+        )
+    hits = {hit.digest: hit for hit in search.search(library, Query(limit=50)).hits}
+    assert hits["hat1"].licence == "commercial-pack"
+    assert hits["drum_fs"].to_dict()["licence"] == "cc0"
+    assert hits["rain"].licence == "cc-by"  # its own, not its store's "varies"
+    assert search.search(library, Query(licence="varies")).hits[0].licence == "cc-by"
+    for digest, hit in hits.items():
+        assert hit.licence == kit._licence(library, digest)  # what a render's report says
+
+
 def test_limit_and_stable_order(library: sqlite3.Connection) -> None:
     result = search.search(library, Query(limit=2))
     assert result.matched == 7
@@ -209,6 +266,7 @@ def test_cli_renders_reasons_and_json(
     out = capsys.readouterr().out
     assert "1 matches, best 1:" in out
     assert "why: hat (filename 0.6); 128 BPM (filename)" in out
+    assert "| -18.0 LUFS | commercial-pack" in out
     assert "have no loudness yet" in out
     assert commands.cmd_search(cfg, args("--key", "Dm", "--role", "bass", "--json")) == 0
     hits = json.loads(capsys.readouterr().out)

@@ -19,11 +19,18 @@ from tests.query.conftest import (
     HAT,
     KICK,
     LONG_NOTE,
+    LOUD_HATS,
     NEW_RENOISE,
+    NEW_RENOISE_TAKE,
+    NEW_SC_TAKE,
     OLD_RENOISE,
     RAIN,
+    SC_TAKE,
     SYNTH_KIT,
     TRIMMED,
+    WHOLE_AT,
+    kit_entry,
+    render,
 )
 
 
@@ -44,11 +51,10 @@ def test_overview_sums_up_everything(full: Library) -> None:
     assert (catalogue["analysed"], catalogue["downloads"], catalogue["derivatives"]) == (2, 1, 1)
     assert (catalogue["stashed"], catalogue["verdicts"]) == (1, 4)
     assert catalogue["top_packs"] == {"Pack": 2}
-    assert catalogue["roles"] == {"bass": 1, "fx": 1, "hat": 1, "kick": 1}
+    assert catalogue["roles"]["kick"] == {"strongest": 1, "labelled": 1}
     sources = {s["id"]: s for s in found["sources"]}
     assert sources["dj"]["configured"] is True
-    assert sources["dj"]["files"] == 4
-    assert sources["freesound"]["configured"] is False  # recorded by downloads
+    assert (sources["dj"]["files"], sources["dj"]["unanalysed"]) == (4, 1)  # the hat failed
     drums = found["benchmarks"]["projects"]["Drum patterns"]
     assert found["benchmarks"]["count"] == len(score.available())
     assert "BM-DRUM-02" in drums["benchmarks"]
@@ -56,6 +62,37 @@ def test_overview_sums_up_everything(full: Library) -> None:
     assert drums["verdicts"] == {"pass": 1, "close": 1}
     assert found["renders"]["disk_used"].endswith("B")
     assert found["data_dir"] == str(full.cfg.data_dir)
+
+
+@pytest.mark.req("REQ-QRY-11")
+def test_overview_shows_download_stores_as_downloads(full: Library) -> None:
+    sources = {s["id"]: s for s in ask(full, "overview")["sources"]}
+    assert sources["freesound"] == {
+        "id": "freesound",
+        "kind": "downloads",
+        "location": str(full.cfg.data_dir / "downloads" / "freesound"),
+        "files": 1,
+        "downloads": 1,
+        "unanalysed": 1,
+        "last_fetch_at": "2026-11-03T11:00Z",
+        "about": answers.DOWNLOAD_STORE,
+        "next": "mph catalogue analyse --pack freesound",
+    }  # not "configured": false, as a source dropped from the config would be
+
+
+@pytest.mark.req("REQ-QRY-11")
+def test_role_counts_say_which_is_which(full: Library) -> None:
+    with closing(db.connect(full.catalogue)) as conn, conn:  # a kick named "kick perc 1"
+        conn.execute("INSERT INTO tag VALUES (?, 'role', 'perc', 'filename', 0.3)", (KICK,))
+    found = ask(full, "overview")["catalogue"]
+    assert found["roles"]["kick"] == {"strongest": 1, "labelled": 1}
+    assert found["roles"]["perc"] == {"strongest": 0, "labelled": 1}  # the kick is a kick
+    assert "strongest counts each sound once" in found["roles_counted"]
+    values = {v["value"]: v for v in ask(full, "labels", name="role")["values"]}
+    assert (values["perc"]["sounds"], values["perc"]["strongest"]) == (1, 0)
+    assert (values["kick"]["sounds"], values["kick"]["strongest"]) == (1, 1)
+    assert "strongest" not in ask(full, "labels", name="pack")["values"][0]
+    assert "strongest" not in ask(full, "labels", name="role", origin="human")["values"][0]
 
 
 @pytest.mark.req("REQ-QRY-02")
@@ -220,9 +257,158 @@ def test_benchmarks_show_what_the_page_shows(full: Library) -> None:
         "verdict": "pass",
         "scope": "take",
         "at": "2026-11-09T10:00:00Z",
+        "notes": "the groove sits now",
     }
+    assert takes["renoise"]["failed_measurements"] == []
     assert takes["supercollider"]["rendered"] is False
+    assert takes["supercollider"]["failed_measurements"] is None
     assert takes["synth-kit"]["audio_on_disk"] is True
+    assert takes["synth-kit"]["verdict"]["notes_clipped"] is True
+    assert drum["in_checkout"] is True
+    assert drum["verdicts_for_every_take"] == []
+
+
+@pytest.mark.req("REQ-QRY-10")
+def test_benchmarks_give_failures_and_notes_in_one_call(wider: Library) -> None:
+    drum = next(b for b in ask(wider, "benchmarks")["benchmarks"] if b["id"] == "BM-DRUM-02")
+    takes = {take["take"]: take for take in drum["takes"]}
+    assert takes["supercollider"]["failed_measurements"] == [
+        {"name": "lead_in", "value": 2.0, "limit": "<= 5 ms", "note": ""}
+    ]
+    assert takes["renoise"]["verdict"]["notes"] == "the groove sits now"  # its own wins
+    for take in ("supercollider", "loud-hats"):  # the whole-benchmark verdict, once
+        assert takes[take]["verdict"] == {"verdict": "pass", "scope": "all", "at": WHOLE_AT}
+    assert drum["verdicts_for_every_take"] == [
+        {
+            "verdict": "pass",
+            "at": WHOLE_AT,
+            "notes": "every take grooves",
+            "takes": ["supercollider", "loud-hats"],
+        }
+    ]
+
+
+@pytest.mark.req("REQ-QRY-10")
+def test_a_verdict_for_the_whole_benchmark_is_listed_once(wider: Library) -> None:
+    found = ask(wider, "verdicts", benchmark="BM-DRUM-02")
+    assert (found["total"], found["shown"]) == (4, 4)  # 3 for one take, 1 for every take
+    whole = found["verdicts"][0]
+    assert (whole["scope"], whole["created_at"], whole["notes"]) == (
+        "all",
+        WHOLE_AT,
+        "every take grooves",
+    )
+    assert whole["takes"] == ["loud-hats", "renoise", "supercollider", "synth-kit"]
+    assert whole["score_hashes"] == [LOUD_HATS, NEW_RENOISE, SC_TAKE, SYNTH_KIT]
+    assert "take" not in whole
+    assert ask(wider, "verdicts", benchmark="BM-DRUM-02", limit=1)["total"] == 4
+    listed = ask(wider, "benchmark", id="BM-DRUM-02")["verdicts"]
+    assert listed["count"] == 4
+    assert listed["newest"][0]["takes"] == whole["takes"]
+
+
+@pytest.mark.req("REQ-QRY-10")
+def test_a_verdict_on_a_main_render_counts_for_every_take(full: Library) -> None:
+    data = full.cfg.data_dir
+    render(
+        data,
+        "8888888888888888",
+        variant="",
+        at="2026-11-07T09:00:00Z",
+        kit=[],
+        benchmark_id="BM-DRUM-05",
+    )
+    render(
+        data,
+        "9999999999999999",
+        variant="renoise",
+        at="2026-11-07T10:00:00Z",
+        kit=[],
+        benchmark_id="BM-DRUM-05",
+    )
+    with closing(db.connect(full.catalogue)) as conn, conn:
+        conn.execute(
+            "INSERT INTO verdict (benchmark, score_hash, verdict, notes, created_at, scope) "
+            "VALUES ('BM-DRUM-05', '8888888888888888', 'close', 'ghosts too quiet', "
+            "'2026-11-07T11:00:00Z', 'take')"
+        )
+    dub = next(b for b in ask(full, "benchmarks")["benchmarks"] if b["id"] == "BM-DRUM-05")
+    takes = {take["take"]: take for take in dub["takes"]}
+    assert "main" not in takes  # not a take: renders from before takes were equal
+    assert takes["renoise"]["verdict"]["scope"] == "all"
+    assert dub["verdicts_for_every_take"][0]["takes"] == ["renoise"]
+    given = ask(full, "verdicts", benchmark="BM-DRUM-05")["verdicts"]
+    assert [(v["take"], v["scope"]) for v in given] == [("main", "take")]
+
+
+@pytest.mark.req("REQ-QRY-09")
+def test_benchmarks_rendered_on_another_branch_are_readable(wider: Library) -> None:
+    found = ask(wider, "benchmarks")
+    assert "BM-BRANCHED-01" not in score.available()
+    assert feedback.ELSEWHERE in found["projects"]
+    new = found["benchmarks"][-1]  # listed after every benchmark this checkout defines
+    assert (new["id"], new["title"], new["bpm"], new["project"], new["in_checkout"]) == (
+        "BM-BRANCHED-01",
+        "Bell timeline",
+        122.0,
+        feedback.ELSEWHERE,
+        False,
+    )
+    takes = {take["take"]: take for take in new["takes"]}
+    assert list(takes) == ["renoise", "supercollider"]
+    assert takes["renoise"]["title"] == "in renoise"
+    assert takes["renoise"]["verdict"]["notes"] == "0:10 bell too loud"
+    assert takes["supercollider"]["score_hash"] == NEW_SC_TAKE
+    drum = next(b for b in found["benchmarks"] if b["id"] == "BM-DRUM-02")
+    extra = drum["takes"][-1]  # after the takes the score here declares
+    assert (extra["take"], extra["title"], extra["in_checkout"]) == (
+        "loud-hats",
+        "Hats up 3 dB",
+        False,
+    )
+    assert all(take["in_checkout"] for take in drum["takes"][:-1])
+
+
+@pytest.mark.req("REQ-QRY-09")
+def test_every_tool_reads_another_branchs_benchmark(wider: Library) -> None:
+    full = ask(wider, "benchmark", id="BM-BRANCHED-01")
+    assert (full["in_checkout"], full["score_file"], full["hear"]) == (False, None, "")
+    assert "another branch defines BM-BRANCHED-01" in full["note"]
+    assert [take["take"] for take in full["takes"]] == ["renoise", "supercollider"]
+    assert full["renders"]["count"] == 2
+    made = ask(wider, "report", id="BM-BRANCHED-01", take="renoise")
+    assert made["report"]["score_hash"] == NEW_RENOISE_TAKE
+    assert [v["notes"] for v in made["verdicts_on_this_render"]] == ["0:10 bell too loud"]
+    extra = ask(wider, "report", id="BM-DRUM-02", take="loud-hats")
+    assert extra["report"]["score_hash"] == LOUD_HATS
+    given = ask(wider, "verdicts", benchmark="BM-BRANCHED-01")["verdicts"]
+    assert [(v["take"], v["score_hash"]) for v in given] == [("renoise", NEW_RENOISE_TAKE)]
+    used = ask(wider, "sound", ref=KICK)["used_in_renders"]
+    assert {(r["benchmark"], r["take"]) for r in used["newest"]} >= {
+        ("BM-BRANCHED-01", "renoise"),
+        ("BM-DRUM-02", "loud-hats"),
+    }
+    overview = ask(wider, "overview")["benchmarks"]
+    assert overview["projects"][feedback.ELSEWHERE]["benchmarks"] == ["BM-BRANCHED-01"]
+    assert overview["count"] == len(score.available()) + 1
+
+
+@pytest.mark.req("REQ-QRY-09")
+def test_only_benchmark_folders_with_reports_count(full: Library) -> None:
+    renders = full.renders
+    (renders / "BM-NOREPORT-01" / "0000000000000000").mkdir(parents=True)  # no report
+    (renders / ".hidden").mkdir()
+    kick = kit_entry("kick", KICK, "dj:Pack/Kicks/Kick 909.wav")
+    render(
+        full.cfg.data_dir,
+        "abcdefabcdefabcd",
+        variant="renoise",
+        at="2026-11-10T00:00:00Z",
+        kit=[kick],
+        benchmark_id="BM-ANOTHER-01",
+    )
+    assert feedback.rendered(renders) == ["BM-ANOTHER-01", "BM-DRUM-02"]
+    assert feedback.reports(renders, "../renders/BM-DRUM-02") == []  # never outside renders
 
 
 @pytest.mark.req("REQ-QRY-03")
@@ -325,8 +511,8 @@ def test_report_says_what_to_ask_instead(
 def test_verdicts_newest_first_with_their_takes(full: Library) -> None:
     found = ask(full, "verdicts")
     assert (found["total"], found["shown"]) == (4, 4)
-    assert [(v["benchmark"], v["take"]) for v in found["verdicts"]] == [
-        ("BM-DRUM-01", None),  # its render is gone
+    assert [(v["benchmark"], v.get("take", v.get("takes"))) for v in found["verdicts"]] == [
+        ("BM-DRUM-01", [None]),  # for the whole benchmark; its render is gone
         ("BM-DRUM-02", "synth-kit"),
         ("BM-DRUM-02", "renoise"),
         ("BM-DRUM-02", "renoise"),
@@ -337,10 +523,8 @@ def test_verdicts_newest_first_with_their_takes(full: Library) -> None:
 @pytest.mark.req("REQ-QRY-03")
 def test_verdicts_filter(full: Library) -> None:
     assert ask(full, "verdicts", benchmark="BM-DRUM-01")["total"] == 1
-    assert [v["score_hash"] for v in ask(full, "verdicts", verdict="fail")["verdicts"]] == [
-        GONE,
-        OLD_RENOISE,
-    ]
+    failed = ask(full, "verdicts", verdict="fail")["verdicts"]
+    assert [v.get("score_hash", v.get("score_hashes")) for v in failed] == [[GONE], OLD_RENOISE]
     assert ask(full, "verdicts", since="2026-11-09")["total"] == 3
     paged = ask(full, "verdicts", limit=1)
     assert (paged["total"], paged["shown"]) == (4, 1)

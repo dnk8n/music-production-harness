@@ -6,12 +6,15 @@ REQ-AUD-01). For noise-like roles (hats, shakers, cymbals) it passes over
 tonal sounds, ones that whistle rather than hiss, unless nothing else fits.
 With no catalogue, no match, or a score that asks for a synth, the voice
 falls back to a SuperCollider drum voice, and says so.
+A take Dean passed keeps the sounds he heard when it renders again (REQ-BEN-15).
 """
 
 from __future__ import annotations
 
+import json
 import sqlite3
-from dataclasses import dataclass, field
+from collections.abc import Mapping
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from mph.bench import audio
@@ -47,6 +50,26 @@ SYNTHS: dict[str, tuple[str, dict[str, float]]] = {
 
 class KitError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class Kept:
+    """A sound a passed render used, for the take to use again (REQ-BEN-15)."""
+
+    digest: str
+    label: str
+    reason: str  # why it was chosen back then
+    render: str  # the passed render's score hash
+    request: object = None  # what the voice asked for then; None if not recorded
+
+
+KEPT = "; kept from passed render "
+
+
+def request_of(voice: Voice) -> dict[str, object]:
+    """What a voice asks the catalogue for, as reports record it (REQ-BEN-15)."""
+    plain: dict[str, object] = json.loads(json.dumps(asdict(voice.sound)))
+    return plain
 
 
 @dataclass(frozen=True, slots=True)
@@ -166,13 +189,61 @@ def _sample(conn: sqlite3.Connection, data_dir: Path, voice: Voice) -> Choice | 
     return None
 
 
-def choose(score: Score, conn: sqlite3.Connection | None, data_dir: Path) -> list[Choice]:
+def _best_bpm(conn: sqlite3.Connection, digest: str) -> float:
+    row = conn.execute(
+        "SELECT value FROM tag WHERE asset_hash = ? AND name = 'bpm' "
+        "ORDER BY confidence DESC, origin != 'analysis' DESC LIMIT 1",
+        (digest,),
+    ).fetchone()
+    return float(row[0]) if row else 0.0
+
+
+def _kept(
+    conn: sqlite3.Connection, data_dir: Path, voice: Voice, kept: Kept | None
+) -> Choice | None:
+    """The sound a passed take used, if the voice still asks for the same thing
+    and the sound is still here (REQ-BEN-15)."""
+    if kept is None or (kept.request is not None and kept.request != request_of(voice)):
+        return None
+    row = conn.execute(
+        "SELECT container, channels FROM asset WHERE hash = ?", (kept.digest,)
+    ).fetchone()
+    if not row or row[0] not in READABLE or row[1] not in (1, 2):
+        return None
+    path = provenance.locate(conn, data_dir, kept.digest)
+    bpm = _best_bpm(conn, kept.digest) if voice.slices else 0.0
+    if path is None or not path.is_file() or (voice.slices and not bpm):
+        return None
+    first = kept.reason.split(KEPT)[0]
+    return Choice(
+        voice=voice.name,
+        synthdef=f"mph_play{row[1]}",
+        reason=f"{first}{KEPT}{kept.render}",
+        path=str(path),
+        digest=kept.digest,
+        label=kept.label,
+        licence=_licence(conn, kept.digest),
+        bpm=bpm,
+    )
+
+
+def choose(
+    score: Score,
+    conn: sqlite3.Connection | None,
+    data_dir: Path,
+    keep: Mapping[str, Kept] | None = None,
+) -> list[Choice]:
+    """A sound for every voice. ``keep`` has the sounds a passed take used."""
+    keep = keep or {}
     choices = []
     for voice in score.voices:
         if voice.sound.synth:
             choices.append(synth_for(voice, "the score asks for a synth"))
             continue
-        found = _sample(conn, data_dir, voice) if conn is not None else None
+        found = None
+        if conn is not None:
+            found = _kept(conn, data_dir, voice, keep.get(voice.name))
+            found = found or _sample(conn, data_dir, voice)
         if found is None:
             if voice.slices:
                 raise KitError(

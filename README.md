@@ -48,14 +48,17 @@ a 48 kHz / 24-bit AIFF:
 ```sh
 uv run mph renoise install # once; then restart Renoise
 uv run mph bench list
-uv run mph bench render BM-DRUM-02                       # every take of it
-uv run mph bench render --all
+uv run mph bench render BM-DRUM-02                       # every take of it with something new
+uv run mph bench render --all                            # leaves takes you passed alone
 uv run mph bench render BM-DRUM-01 --variant synth-kit   # just one take
+uv run mph bench render BM-DRUM-01 --force-rerender      # even takes that passed
 uv run mph bench serve     # listen, compare, give verdicts, open in Renoise
 ```
 
 Renders are deterministic, so mph keeps only the newest of each benchmark
 variant and makes older ones again when needed (spec/components/retention.md).
+A pass is a pass: a take you passed renders again only if its score or the
+render code changes, and then it keeps the sounds you heard (REQ-BEN-14, 15).
 The listening page renders a pruned take when you play it.
 
 ```sh

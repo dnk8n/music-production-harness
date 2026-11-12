@@ -234,14 +234,15 @@ TOOLS: tuple[Tool, ...] = (
         "Search sounds",
         "Find sounds in the catalogue, ranked by fit, with the reasons behind each score. "
         "Filters are hard: roles, form, loudness (integrated LUFS, only for analysed sounds), "
-        "length, licence and words, which must all appear in the path or tags. bpm and key "
+        "length, licence and words, each a whole word of the path or labels (dub doesn't find "
+        "DUBSTEP; kick finds Kicks; a phrase like 'open hat' matches in order). bpm and key "
         "filter and rank: half and double time and neighbouring keys match, and one-shots and "
         "sounds without a key pass. Each hit has its licence, and a hash to pass to the sound "
         "tool.",
         _args(
             {
                 "roles": _words(f"any of these roles: {', '.join(ROLES)}"),
-                "words": _words("words that must all appear in the path or tags, e.g. 909"),
+                "words": _words("whole words that must all appear in the path or labels, e.g. 909"),
                 "bpm": _number(20, 400, "target tempo"),
                 "bpm_tolerance": {
                     **_number(0.1, 50, "how far off the tempo may be, in percent (default 3)"),

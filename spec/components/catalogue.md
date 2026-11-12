@@ -55,10 +55,12 @@ within 2%, key or its relative, and key or a neighbouring key one step round
 the circle of fifths), always against the most confident name hint. Search
 treats neighbouring keys as compatible.
 
-Still to come: an FTS5 text index, if plain substring search gets slow.
+Still to come: an FTS5 text index, if word search gets slow.
 
 One asset can live at several paths (duplicates across packs). Name-derived
-tags are rebuilt from all current paths whenever an asset's paths change.
+tags are rebuilt from all its current paths in local sources whenever an
+asset's paths change, and for every asset when the naming rules change
+(`names.VERSION`).
 
 ### REQ-CAT-01: Sources are read-only
 The catalogue opens source files read-only and never creates, modifies or
@@ -78,7 +80,23 @@ Hashing and probing run on a bounded worker pool (`--workers`, default 4).
 Key, BPM and role hints parsed from folder and file names (e.g. "Acid Techno
 (Ab, 131bpm)", "MXE_128_Vocals_19") are stored as tags with
 `origin=filename`. Audio analysis confirms or contradicts them, and both are kept.
+
+The pack's folder and the folder just inside it name things more than they
+label them: often a product or a kit (BASS_HOUSE_AND_GARAGE, TOM MIDDLETON,
+"Drum & Bass (F, 174bpm)"). They still give tempo, key and form, but a role
+only when it agrees with the roles the file name and deeper folders give, or
+when those give none ("Mutant Breaks").
+
+A downloaded sound keeps the labels it got from its title and keywords when
+it was fetched (REQ-CAT-07). Its path in the download store is a remote id
+and a file name, so it adds none.
 - **Why:** pack naming is a cheap, mostly right head start, but mislabels exist.
+  Product and kit names often hold a genre or a person: the drum loops in
+  BASS_HOUSE_AND_GARAGE came out as bass, and the TOM MIDDLETON basses as toms
+  (2026-11-11). A pack's name is sometimes all that says what its files are,
+  so it still counts when nothing else does. Reading a download's labels again
+  from its path made its remote id its pack and lost the roles its title and
+  keywords gave, which can't be made again because the keywords aren't kept.
 - **Verify:** test
 
 ### REQ-CAT-04: Just-in-time analysis, cached by analyser version
@@ -89,17 +107,22 @@ instrument class) runs on demand and is cached per analyser version.
 
 ### REQ-CAT-05: Search
 `mph catalogue search` filters by role, BPM range, key (with compatible
-keys), loudness, duration, licence and free text, ranked by fit. Filters are
+keys), loudness, duration, licence and words, ranked by fit. Filters are
 hard; fit is a sum of confidence-weighted matches, and each result lists the
 reasons behind its score. Tempo matches allow half and double time; one-shots
 and sounds with no key pass tempo and key filters without gaining score.
 Each result names its licence, the one a render's report would record
 (REQ-BEN-05): a download's own, else its source's.
+Words match whole words of a sound's paths and labels, never part of one:
+"dub" doesn't find DUBSTEP and "m1" doesn't find Tom1. Plurals match ("kick"
+finds Kicks), joined-up words count as theirs (TR909 has 909, ClosedHat has
+closed and hat), and a phrase ("open hat") matches in that order.
 `--json` gives the same results for other tools.
 - **Why:** track construction starts with "find me a dry 909 open hat near
   128 BPM", and picking samples has to be explainable. Whether a track can
   be published depends on the licences of its sounds, so choosing one should
-  show it (2026-11-11).
+  show it (2026-11-11). Matching parts of words found the wrong sounds:
+  "hand" found Ghandi, "m1" Tom1 and "dub" DUBSTEP (2026-11-11).
 - **Verify:** test
 
 ### REQ-CAT-06: Provenance and non-destructive refresh

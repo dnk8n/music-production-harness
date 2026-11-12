@@ -12,6 +12,7 @@ import pytest
 from mph import cli, config
 from mph.catalogue import commands, db, remote, search
 from mph.catalogue.remote import Archive, Fetcher, Freesound, RemoteError
+from mph.catalogue.scanner import Scanner
 from mph.proc import Result
 from tests.fakes import FakeHttp, FakeRunner, FakeStore
 
@@ -128,6 +129,38 @@ def test_freesound_originals_with_licence_and_attribution(
     assert remote.attribution(conn, [row["asset_hash"]]) == [
         '"Djembe slap 01.wav" by drummer (cc0), https://freesound.org/people/drummer/sounds/101/'
     ]
+
+
+@pytest.mark.req("REQ-CAT-03")
+@pytest.mark.req("REQ-CAT-07")
+def test_new_name_rules_leave_downloads_labels_alone(
+    conn: sqlite3.Connection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    http = freesound_http()
+    fetcher(conn, http, tmp_path).fetch(Freesound(http, signed_in()), "x", 5, clear_only=False)
+    labels = "SELECT name, value, origin, confidence FROM tag WHERE asset_hash = ? ORDER BY 1, 2, 3"
+    conga, djembe = (
+        conn.execute(
+            "SELECT asset_hash FROM download WHERE remote_id = ?", (remote_id,)
+        ).fetchone()[0]
+        for remote_id in ("102", "101")
+    )
+    fetched = conn.execute(labels, (conga,)).fetchall()
+    samples = tmp_path / "samples"
+    (samples / "Hand Drums").mkdir(parents=True)
+    (samples / "Hand Drums/Djembe Slap.wav").write_bytes(b"RIFF djembe original")  # in a pack too
+    # New name rules: the next scan reads every name again.
+    monkeypatch.setattr("mph.catalogue.names.VERSION", 999)
+    runner = FakeRunner(responses={"ffprobe": Result(0, PROBE)})
+    Scanner(conn, runner, clock=lambda: "t").scan(
+        config.Source("dj", "local", str(samples), "commercial-pack")
+    )
+    assert conn.execute(labels, (conga,)).fetchall() == fetched  # from its title and keywords
+    packs = {row[0] for row in conn.execute("SELECT value FROM tag WHERE name = 'pack'")}
+    assert packs == {"freesound", "Hand Drums"}  # never a remote id such as 101
+    found = {tuple(row) for row in conn.execute(labels, (djembe,))}
+    assert ("role", "perc", "filename", 0.3) in found  # from its keywords, kept
+    assert ("pack", "Hand Drums", "folder", 1.0) in found  # and its local path is read too
 
 
 @pytest.mark.req("REQ-CAT-07")

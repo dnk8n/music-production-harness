@@ -234,7 +234,12 @@ class Scanner:
     # --- helpers --------------------------------------------------------------
 
     def _all_hashes(self) -> set[str]:
-        return {row[0] for row in self._conn.execute("SELECT hash FROM asset")}
+        """Every asset a local source holds: the ones whose names are read."""
+        query = (
+            "SELECT f.asset_hash FROM source_file f JOIN source s ON s.id = f.source_id "
+            "WHERE s.kind = 'local'"
+        )
+        return {row[0] for row in self._conn.execute(query)}
 
     def _known_hashes(self, hashes: set[str]) -> set[str]:
         query = "SELECT 1 FROM asset WHERE hash = ?"
@@ -266,12 +271,24 @@ class Scanner:
             )
 
     def _retag(self, digest: str) -> None:
-        """Rebuild name-derived priors from every path the asset currently lives at."""
-        self._conn.execute(
-            "DELETE FROM tag WHERE asset_hash = ? AND origin IN ('folder', 'filename')", (digest,)
-        )
-        paths = self._conn.execute(
-            "SELECT rel_path FROM source_file WHERE asset_hash = ?", (digest,)
+        """Rebuild name-derived priors from every local path the asset lives at.
+
+        A download keeps the labels it was fetched with, from its title and
+        keywords (REQ-CAT-07). Its path in the download store is a remote id
+        and a file name, not a pack and folders, and its keywords aren't kept,
+        so those labels couldn't be made again."""
+        downloaded = self._conn.execute(
+            "SELECT 1 FROM download WHERE asset_hash = ?", (digest,)
+        ).fetchone()
+        if not downloaded:
+            self._conn.execute(
+                "DELETE FROM tag WHERE asset_hash = ? AND origin IN ('folder', 'filename')",
+                (digest,),
+            )
+        paths = self._conn.execute(  # not the download stores' paths
+            "SELECT f.rel_path FROM source_file f JOIN source s ON s.id = f.source_id "
+            "WHERE f.asset_hash = ? AND s.kind = 'local'",
+            (digest,),
         ).fetchall()
         for row in paths:
             for prior in names.priors_for(row["rel_path"]):

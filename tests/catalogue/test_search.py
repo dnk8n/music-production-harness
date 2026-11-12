@@ -165,6 +165,41 @@ def test_filters_loudness_length_licence_text_form(library: sqlite3.Connection) 
 
 
 @pytest.mark.req("REQ-CAT-05")
+@pytest.mark.parametrize(
+    ("text", "found"),
+    [
+        (("dub",), ["Dub Techno/Chord 1.wav"]),  # not DUBSTEP
+        (("m1",), ["Korg M1/Organ 2.wav"]),  # not Tom1
+        (("hand",), ["Hand Drums/Conga.wav"]),  # not Ghandi
+        (("909",), ["Pack/Hats/Open Hat 909.wav", "TR909/ClosedHat.wav"]),  # TR909 is tr 909
+        (("closed", "hats"), ["TR909/ClosedHat.wav"]),  # joined-up words, plurals
+        (("tom",), ["Toms/Tom1.wav"]),
+        (("crash",), ["Crashes/Big.wav"]),
+        (("open hat",), ["Pack/Hats/Open Hat 909.wav"]),  # a phrase, in order
+        (("hat open",), ["Pack/Hats/Open Hat 909.wav"]),  # ... or a label, hat_open
+        (("techno", "dubstep"), []),
+    ],
+)
+def test_words_match_whole_words(
+    library: sqlite3.Connection, text: tuple[str, ...], found: list[str]
+) -> None:
+    for n, path in enumerate(
+        (
+            "DUBSTEP/Kick 1.wav",
+            "Dub Techno/Chord 1.wav",
+            "Toms/Tom1.wav",
+            "Korg M1/Organ 2.wav",
+            "Ghandi/Speech.wav",
+            "Hand Drums/Conga.wav",
+            "TR909/ClosedHat.wav",
+            "Crashes/Big.wav",
+        )
+    ):
+        add(library, f"w{n}", path, [])
+    assert sorted(paths(search.search(library, Query(text=text)))) == found
+
+
+@pytest.mark.req("REQ-CAT-05")
 def test_hits_carry_the_licence_a_render_would_record(library: sqlite3.Connection) -> None:
     with library:
         library.execute("INSERT INTO source VALUES ('freesound', 'remote', '/d', 'varies', NULL)")

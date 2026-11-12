@@ -13,11 +13,14 @@ Evidence rules, from the spec:
 - Keys match when they're the same scale or one step round the circle of
   fifths (``agreement.compatible``). A pack's key label wins over the analysed
   key. Sounds with no key (most drums) pass a key filter neutrally.
+- Words match whole words of a sound's paths and labels, never part of one:
+  "dub" doesn't find DUBSTEP, and "m1" doesn't find Tom1.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -29,6 +32,9 @@ DEFAULT_BPM_TOLERANCE = 0.03  # 3%: 128 matches 124.2-131.8
 NEIGHBOUR_KEY_SCORE = 0.6
 TEMPO_FACTORS = (1.0, 2.0, 0.5)
 UNKNOWN_TEMPO_SCORE = 0.0
+WORD = re.compile(r"[^\W\d_]+|\d+")  # a run of letters or of digits: TR909 is "tr 909"
+CAMEL = re.compile(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|\d+")  # ClosedHat is also "closed hat"
+SHORTEST_PLURAL = 4  # "hats"; a shorter word ending in s ("bus") isn't a plural
 
 
 class QueryError(ValueError):
@@ -225,6 +231,31 @@ def _within(value: float | None, low: float | None, high: float | None) -> bool:
     return (low is None or value >= low) and (high is None or value <= high)
 
 
+def _singular(word: str) -> str:
+    """'kicks' matches 'kick' and 'basses' matches 'bass'; 'bass' and 'bus' stay."""
+    if word.endswith(("sses", "shes", "ches", "xes")):
+        return word[:-2]
+    plural = len(word) >= SHORTEST_PLURAL and word.endswith("s") and not word.endswith("ss")
+    return word[:-1] if plural else word
+
+
+def words(text: str) -> str:
+    """``text`` as its words, each side padded so a phrase only matches whole words:
+    ' 909 closedhat | 909 closed hat '. The second half splits joined-up words."""
+    found = [WORD.findall(text), CAMEL.findall(text)]
+    return " " + " | ".join(" ".join(_singular(w.lower()) for w in run) for run in found) + " "
+
+
+def phrase(term: str) -> str:
+    """A search term in the form ``words`` gives, to look for inside it."""
+    return " ".join(_singular(w.lower()) for w in WORD.findall(term))
+
+
+def _all_words(item: Candidate) -> str:
+    labels = (e.value for found in item.tags.values() for e in found)
+    return "".join(words(text) for text in (*item.paths, *labels))
+
+
 def passes_filters(item: Candidate, query: Query) -> bool:
     if query.licence and query.licence not in item.licences:
         return False
@@ -234,9 +265,10 @@ def passes_filters(item: Candidate, query: Query) -> bool:
         return False
     if not _within(_lufs(item), query.min_lufs, query.max_lufs):
         return False
-    haystack = " ".join(item.paths).lower()
-    tag_values = " ".join(e.value for found in item.tags.values() for e in found).lower()
-    return all(term.lower() in haystack or term.lower() in tag_values for term in query.text)
+    if not query.text:
+        return True
+    found = _all_words(item)
+    return all(f" {wanted} " in found for term in query.text if (wanted := phrase(term)))
 
 
 def score(item: Candidate, query: Query) -> Hit | None:

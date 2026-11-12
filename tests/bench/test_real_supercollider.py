@@ -52,3 +52,32 @@ def test_bm_sc_01_takes_pass_with_real_supercollider(
     )
     failures = [m for m in outcome.report["measurements"] if not m["passed"]]  # type: ignore[attr-defined]
     assert failures == []
+
+
+@pytest.mark.req("REQ-BEN-13")
+@pytest.mark.req("REQ-BEN-01")
+@pytest.mark.parametrize(
+    ("benchmark_id", "take"),
+    [
+        ("BM-AFRO-01", "supercollider"),
+        ("BM-AFRO-01", "flattened"),
+        ("BM-AFRO-02", "supercollider"),
+        ("BM-AFRO-02", "even"),
+    ],
+)
+def test_north_star_takes_pass_with_real_supercollider(
+    real: SubprocessRunner, tmp_path: Path, benchmark_id: str, take: str
+) -> None:
+    outcome = render.run(
+        benchmark_id,
+        cfg_for(tmp_path, rate=96000),
+        real,
+        None,
+        engine="supercollider",
+        variant=take,
+    )
+    measured = outcome.report["measurements"]
+    failures = [m for m in measured if not m["passed"]]  # type: ignore[attr-defined]
+    assert failures == []
+    has_feel = any(m["name"].startswith("feel:") for m in measured)  # type: ignore[attr-defined]
+    assert has_feel == (take != "flattened")  # the flattened take has no triplets left

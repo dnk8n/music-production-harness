@@ -22,7 +22,7 @@ import soundfile
 import soxr
 from pyloudnorm.iirfilter import IIRfilter
 
-from mph.bench.score import Event
+from mph.bench.score import PULSES, Event
 
 TEMPLATE_S = 0.02
 SEARCH_S = 0.005
@@ -126,6 +126,18 @@ def swing_of(matches: Sequence[Match], step_s: float) -> float | None:
             onset = match.event.time_s + match.error_ms / 1000
             ratios.append((onset - pair * 2 * step_s) / (2 * step_s))
     return float(np.mean(ratios)) if ratios else None
+
+
+def feel_of(matches: Sequence[Match], beat_s: float) -> dict[int, float]:
+    """Mean measured start of each triplet pulse within its beat, as a share of
+    the beat, for the pulses a voice plays after the first (REQ-BEN-13)."""
+    found: dict[int, list[float]] = {}
+    for match in matches:
+        beat, pulse = divmod(match.event.step, PULSES)
+        if pulse:
+            onset = match.event.time_s + match.error_ms / 1000
+            found.setdefault(pulse, []).append(onset / beat_s - beat)
+    return {pulse: float(np.mean(found[pulse])) for pulse in sorted(found)}
 
 
 def residue_after(stem: Audio, start_s: float, end_s: float, rate: int) -> float:

@@ -103,6 +103,62 @@ write.(SynthDef(\mph_shaker, { |out = 0, amp = 1, gate = 1, seed = 1, rid = 0, d
     OffsetOut.ar(out, (sig * 0.5 * amp) ! 2);
 }));
 
+// West African drums (the North star benchmarks), until one-shots arrive.
+// Bell: an iron bell struck with a stick, like an agogo or gankogui. A few
+// inharmonic partials, the higher ones dying first, and a short click.
+write.(SynthDef(\mph_bell, { |out = 0, amp = 1, gate = 1, seed = 1, rid = 0, freq = 820,
+    decay = 0.25|
+    var ratios = [1, 2.37, 3.94, 5.6];
+    var levels = [1, 0.45, 0.25, 0.12];
+    var rings = [1, 0.55, 0.35, 0.2];
+    var body = Mix.fill(4, { |i|
+        SinOsc.ar(freq * ratios[i]) * levels[i]
+            * EnvGen.ar(Env.perc(0.0005, decay * rings[i], curve: -6),
+                doneAction: if(i == 0) { 2 } { 0 })
+    });
+    var click;
+    RandID.ir(rid);
+    RandSeed.ir(1, seed);
+    click = BPF.ar(WhiteNoise.ar, 3200, 0.6) * EnvGen.ar(Env.perc(0.0002, 0.006));
+    OffsetOut.ar(out, (((body * 0.35) + (click * 0.4)) * amp) ! 2);
+}));
+
+// Djembe: one goblet drum with three strokes, set by stroke: 0 bass (the
+// low centre of the skin), 1 tone (open, near the rim), 2 slap (bright and
+// short, with a crack of noise). Tone and slap ring at the membrane's modes.
+write.(SynthDef(\mph_djembe, { |out = 0, amp = 1, gate = 1, seed = 1, rid = 0, stroke = 1|
+    var freq = Select.kr(stroke, [70, 330, 370]);
+    var ring = Select.kr(stroke, [0.3, 0.18, 0.08]);
+    var bright = Select.kr(stroke, [0.05, 0.4, 1.0]);
+    var crack = Select.kr(stroke, [0, 0.15, 1.0]);
+    var modes = [1, 1.594, 2.136, 2.296, 2.653];
+    var levels = [1, 0.6, 0.45, 0.35, 0.25];
+    var drop = EnvGen.ar(Env([1.4, 1], [0.03], \exp));  // the skin's pitch settles
+    var body = Mix.fill(5, { |i|
+        SinOsc.ar(freq * modes[i] * drop) * levels[i] * (if(i == 0) { 1 } { bright })
+            * EnvGen.ar(Env.perc(0.001, ring / (1 + i), curve: -5))
+    });
+    var length = EnvGen.ar(Env([1, 1], [ring + 0.02]), doneAction: 2);
+    var noise;
+    RandID.ir(rid);
+    RandSeed.ir(1, seed);
+    noise = BPF.ar(WhiteNoise.ar, 2800, 0.7) * EnvGen.ar(Env.perc(0.0005, 0.03)) * crack;
+    OffsetOut.ar(out, (((body * 0.5) + (noise * 0.6)) * length * amp) ! 2);
+}));
+
+// Dunun: a big two-headed bass drum played with a stick, the low line of a
+// Mande ensemble. A low skin whose pitch falls as it rings, and the stick.
+write.(SynthDef(\mph_dunun, { |out = 0, amp = 1, gate = 1, seed = 1, rid = 0, decay = 0.4|
+    var pitch = EnvGen.ar(Env([150, 95, 88], [0.03, 0.2], \exp));
+    var body = SinOsc.ar(pitch) * EnvGen.ar(Env.perc(0.001, decay, curve: -4), doneAction: 2);
+    var skin = SinOsc.ar(pitch * 2.3) * EnvGen.ar(Env.perc(0.0005, 0.05)) * 0.3;
+    var stick;
+    RandID.ir(rid);
+    RandSeed.ir(1, seed);
+    stick = BPF.ar(WhiteNoise.ar, 1800, 0.6) * EnvGen.ar(Env.perc(0.0003, 0.015)) * 0.5;
+    OffsetOut.ar(out, ((body + skin + stick) * 0.8 * amp) ! 2);
+}));
+
 // 303-style bass: a band-limited saw through a resonant ladder low-pass and
 // soft saturation. The saw is a sum of its harmonics up to 20 kHz (fading out
 // over the last 1 kHz, and never past 0.45 of the sample rate), so it has no

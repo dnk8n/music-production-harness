@@ -1,0 +1,41 @@
+# spec/components/benchmarks.md#bm-afro-02: a 12/8 ensemble with the jembe feel, 41:31:28 (REQ-BEN-13)
+id = "BM-AFRO-02"
+title = "Jembe feel"
+hear = "next to BM-AFRO-01's even triplets, the ensemble leans. The first pulse of each beat is held a little long and the next two hurry in, so the tones and slaps tumble toward the next kick. It sounds played rather than programmed, while every kick stays exactly on the grid. In the even take the parts sit squarely in thirds, and the lean goes."
+bpm = 122
+project = "North star"
+bars = 8
+seed = 12
+feel = [41, 31, 28]
+
+[voices.kick]
+grid = "X . . . X . . . X . . . X . . ."
+sound = { role = "kick", words = ["909"] }
+
+[voices.bell]
+grid = "X . x . x x . x . x . x"
+sound = { role = "bell" }
+
+[voices.shaker]
+grid = "X x x X x x X x x X x x"
+sound = { role = "shaker" }
+humanise = 0.08
+seconds = 0.2
+
+[voices.tone]
+grid = ". x x . . . . x x . . ."
+sound = { role = "djembe", words = ["tone"] }
+params = { stroke = 1 }
+
+[voices.slap]
+grid = ". . . . x x . . . . x x"
+sound = { role = "djembe", words = ["slap"] }
+params = { stroke = 2 }
+
+[voices.dunun]
+grid = ". . . . . X . . x . . x"
+sound = { role = "dunun" }
+
+[variants.even]
+title = "the same parts in even triplets, to hear what the feel adds"
+feel = [1, 1, 1]

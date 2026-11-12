@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 
 # Bump when parsing rules change: the next scan rebuilds every name-derived tag.
-VERSION = 2
+VERSION = 4
 
 FOLDER_CONFIDENCE = 0.5  # the folder directly containing the file
 FOLDER_DECAY = 0.1  # per level further up the tree
@@ -44,6 +44,11 @@ VOCAB: dict[str, tuple[str, str]] = {
     "tom": ("role", "tom"),
     **dict.fromkeys(("perc", "percussion"), ("role", "perc")),
     **{w: ("role", w) for w in ("conga", "bongo", "djembe", "shaker", "clave", "cowbell")},
+    "jembe": ("role", "djembe"),
+    # Mande bass drums. Not "dundun": in Yoruba that's a talking drum.
+    **dict.fromkeys(("dunun", "doundoun", "dununba", "sangban", "kenkeni"), ("role", "dunun")),
+    **dict.fromkeys(("agogo", "gankogui", "gongue"), ("role", "bell")),  # West African bells
+    **dict.fromkeys(("shekere", "caxixi", "cabasa", "maraca"), ("role", "shaker")),
     **dict.fromkeys(("tamb", "tambourine"), ("role", "tambourine")),
     **dict.fromkeys(("drum", "top", "groove"), ("role", "drums")),
     **dict.fromkeys(("break", "breakbeat", "breaks"), ("role", "break")),

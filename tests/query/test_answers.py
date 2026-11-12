@@ -281,7 +281,9 @@ def test_benchmark_clips_long_notes_and_says_so(full: Library) -> None:
 def test_an_unknown_benchmark_lists_the_real_ones(full: Library) -> None:
     for tool in ("benchmark", "report", "verdicts"):
         key = "benchmark" if tool == "verdicts" else "id"
-        with pytest.raises(Unanswerable, match="no benchmark 'BM-NOPE'; there are BM-BASS-01"):
+        with pytest.raises(
+            Unanswerable, match=r"no benchmark 'BM-NOPE'; there are BM-.*BM-BASS-01"
+        ):
             ask(full, tool, **{key: "BM-NOPE"})
 
 

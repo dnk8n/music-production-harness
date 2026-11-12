@@ -19,6 +19,7 @@ end
 local function describe(song)
   local out = { bpm = song.transport.bpm, lpb = song.transport.lpb, tracks = {}, notes = {} }
   out.patterns = {}
+  local offset = 0 -- lines in the patterns before this one
   for position, index in ipairs(song.sequencer.pattern_sequence) do
     local pattern = song.patterns[index]
     out.patterns[position] = pattern.number_of_lines
@@ -28,7 +29,7 @@ local function describe(song)
         if column then
           out.notes[#out.notes + 1] = {
             track = track_index,
-            line = (position - 1) * 64 + line_index - 1,
+            line = offset + line_index - 1,
             note = column.note_value,
             instrument = column.instrument_value,
             volume = column.volume_value,
@@ -37,6 +38,7 @@ local function describe(song)
         end
       end
     end
+    offset = offset + pattern.number_of_lines
   end
   table.sort(out.notes, function(a, b)
     if a.track ~= b.track then

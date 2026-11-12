@@ -3,6 +3,13 @@
 Pack naming is a cheap, mostly-right head start: "Acid Techno (Ab, 131bpm)",
 "MXE_128_Vocals_19", "Kick Snare 0005". Everything here is a *prior* with a
 confidence below 1.0; audio analysis later confirms or contradicts it.
+
+The top of a path is names, not labels: the pack ("LOOPMASTERS 4GB Pack") and
+the folder just inside it, often a product or a kit ("BASS_HOUSE_AND_GARAGE",
+"TOM MIDDLETON", "Drum & Bass (F, 174bpm)"). Their role words describe a genre
+or a person as often as a sound, so they only back up a role that the file
+name or a deeper folder names, or stand in when nothing nearer names a role
+("Mutant Breaks").
 """
 
 from __future__ import annotations
@@ -16,7 +23,8 @@ VERSION = 4
 
 FOLDER_CONFIDENCE = 0.5  # the folder directly containing the file
 FOLDER_DECAY = 0.1  # per level further up the tree
-FOLDER_FLOOR = 0.2  # pack-level names ("Stab Bass Sample Pack") still count a little
+FOLDER_FLOOR = 0.2  # far-off folders still count a little
+NAME_LEVELS = 2  # the pack's folder and the one inside it name things more than label them
 FILENAME_CONFIDENCE = 0.6
 WEAK = 0.3  # bare numbers that might be a tempo, or might be an index
 
@@ -135,6 +143,15 @@ def folder_confidence(depth_from_file: int) -> float:
     return round(max(FOLDER_CONFIDENCE - FOLDER_DECAY * (depth_from_file - 1), FOLDER_FLOOR), 3)
 
 
+def _from_names(named: set[Prior], nearer: set[Prior]) -> set[Prior]:
+    """What the pack's and product's names may add: everything but a role that
+    differs from the roles the file name and deeper folders give. "Bass" in
+    BASS_HOUSE_AND_GARAGE doesn't make its drum loops bass, but "Breaks" is all
+    that says the files in Mutant Breaks are breaks."""
+    roles = {p.value for p in nearer if p.name == "role"}
+    return {p for p in named if p.name != "role" or not roles or p.value in roles}
+
+
 def priors_for(rel_path: str) -> list[Prior]:
     """All priors for a path relative to its source root, strongest first."""
     path = PurePosixPath(rel_path)
@@ -142,7 +159,10 @@ def priors_for(rel_path: str) -> list[Prior]:
     if len(path.parts) > 1:
         priors.add(Prior("pack", path.parts[0], "folder", 1.0))
     folders = path.parts[:-1]
+    named: set[Prior] = set()  # from the pack's and product's names (NAME_LEVELS)
     for index, folder in enumerate(folders):
-        priors |= _component_priors(folder, "folder", folder_confidence(len(folders) - index))
+        found = _component_priors(folder, "folder", folder_confidence(len(folders) - index))
+        (named if index < NAME_LEVELS else priors).update(found)
     priors |= _component_priors(path.stem, "filename", FILENAME_CONFIDENCE)
+    priors |= _from_names(named, priors)
     return sorted(priors, key=lambda p: (p.name, -p.confidence, p.value, p.origin))

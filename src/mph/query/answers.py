@@ -3,8 +3,9 @@
 Every answer is plain JSON-ready data built from the same functions as the
 command or page that shows the same thing: ``search.search`` for sounds,
 ``feedback.listing`` for takes and the verdicts that stand, ``doctor.run`` for
-health. The catalogue is only opened through ``readonly`` (REQ-QRY-02), and
-nothing here opens audio.
+health. The listing here also has what other branches rendered (REQ-QRY-09).
+The catalogue is only opened through ``readonly`` (REQ-QRY-02), and nothing
+here opens audio.
 """
 
 from __future__ import annotations
@@ -32,6 +33,19 @@ SQL_TIMEOUT_S = 5.0
 RECENT = 20  # renders and verdicts listed per benchmark; `verdicts` pages through the rest
 NOTES_PREVIEW = 300  # characters of a verdict's notes in summaries; `verdicts` has them all
 HEX = re.compile(r"^[0-9a-fA-F]{6,64}$")
+ROLE_COUNTS = (
+    "strongest counts each sound once, under its most confident role, as `mph catalogue stats` "
+    "does. labelled counts every sound that has the role among its labels, as `labels` does, "
+    "so a sound with two roles counts under both."
+)
+ROLE_VALUES = (
+    "sounds counts every sound labelled with the role. strongest counts only the sounds whose "
+    "most confident role it is, as overview and `mph catalogue stats` do."
+)
+DOWNLOAD_STORE = (
+    "a download store: `mph catalogue fetch` fills it, so it needs no config; each sound has "
+    "its own licence (`sound` shows it)"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,13 +84,6 @@ def _count(conn: sqlite3.Connection, sql: str) -> int:
     return int(conn.execute(sql).fetchone()[0])
 
 
-def known_benchmark(benchmark_id: str) -> None:
-    if benchmark_id not in score.available():
-        raise Unanswerable(
-            f"no benchmark {benchmark_id!r}; there are {', '.join(score.available())}"
-        )
-
-
 # --- overview ------------------------------------------------------------------------
 
 
@@ -85,7 +92,7 @@ def overview(lib: Library) -> Answer:
     with lib.reading_if_any() as conn:
         catalogue = _catalogue(conn) if conn else {"scanned": False, "next": "mph catalogue scan"}
         sources = _sources(cfg, conn)
-        listing = feedback.listing(lib.renders, conn)
+        listing = _listing(lib, conn)
     tidy = retention.plan(cfg.data_dir, cfg.retention)
     return {
         "mph": __version__,
@@ -122,33 +129,74 @@ def _catalogue(conn: sqlite3.Connection) -> Answer:
         "stashed": _count(conn, "SELECT COUNT(*) FROM stash"),
         "verdicts": _count(conn, "SELECT COUNT(*) FROM verdict"),
         "top_packs": dict(summary.by_pack[:15]),
-        "roles": dict(summary.by_role),
+        "roles": _roles(conn, summary.by_role),
+        "roles_counted": ROLE_COUNTS,
         "formats": dict(summary.by_format[:10]),
     }
 
 
+def _roles(conn: sqlite3.Connection, strongest: list[tuple[str, int]]) -> Answer:
+    """Both ways of counting roles, side by side, most common first."""
+    best = dict(strongest)
+    labelled = dict(
+        conn.execute(
+            "SELECT value, COUNT(DISTINCT asset_hash) FROM tag WHERE name = 'role' GROUP BY value"
+        ).fetchall()
+    )
+    order = sorted(labelled, key=lambda role: (-best.get(role, 0), -labelled[role], role))
+    return {role: {"strongest": best.get(role, 0), "labelled": labelled[role]} for role in order}
+
+
+SOURCE_COUNTS = """
+    SELECT s.id, s.kind, s.location, s.licence, s.last_scan_at, COUNT(f.rel_path) AS files,
+           COUNT(DISTINCT CASE WHEN NOT EXISTS (
+               SELECT 1 FROM analysis a WHERE a.asset_hash = f.asset_hash AND a.error IS NULL
+           ) THEN f.asset_hash END) AS unanalysed,
+           (SELECT COUNT(*) FROM download d WHERE d.source_id = s.id) AS downloads,
+           (SELECT MAX(fetched_at) FROM download d WHERE d.source_id = s.id) AS last_fetch_at
+    FROM source s LEFT JOIN source_file f ON f.source_id = s.id GROUP BY s.id ORDER BY s.id
+"""
+
+
 def _sources(cfg: Config, conn: sqlite3.Connection | None) -> list[Answer]:
-    """Configured sources and the ones scans and downloads recorded, merged by id."""
-    scanned: dict[str, Answer] = {}
+    """Configured sources, and the ones scans and downloads recorded, merged by id.
+    A download store isn't configured: fetching fills it."""
+    recorded: dict[str, Answer] = {}
     if conn is not None:
-        for row in conn.execute(
-            "SELECT s.id, s.kind, s.location, s.licence, s.last_scan_at, "
-            "COUNT(f.rel_path) AS files FROM source s "
-            "LEFT JOIN source_file f ON f.source_id = s.id GROUP BY s.id ORDER BY s.id"
-        ):
-            scanned[row["id"]] = dict(row)
+        recorded = {row["id"]: dict(row) for row in conn.execute(SOURCE_COUNTS)}
     configured = {
         s.id: {"id": s.id, "kind": s.kind, "location": s.location, "licence": s.license}
         for s in cfg.sources
     }
-    return [
-        {
-            **scanned.get(source_id, {"files": 0, "last_scan_at": None}),
-            **configured.get(source_id, {}),
-            "configured": source_id in configured,
-        }
-        for source_id in sorted(configured.keys() | scanned.keys())
-    ]
+    found = []
+    for source_id in sorted(configured.keys() | recorded.keys()):
+        row = recorded.get(source_id, {"files": 0, "unanalysed": 0, "last_scan_at": None})
+        if source_id not in configured and row.get("downloads"):
+            found.append(_store(row))
+            continue
+        row.pop("downloads", None)
+        row.pop("last_fetch_at", None)
+        found.append(
+            {**row, **configured.get(source_id, {}), "configured": source_id in configured}
+        )
+    return found
+
+
+def _store(row: Answer) -> Answer:
+    """A connector's download store, with what analysing it would take."""
+    store = {
+        "id": row["id"],
+        "kind": "downloads",
+        "location": row["location"],
+        "files": row["files"],
+        "downloads": row["downloads"],
+        "unanalysed": row["unanalysed"],
+        "last_fetch_at": row["last_fetch_at"],
+        "about": DOWNLOAD_STORE,
+    }
+    if row["unanalysed"]:
+        store["next"] = f"mph catalogue analyse --pack {row['id']}"
+    return store
 
 
 def _projects(listing: list[dict[str, Any]]) -> Answer:
@@ -214,7 +262,12 @@ def _label_values(conn: sqlite3.Connection, name: str, origin: str | None, limit
         (*where, limit),
     ).fetchall()
     values = [{"value": r[0], "sounds": r[1], "origins": sorted(r[2].split(","))} for r in rows]
-    return {"name": name, "distinct_values": total, "shown": len(values), "values": values}
+    answer: Answer = {"name": name, "distinct_values": total, "shown": len(values)}
+    if name == "role" and origin is None:  # the overview's count, beside this one
+        strongest = dict(conn.execute(stats.BEST_ROLE_COUNTS).fetchall())
+        values = [{**v, "strongest": strongest.get(v["value"], 0)} for v in values]
+        answer["counted"] = ROLE_VALUES
+    return {**answer, "values": values}
 
 
 def search_sounds(lib: Library, args: Mapping[str, Any]) -> Answer:
@@ -371,7 +424,7 @@ def _renders_using(renders: Path, digest: str) -> Answer:
             "rendered_at": report.get("rendered_at"),
             "voice": entry.get("voice"),
         }
-        for benchmark_id in score.available()
+        for benchmark_id in feedback.rendered(renders)
         for report in feedback.reports(renders, benchmark_id)
         for entry in report.get("kit", [])
         if entry.get("hash") == digest
@@ -383,9 +436,32 @@ def _renders_using(renders: Path, digest: str) -> Answer:
 # --- benchmarks ----------------------------------------------------------------------
 
 
+GIVEN = """
+    SELECT benchmark, verdict, scope, created_at, notes, group_concat(score_hash) AS hashes,
+           MAX(id) AS last
+    FROM verdict
+    WHERE (?1 IS NULL OR benchmark = ?1) AND (?2 IS NULL OR verdict = ?2)
+      AND (?3 IS NULL OR created_at >= ?3)
+    GROUP BY benchmark, scope, created_at, verdict, notes, CASE scope WHEN 'all' THEN 0 ELSE id END
+"""  # a whole-benchmark verdict is stored once per take, and given once (REQ-QRY-10)
+
+
+def _listing(lib: Library, conn: sqlite3.Connection | None) -> list[dict[str, Any]]:
+    """The listening page's benchmarks, plus what other branches rendered (REQ-QRY-09)."""
+    return feedback.listing(lib.renders, conn, elsewhere=True)
+
+
+def _entry(listing: list[dict[str, Any]], benchmark_id: str) -> dict[str, Any]:
+    found = next((b for b in listing if b["id"] == benchmark_id), None)
+    if found is None:
+        known = ", ".join(sorted(b["id"] for b in listing))
+        raise Unanswerable(f"no benchmark {benchmark_id!r}; there are {known}")
+    return found
+
+
 def benchmarks(lib: Library, project: str | None) -> Answer:
     with lib.reading_if_any() as conn:
-        listing = feedback.listing(lib.renders, conn)
+        listing = _listing(lib, conn)
     projects = sorted({b["project"] for b in listing})
     if project:
         listing = [b for b in listing if b["project"].lower() == project.lower()]
@@ -400,47 +476,106 @@ def _brief(bench: dict[str, Any]) -> Answer:
         "title": bench["title"],
         "project": bench["project"],
         "bpm": bench["bpm"],
+        "in_checkout": bench["in_checkout"],
+        "verdicts_for_every_take": _wholes(bench["takes"]),
         "takes": [_take_brief(take) for take in bench["takes"]],
     }
 
 
 def _take_brief(take: dict[str, Any]) -> Answer:
     made = take["report"] or {}
-    verdict = take["verdict"]
     return {
         "take": take["name"],
         "title": take["title"],
+        "in_checkout": take["in_checkout"],
         "rendered": bool(made),
         "score_hash": made.get("score_hash"),
         "rendered_at": made.get("rendered_at"),
         "engine": made.get("engine"),
         "measurements_pass": made.get("passed"),
+        "failed_measurements": _failed(made) if made else None,
         "audio_on_disk": made.get("on_disk"),
-        "verdict": verdict
-        and {"verdict": verdict["verdict"], "scope": verdict["scope"], "at": verdict["created_at"]},
+        "verdict": _standing(take),
     }
 
 
+def _failed(made: dict[str, Any]) -> list[Answer]:
+    return [
+        {key: m.get(key) for key in ("name", "value", "limit", "note")}
+        for m in made.get("measurements", [])
+        if not m.get("passed")
+    ]
+
+
+def _for_every_take(verdict: dict[str, str], made: dict[str, Any]) -> bool:
+    """A whole-benchmark verdict, or one given on a `main` render, which counts the
+    same (REQ-FBK-02), rather than the take's own."""
+    return verdict["scope"] == "all" or verdict["score_hash"] != made["score_hash"]
+
+
+def _standing(take: dict[str, Any]) -> Answer | None:
+    """The verdict that stands for a take. A whole-benchmark one leaves its notes to
+    the benchmark, so they're shown once (REQ-QRY-10)."""
+    verdict = take["verdict"]
+    if not verdict:
+        return None
+    if _for_every_take(verdict, take["report"]):
+        return {"verdict": verdict["verdict"], "scope": "all", "at": verdict["created_at"]}
+    return _clip_notes(
+        {
+            "verdict": verdict["verdict"],
+            "scope": "take",
+            "at": verdict["created_at"],
+            "notes": verdict["notes"],
+        }
+    )
+
+
+def _wholes(takes: list[dict[str, Any]]) -> list[Answer]:
+    """Each whole-benchmark verdict that stands for some take, once, with those takes."""
+    found: dict[tuple[str, str, str], Answer] = {}
+    for take in takes:
+        verdict = take["verdict"]
+        if not verdict or not _for_every_take(verdict, take["report"]):
+            continue
+        key = (verdict["created_at"], verdict["verdict"], verdict["notes"])
+        if key not in found:
+            found[key] = _clip_notes(
+                {
+                    "verdict": verdict["verdict"],
+                    "at": verdict["created_at"],
+                    "notes": verdict["notes"],
+                    "takes": [],
+                }
+            )
+        found[key]["takes"].append(take["name"])
+    return list(found.values())
+
+
 def benchmark(lib: Library, benchmark_id: str) -> Answer:
-    known_benchmark(benchmark_id)
     with lib.reading_if_any() as conn:
-        entry = next(b for b in feedback.listing(lib.renders, conn) if b["id"] == benchmark_id)
+        entry = _entry(_listing(lib, conn), benchmark_id)
+        total, given = _given(conn, lib.renders, benchmark_id, limit=RECENT)
     history = [_history(r) for r in feedback.reports(lib.renders, benchmark_id)]
-    return {
+    answer: Answer = {
         "id": benchmark_id,
         "title": entry["title"],
         "project": entry["project"],
         "bpm": entry["bpm"],
+        "in_checkout": entry["in_checkout"],
         "hear": entry["hear"],
-        "score_file": score.source(benchmark_id),
+        "score_file": score.source(benchmark_id) if entry["in_checkout"] else None,
         "takes": [_take(take) for take in entry["takes"]],
         "renders": {"count": len(history), "newest": history[:RECENT]},
-        "verdicts": {
-            "count": len(entry["verdicts"]),
-            "newest": [_clip_notes(v) for v in entry["verdicts"][:RECENT]],
-        },
+        "verdicts": {"count": total, "newest": [_clip_notes(v) for v in given]},
         "next": "report has a render's whole report.json; verdicts has notes in full",
     }
+    if not entry["in_checkout"]:
+        answer["note"] = (
+            f"another branch defines {benchmark_id}: this checkout has no score for it, so its "
+            "takes come from its renders, and there is no score file or hear text"
+        )
+    return answer
 
 
 def _take(take: dict[str, Any]) -> Answer:
@@ -452,14 +587,19 @@ def _take(take: dict[str, Any]) -> Answer:
             {key: entry.get(key) for key in ("voice", "sound", "hash", "gain_db")}
             for entry in made.get("kit", [])
         ],
-        "failed_measurements": [m for m in made.get("measurements", []) if not m.get("passed")],
+        "failed_measurements": _failed(made),
         "levels": made.get("levels"),
     }
-    verdict = take["verdict"] and _clip_notes(take["verdict"])
-    return {"take": take["name"], "title": take["title"], "verdict": verdict, "newest": newest}
+    return {
+        "take": take["name"],
+        "title": take["title"],
+        "in_checkout": take["in_checkout"],
+        "verdict": _standing(take),
+        "newest": newest,
+    }
 
 
-def _clip_notes(verdict: dict[str, Any]) -> Answer:
+def _clip_notes(verdict: Answer) -> Answer:
     notes = str(verdict.get("notes") or "")
     if len(notes) <= NOTES_PREVIEW:
         return verdict
@@ -478,10 +618,10 @@ def _history(made: dict[str, Any]) -> Answer:
 
 
 def report(lib: Library, benchmark_id: str, take: str | None, score_hash: str | None) -> Answer:
-    known_benchmark(benchmark_id)
-    chosen = _pick(lib.renders, benchmark_id, take, score_hash)
     with lib.reading_if_any() as conn:
+        entry = _entry(_listing(lib, conn), benchmark_id)
         given = feedback.verdicts(conn, benchmark_id)
+    chosen = _pick(lib.renders, entry, take, score_hash)
     return {
         "report": chosen,
         "verdicts_on_this_render": [v for v in given if v["score_hash"] == chosen["score_hash"]],
@@ -489,14 +629,15 @@ def report(lib: Library, benchmark_id: str, take: str | None, score_hash: str | 
 
 
 def _pick(
-    renders: Path, benchmark_id: str, take: str | None, score_hash: str | None
+    renders: Path, entry: dict[str, Any], take: str | None, score_hash: str | None
 ) -> dict[str, Any]:
+    benchmark_id = entry["id"]
     found = feedback.reports(renders, benchmark_id)
     if score_hash:
         wanted = [r for r in found if r.get("score_hash") == score_hash]
         missing = f"{benchmark_id} has no render {score_hash}; `benchmark` lists them"
     elif take:
-        takes = [v.name for v in score.all_variants(score.load(benchmark_id))]
+        takes = [t["name"] for t in entry["takes"]]
         if take not in takes:
             raise Unanswerable(f"{benchmark_id} has no take {take!r}; takes: {', '.join(takes)}")
         wanted = [r for r in found if feedback.variant_of_report(r) == take]
@@ -511,32 +652,68 @@ def _pick(
 def verdicts(
     lib: Library, benchmark_id: str | None, verdict: str | None, since: str | None, limit: int
 ) -> Answer:
-    if benchmark_id:
-        known_benchmark(benchmark_id)
-    where = (benchmark_id, verdict, since)
     with lib.reading_if_any() as conn:
+        if benchmark_id:
+            _known_for_verdicts(lib, conn, benchmark_id)
         if conn is None:
             return {"total": 0, "shown": 0, "verdicts": [], "note": "no catalogue, no verdicts"}
-        total = conn.execute(
-            "SELECT COUNT(*) FROM verdict WHERE (?1 IS NULL OR benchmark = ?1) "
-            "AND (?2 IS NULL OR verdict = ?2) AND (?3 IS NULL OR created_at >= ?3)",
-            where,
-        ).fetchone()[0]
-        rows = conn.execute(
-            "SELECT benchmark, score_hash, verdict, scope, created_at, notes FROM verdict "
-            "WHERE (?1 IS NULL OR benchmark = ?1) AND (?2 IS NULL OR verdict = ?2) "
-            "AND (?3 IS NULL OR created_at >= ?3) ORDER BY created_at DESC, id DESC LIMIT ?4",
-            (*where, limit),
-        ).fetchall()
-    takes = _takes_by_render(lib.renders, {r["benchmark"] for r in rows})
-    found = [{**dict(r), "take": takes.get((r["benchmark"], r["score_hash"]))} for r in rows]
+        total, found = _given(
+            conn, lib.renders, benchmark_id, limit=limit, verdict=verdict, since=since
+        )
     return {"total": total, "shown": len(found), "verdicts": found}
+
+
+def _known_for_verdicts(lib: Library, conn: sqlite3.Connection | None, benchmark_id: str) -> None:
+    """Any benchmark with a score, a render or a verdict here."""
+    judged = [r[0] for r in conn.execute("SELECT DISTINCT benchmark FROM verdict")] if conn else []
+    known = {b["id"] for b in _listing(lib, conn)} | set(judged)
+    if benchmark_id not in known:
+        raise Unanswerable(f"no benchmark {benchmark_id!r}; there are {', '.join(sorted(known))}")
+
+
+def _given(
+    conn: sqlite3.Connection | None,
+    renders: Path,
+    benchmark_id: str | None,
+    *,
+    limit: int,
+    verdict: str | None = None,
+    since: str | None = None,
+) -> tuple[int, list[Answer]]:
+    """How many verdicts Dean gave, and the newest ``limit``, each as given: one for
+    a take, or one for the whole benchmark with every take it covered."""
+    if conn is None:
+        return 0, []
+    where = (benchmark_id, verdict, since)
+    total = conn.execute(f"SELECT COUNT(*) FROM ({GIVEN})", where).fetchone()[0]  # noqa: S608
+    newest = f"{GIVEN} ORDER BY created_at DESC, last DESC LIMIT ?4"
+    rows = conn.execute(newest, (*where, limit)).fetchall()
+    takes = _takes_by_render(renders, {r["benchmark"] for r in rows})
+    return total, [_as_given(row, takes) for row in rows]
+
+
+def _as_given(row: sqlite3.Row, takes: Mapping[tuple[str, str], str]) -> Answer:
+    benchmark_id = row["benchmark"]
+    judged = sorted(
+        (takes.get((benchmark_id, h)), h) for h in str(row["hashes"]).split(",")
+    )  # a take is None when its render is gone
+    found: Answer = {
+        "benchmark": benchmark_id,
+        "verdict": row["verdict"],
+        "scope": row["scope"],
+        "created_at": row["created_at"],
+        "notes": row["notes"],
+    }
+    if row["scope"] == "all":
+        return {**found, "takes": [t for t, _ in judged], "score_hashes": [h for _, h in judged]}
+    (take, render_hash), *_ = judged
+    return {**found, "take": take, "score_hash": render_hash}
 
 
 def _takes_by_render(renders: Path, benchmark_ids: set[str]) -> dict[tuple[str, str], str]:
     return {
         (benchmark_id, str(made.get("score_hash"))): feedback.variant_of_report(made)
-        for benchmark_id in sorted(benchmark_ids & set(score.available()))
+        for benchmark_id in sorted(benchmark_ids)
         for made in feedback.reports(renders, benchmark_id)
     }
 

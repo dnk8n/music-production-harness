@@ -202,7 +202,7 @@ def render_search(result: search.Result, query: search.Query) -> str:
         length = f"{hit.duration_s:.1f}s" if hit.duration_s is not None else "?s"
         loud = f"{hit.lufs:.1f} LUFS" if hit.lufs is not None else "not analysed"
         lines.append(f"{rank:>3}. {hit.path}")
-        lines.append(f"     score {hit.score:g} | {length} | {loud}")
+        lines.append(f"     score {hit.score:g} | {length} | {loud} | {hit.licence}")
         if hit.reasons:
             lines.append(f"     why: {'; '.join(hit.reasons)}")
     if result.unanalysed_skipped:

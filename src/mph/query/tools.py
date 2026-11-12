@@ -36,6 +36,7 @@ class Tool:
     description: str
     schema: Schema
     answer: Callable[[Library, Arguments], Answer]
+    narrower: str = "a lower limit or max_rows, or narrower filters"  # how to ask for less
 
 
 def run(tool: Tool, library: Library, arguments: Mapping[str, Any]) -> str:
@@ -51,7 +52,7 @@ def run(tool: Tool, library: Library, arguments: Mapping[str, Any]) -> str:
     if len(text) > MAX_ANSWER_CHARS:
         raise Unanswerable(
             f"the answer would be {len(text):,} characters, over the {MAX_ANSWER_CHARS:,} limit: "
-            "ask for less (a lower limit or max_rows, or narrower filters)"
+            f"ask for less ({tool.narrower})"
         )
     return text
 
@@ -196,9 +197,13 @@ TOOLS: tuple[Tool, ...] = (
         "overview",
         "Overview of mph",
         "Start here. A summary of everything mph knows on this Mac: config files and the data "
-        "folder, sample sources, the catalogue's size (sounds, files, hours, how many are "
-        "analysed, top packs, roles, formats), benchmarks per project with how many takes are "
-        "rendered, pass their measurements and what Dean's verdicts say, and the disk renders use.",
+        "folder, sample sources (local folders, and download stores with how many of their "
+        "sounds are still unanalysed), the catalogue's size (sounds, files, hours, how many are "
+        "analysed, top packs, formats, and roles counted two ways: strongest counts each sound "
+        "once, under its most confident role; labelled counts every sound carrying the role), "
+        "benchmarks per project with how many takes are rendered, pass their measurements and "
+        "what Dean's verdicts say, and the disk renders use. Benchmarks rendered from another "
+        "branch, with no score in this checkout, are under the project 'Not in this checkout'.",
         _args(),
         lambda lib, a: answers.overview(lib),
     ),
@@ -209,7 +214,8 @@ TOOLS: tuple[Tool, ...] = (
         "Without name: every tag name (role, pack, bpm, key, form, character) with how many "
         "sounds carry it, by origin: folder and filename are hints parsed from names, analysis "
         "is measured from the audio, human is set by Dean. With name: that tag's values and how "
-        "many sounds have each, most common first.",
+        "many sounds carry each, most common first. For role, strongest also counts the sounds "
+        "whose most confident role it is, which is what overview counts.",
         _args(
             {
                 "name": {
@@ -230,7 +236,8 @@ TOOLS: tuple[Tool, ...] = (
         "Filters are hard: roles, form, loudness (integrated LUFS, only for analysed sounds), "
         "length, licence and words, which must all appear in the path or tags. bpm and key "
         "filter and rank: half and double time and neighbouring keys match, and one-shots and "
-        "sounds without a key pass. Each hit has a hash to pass to the sound tool.",
+        "sounds without a key pass. Each hit has its licence, and a hash to pass to the sound "
+        "tool.",
         _args(
             {
                 "roles": _words(f"any of these roles: {', '.join(ROLES)}"),
@@ -287,18 +294,24 @@ TOOLS: tuple[Tool, ...] = (
         "Benchmarks and takes",
         "Every benchmark, grouped by project, with each take (one way of making it: renoise, "
         "supercollider, synth-kit, or a variant the score declares): whether it is rendered, "
-        "its score hash and engine, whether its measurements pass, whether its audio is still "
-        "on disk, and the verdict that stands for it (its own, else the whole-benchmark one).",
+        "its score hash and engine, whether its measurements pass and which failed (value and "
+        "limit), whether its audio is still on disk, and the verdict that stands for it: its "
+        "own, with Dean's notes, or one for the whole benchmark, whose notes are given once per "
+        "benchmark under verdicts_for_every_take. Benchmarks and takes rendered from another "
+        "branch, which this checkout has no score for, are listed too (in_checkout: false).",
         _args({"project": {"type": "string", "maxLength": 100, "description": "only this one"}}),
         lambda lib, a: answers.benchmarks(lib, a.get("project")),
+        narrower="one project at a time: overview lists them",
     ),
     Tool(
         "benchmark",
         "One benchmark in full",
         "One benchmark in full: what Dean should hear, its score file (TOML: tempo, swing, bars, "
         "voices and their grids and sounds, variants), each take's newest render in brief (kit, "
-        "failed measurements, levels), the newest renders, and Dean's verdicts with their notes "
-        "(long notes clipped; verdicts has them whole). report has a render's full report.",
+        "failed measurements, levels), the newest renders, and Dean's verdicts as he gave them, "
+        "with their notes (long notes clipped; verdicts has them whole): each for one take, or "
+        "for the whole benchmark with every take it covered. report has a render's full report. "
+        "A benchmark another branch defines comes from its renders, with no score or hear text.",
         _args({"id": BENCHMARK_ID}, required=["id"]),
         lambda lib, a: answers.benchmark(lib, a["id"]),
     ),
@@ -309,7 +322,7 @@ TOOLS: tuple[Tool, ...] = (
         "measurement with its value and limit, loudness and true peak, the licence marker, "
         "tool versions and files, plus the verdicts given on that render. Name a take for its "
         "newest render, or a score_hash (from benchmark or verdicts) for that exact one, "
-        "including renders whose audio was pruned.",
+        "including renders whose audio was pruned, and benchmarks or takes from another branch.",
         _args(
             {
                 "id": BENCHMARK_ID,
@@ -332,9 +345,11 @@ TOOLS: tuple[Tool, ...] = (
     Tool(
         "verdicts",
         "Dean's verdicts",
-        "Dean's verdicts on benchmark renders, newest first: pass, close or fail, with notes "
-        "(often with times, such as '0:42 hats too loud'), for one take or for the whole "
-        "benchmark, with the take each render was.",
+        "Dean's verdicts on benchmark renders, newest first, each as he gave it: pass, close or "
+        "fail, with notes (often with times, such as '0:42 hats too loud'). A verdict for one "
+        "take names its take and render; one for the whole benchmark lists every take and "
+        "render it covered. A verdict on a take called main, from before takes were equal, "
+        "counts for every take rendered by then.",
         _args(
             {
                 "benchmark": BENCHMARK_ID,

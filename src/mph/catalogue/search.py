@@ -62,10 +62,17 @@ class Evidence:
 class Candidate:
     digest: str
     paths: list[str] = field(default_factory=list)
-    licences: set[str] = field(default_factory=set)
+    licences: set[str] = field(default_factory=set)  # its sources' and its download's
     duration_s: float | None = None
     tags: dict[str, list[Evidence]] = field(default_factory=lambda: defaultdict(list))
     features: dict[str, object] = field(default_factory=dict)
+    downloaded: str = ""  # a download's own licence, which wins over its store's "varies"
+
+    @property
+    def licence(self) -> str:
+        """The licence a render records for this sound (REQ-BEN-05): its download's
+        own, else its source's (the first by name, if it is in several)."""
+        return self.downloaded or min(self.licences, default="unknown")
 
     def best(self, name: str) -> Evidence | None:
         found = self.tags.get(name) or []
@@ -81,6 +88,7 @@ class Hit:
     duration_s: float | None
     lufs: float | None
     facts: dict[str, str] = field(default_factory=dict)  # best role, bpm, key, form
+    licence: str = "unknown"
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -91,6 +99,7 @@ class Hit:
             "duration_s": self.duration_s,
             "lufs": self.lufs,
             "facts": self.facts,
+            "licence": self.licence,
         }
 
 
@@ -128,9 +137,10 @@ def load(conn: sqlite3.Connection) -> dict[str, Candidate]:
         item = candidates.setdefault(row[0], Candidate(row[0], duration_s=row[1]))
         item.paths.append(row[2])
         item.licences.add(row[3])
-    for digest, licence in conn.execute("SELECT asset_hash, licence FROM download"):
+    for digest, licence in conn.execute("SELECT asset_hash, licence FROM download ORDER BY rowid"):
         if digest in candidates:  # a download's own licence, not its source's 'varies'
             candidates[digest].licences.add(licence)
+            candidates[digest].downloaded = candidates[digest].downloaded or licence
     for digest, name, value, origin, confidence in conn.execute(
         "SELECT asset_hash, name, value, origin, confidence FROM tag"
     ):
@@ -250,6 +260,7 @@ def score(item: Candidate, query: Query) -> Hit | None:
         duration_s=item.duration_s,
         lufs=_lufs(item),
         facts=facts(item),
+        licence=item.licence,
     )
 
 

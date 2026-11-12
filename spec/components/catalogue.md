@@ -93,9 +93,13 @@ keys), loudness, duration, licence and free text, ranked by fit. Filters are
 hard; fit is a sum of confidence-weighted matches, and each result lists the
 reasons behind its score. Tempo matches allow half and double time; one-shots
 and sounds with no key pass tempo and key filters without gaining score.
+Each result names its licence, the one a render's report would record
+(REQ-BEN-05): a download's own, else its source's.
 `--json` gives the same results for other tools.
 - **Why:** track construction starts with "find me a dry 909 open hat near
-  128 BPM", and picking samples has to be explainable.
+  128 BPM", and picking samples has to be explainable. Whether a track can
+  be published depends on the licences of its sounds, so choosing one should
+  show it (2026-11-11).
 - **Verify:** test
 
 ### REQ-CAT-06: Provenance and non-destructive refresh

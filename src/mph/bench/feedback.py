@@ -6,6 +6,8 @@ verdicts given so far. Verdicts are stored in the catalogue DB against the
 render's score hash, so each one points at exactly what was heard; a verdict
 for the whole benchmark is stored once per take (REQ-FBK-02).
 Only files listed in a render's own report can be served (REQ-FBK-05).
+The query channel reads the same listing, plus what other branches rendered
+(REQ-QRY-09).
 """
 
 from __future__ import annotations
@@ -21,7 +23,9 @@ from mph.catalogue.scanner import utc_now
 
 VERDICTS = ("pass", "close", "fail")
 RENDER_HASH = re.compile(r"^[0-9a-f]{16}$")
+BENCHMARK_ID = re.compile(r"^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$")  # safe as a folder name
 MAX_NOTES = 4000
+ELSEWHERE = "Not in this checkout"  # the project of a benchmark only another branch defines
 
 
 class FeedbackError(ValueError):
@@ -31,6 +35,8 @@ class FeedbackError(ValueError):
 def reports(renders: Path, benchmark_id: str) -> list[dict[str, Any]]:
     """Every readable report for a benchmark, newest first. ``on_disk`` says
     whether its delivered audio is still there, or was pruned (REQ-RET-02)."""
+    if not BENCHMARK_ID.match(benchmark_id):
+        return []
     found = []
     for path in (renders / benchmark_id).glob("*/report.json"):
         try:
@@ -56,6 +62,13 @@ def verdicts(conn: sqlite3.Connection | None, benchmark_id: str) -> list[dict[st
     return [dict(zip(keys, map(str, row), strict=True)) for row in rows]
 
 
+def rendered(renders: Path) -> list[str]:
+    """Every benchmark with a readable render here, whichever branch defined it."""
+    if not renders.is_dir():
+        return []
+    return sorted(p.name for p in renders.iterdir() if p.is_dir() and reports(renders, p.name))
+
+
 def variant_of_report(report: dict[str, Any]) -> str:
     return str(report.get("variant") or score.LEGACY_MAIN)  # renders before variants existed
 
@@ -65,11 +78,24 @@ def latest(renders: Path, benchmark_id: str, variant: str) -> dict[str, Any] | N
     return next(found, None)
 
 
+def newest_by_variant(found: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """The newest of ``found`` (newest first) for each variant it has."""
+    newest: dict[str, dict[str, Any]] = {}
+    for report in found:  # newest first, so the first of each wins
+        newest.setdefault(variant_of_report(report), report)
+    return newest
+
+
+def legacy_hashes(found: list[dict[str, Any]]) -> frozenset[str]:
+    """Renders from before takes were equal: their verdicts count for every take."""
+    return frozenset(
+        str(r["score_hash"]) for r in found if variant_of_report(r) == score.LEGACY_MAIN
+    )
+
+
 def newest_takes(renders: Path, benchmark_id: str) -> list[dict[str, Any]]:
     """The newest report of each take the benchmark has now, in take order."""
-    newest: dict[str, dict[str, Any]] = {}
-    for report in reports(renders, benchmark_id):  # newest first, so the first of each wins
-        newest.setdefault(variant_of_report(report), report)
+    newest = newest_by_variant(reports(renders, benchmark_id))
     takes = score.all_variants(score.load(benchmark_id))
     return [newest[v.name] for v in takes if v.name in newest]
 
@@ -90,41 +116,67 @@ def effective(
     )
 
 
-def listing(renders: Path, conn: sqlite3.Connection | None) -> list[dict[str, Any]]:
-    out = []
-    for benchmark_id in score.available():
-        loaded = score.load(benchmark_id)
-        found = reports(renders, benchmark_id)
-        given = verdicts(conn, benchmark_id)
-        legacy = frozenset(
-            str(r["score_hash"]) for r in found if variant_of_report(r) == score.LEGACY_MAIN
-        )
-        newest: dict[str, dict[str, Any]] = {}
-        for report in found:  # newest first, so the first of each variant wins
-            newest.setdefault(variant_of_report(report), report)
-        takes = []
-        for take in score.all_variants(loaded):
-            made = newest.get(take.name)
-            takes.append(
-                {
-                    "name": take.name,
-                    "title": take.title,
-                    "report": made,
-                    "verdict": effective(made, given, legacy) if made else None,
-                }
-            )
-        out.append(
-            {
-                "id": benchmark_id,
-                "title": loaded.title,
-                "hear": loaded.hear,
-                "bpm": loaded.bpm,
-                "project": loaded.project,
-                "takes": takes,
-                "verdicts": [{**v, "legacy": v["score_hash"] in legacy} for v in given],
-            }
-        )
-    return sorted(out, key=lambda b: (b["project"], b["id"]))
+def listing(
+    renders: Path, conn: sqlite3.Connection | None, *, elsewhere: bool = False
+) -> list[dict[str, Any]]:
+    """Every benchmark with its takes and verdicts, by project. With ``elsewhere``
+    (for the query channel, REQ-QRY-09) it also has what was rendered from other
+    branches: takes this checkout's scores don't declare, and benchmarks it has
+    no score for, read from their reports and listed last."""
+    here = score.available()
+    out = [_listed(renders, conn, b, score.load(b), elsewhere=elsewhere) for b in here]
+    if elsewhere:
+        others = [b for b in rendered(renders) if b not in here]
+        out += [_listed(renders, conn, b, None, elsewhere=True) for b in others]
+    return sorted(out, key=lambda b: (not b["in_checkout"], b["project"], b["id"]))
+
+
+def _listed(
+    renders: Path,
+    conn: sqlite3.Connection | None,
+    benchmark_id: str,
+    loaded: score.Score | None,
+    *,
+    elsewhere: bool,
+) -> dict[str, Any]:
+    found = reports(renders, benchmark_id)
+    given = verdicts(conn, benchmark_id)
+    legacy = legacy_hashes(found)
+    newest = newest_by_variant(found)
+    declared = [(v.name, v.title) for v in score.all_variants(loaded)] if loaded else []
+    takes = [_take(name, title, newest.get(name), given, legacy) for name, title in declared]
+    known = {name for name, _ in declared} | {score.LEGACY_MAIN}
+    for name, made in sorted(newest.items()) if elsewhere else ():
+        if name not in known:  # rendered from another branch's score
+            title = str(made.get("variant_title") or name)
+            takes.append({**_take(name, title, made, given, legacy), "in_checkout": False})
+    newest_report = found[0] if found else {}
+    return {
+        "id": benchmark_id,
+        "title": loaded.title if loaded else str(newest_report.get("title", "")),
+        "hear": loaded.hear if loaded else "",
+        "bpm": loaded.bpm if loaded else newest_report.get("bpm"),
+        "project": loaded.project if loaded else ELSEWHERE,
+        "in_checkout": loaded is not None,
+        "takes": takes,
+        "verdicts": [{**v, "legacy": v["score_hash"] in legacy} for v in given],
+    }
+
+
+def _take(
+    name: str,
+    title: str,
+    made: dict[str, Any] | None,
+    given: list[dict[str, str]],
+    legacy: frozenset[str],
+) -> dict[str, Any]:
+    return {
+        "name": name,
+        "title": title,
+        "in_checkout": True,
+        "report": made,
+        "verdict": effective(made, given, legacy) if made else None,
+    }
 
 
 def _report(renders: Path, benchmark_id: str, render_hash: str) -> dict[str, Any] | None:

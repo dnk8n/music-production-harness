@@ -196,7 +196,8 @@ def _duck(plan: Plan, event: Event) -> list[Message]:
     if sidechain is None or not sidechain.active or event.voice != sidechain.trigger:
         return []
     args: list[Arg] = ["bus", DUCK_BUS, "depth", reduction(sidechain.depth_db)]
-    args += ["attack", sidechain.attack_ms / 1000, "release", sidechain.release_ms / 1000]
+    args += ["attack", sidechain.attack_ms / 1000, "hold", sidechain.hold_ms / 1000]
+    args += ["release", sidechain.release_ms / 1000]
     return [Message("/s_new", ("mph_duck", AUTO_NODE, HEAD, SIDECHAIN_GROUP, *args))]
 
 

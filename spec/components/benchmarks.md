@@ -94,9 +94,9 @@ A score can add its own under `[variants.<name>]`: a title, an engine,
 and per-voice changes to `sound` (role, words, `synth`, or `pick`, the Nth
 best catalogue match), `gain_db`, synth `params` (such as a filter
 cutoff) and a drum voice's `grid`. A score with a sidechain can also change
-its `depth_db`, `attack_ms` and `release_ms` (REQ-BEN-12), and any score its
-`feel` (REQ-BEN-13). A declared variant with no engine uses the engine
-REQ-BEN-10 picks.
+its `depth_db`, `attack_ms`, `hold_ms` and `release_ms` (REQ-BEN-12), and
+any score its `feel` (REQ-BEN-13). A declared variant with no engine uses
+the engine REQ-BEN-10 picks.
 `mph bench render BM-...` renders every variant; one whose engine isn't
 installed here is skipped with a note, not counted as a failure.
 `--variant NAME` renders just that one, and fails if it can't. Each variant
@@ -173,13 +173,14 @@ listening page groups benchmarks by project (REQ-FBK-01).
 ### REQ-BEN-12: Sidechain ducking
 A score can sidechain voices to a trigger voice: `[sidechain]` names the
 `trigger` (such as the kick), the `targets`, the `depth_db`, and the
-`attack_ms` and `release_ms` of the dip. Every trigger hit in the score
-starts the dip at that hit's exact sample, so the ducking follows the
+`attack_ms`, `hold_ms` and `release_ms` of the dip. Every trigger hit in
+the score starts the dip at that hit's exact sample, so the ducking follows the
 pattern, not a detector listening to the kick (like a volume-shaper plugin
-synced to the kick). The gain falls by the depth over the attack, then
-rises back along a half-cosine curve over the release. Overlapping dips
-add up, but never past the depth. A declared variant can change the depth,
-attack and release, such as `sidechain = { depth_db = 24, release_ms = 430 }`.
+synced to the kick). The gain falls by the depth over the attack, stays
+there for the hold (none unless the score sets one), then rises back along
+a half-cosine curve over the release. Overlapping dips add up, but never
+past the depth. A declared variant can change the depth, attack, hold and
+release, such as `sidechain = { depth_db = 24, release_ms = 430 }`.
 A depth of 0 dB bypasses it. Sidechained scores render in SuperCollider for
 now (asking for Renoise is refused with a plain reason), where a ducker
 after each target's synths applies the gain.
@@ -207,7 +208,9 @@ compare against it:
   is heard, so the mix is measured too. Dean couldn't hear a 6 dB dip
   released over 200 ms (2026-11-11). It changed the mix by about 0.5 dB:
   the kick masks the first 100 ms after each hit, and by then the dip was
-  nearly over.
+  nearly over. A hold keeps the dip at full depth before it swells back:
+  within one beat, the release can't grow much longer before the next
+  kick, so a hold is how a volume shaper makes the pump last longer.
 - **Verify:** test
 
 ### REQ-BEN-13: Triplet grids and feel
@@ -492,21 +495,32 @@ Expected envelope on the pad and the acid:
 - In the whole mix, from 100 to 200 ms after each kick, it is at least
   2 dB quieter than bypass.
 
-Two more takes bracket it:
+Three more takes go either side of it, each measured the same way against
+its own depth, hold and release:
 - `exaggerated` is the same duck at 24 dB with a 430 ms release, so the
-  pump is impossible to miss.
+  pump is impossible to miss. It's Dean's pick for the production sound.
+- `over-the-top` goes too far on purpose, to show what ducking does. It
+  drops 36 dB, holds there for 150 ms, then swells back over 290 ms, so the
+  pad and bass vanish as each kick lands and stay gone for a third of the
+  beat.
 - `bypass` sets the depth to 0 dB, for A/B.
 
 Hear: the pad and bass pump with the kick. They dip as each kick lands and
 swell back up before the next one, and the kick punches through cleanly.
-The exaggerated take makes the pump obvious. In bypass, the pad and bass
-hold steady under the kick.
+The exaggerated take makes the pump obvious, and over-the-top overdoes it:
+the pad and bass drop out under each kick and only swell back later in the
+beat. In bypass, the pad and bass hold steady under the kick.
 - **Why:** sidechain is the backbone of club mix clarity, and in house the
   pump is a sound in its own right. The measurements check depth, timing
-  and that the mix audibly changes, and the three takes let Dean hear it
-  from none to too much. Dean failed the first version (6 dB, 200 ms
+  and that the mix audibly changes, and the takes let Dean hear it from
+  none to far too much. Dean failed the first version (6 dB, 200 ms
   release) on 2026-11-11: "Cannot hear a real difference". The mix
-  measurement agreed: it changed the mix by about 0.5 dB.
+  measurement agreed: it changed the mix by about 0.5 dB. Later that day
+  he passed all three takes, picked `exaggerated` for production, and
+  asked for "one more extreme level, over the top just to give the
+  listener a real idea about what side chain compression really is, for
+  contrast". Depth and release alone barely go past `exaggerated` within
+  one beat, so `over-the-top` holds the dip as well.
 - **Verify:** measure, listen
 
 ## Vocals
@@ -746,7 +760,9 @@ when it pauses, and the echo carries the last word into the next bar.
 
 ### BM-MST-01: Mastered delivery
 A 2-minute mini-arrangement of BM-DRUM-02, BM-BASS-01, BM-SC-01 and BM-VOX-01,
-mastered and delivered. Measurements:
+mastered and delivered. BM-SC-01's part ducks as its `exaggerated` take
+does (24 dB, 430 ms release), Dean's pick for the production sound.
+Measurements:
 - integrated loudness within ±0.5 LU of `master.target_lufs_integrated` (default -8 LUFS),
 - true peak at or below `master.max_true_peak_dbtp` (default -1.0 dBTP, 4x oversampled),
 - no clipped samples, DC offset under -60 dBFS,
@@ -756,7 +772,8 @@ mastered and delivered. Measurements:
 Hear: loud and punchy but not squashed. The kick still has transient snap,
 and nothing distorts on a big system.
 - **Why:** club systems punish phasey sub and clipped masters. These are the
-  numbers mastering engineers check.
+  numbers mastering engineers check. Dean chose the exaggerated duck for
+  production on 2026-11-11.
 - **Verify:** measure, listen
 
 ### BM-MST-02: Render determinism

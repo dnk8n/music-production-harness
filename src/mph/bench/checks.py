@@ -300,10 +300,11 @@ def sidechain(
     rate: int,
 ) -> list[Check]:
     """REQ-BEN-12 and BM-SC-01: at each trigger hit, the target dips by the
-    depth (within the slack) quickly, and is back to full level just after
-    the release ends, along a smooth curve. Measured as the ducked target
-    against the same target rendered dry."""
+    depth (within the slack) quickly, holds, and is back to full level just
+    after the release ends, along a smooth curve. Measured as the ducked
+    target against the same target rendered dry."""
     after_ms = DUCK_RECOVER_AFTER_S * 1000
+    dip_ms = sidechain.attack_ms + sidechain.hold_ms + sidechain.release_ms
     dips = audio.dips(
         wet,
         dry,
@@ -311,7 +312,7 @@ def sidechain(
         rate=rate,
         window_s=DUCK_WINDOW_S,
         search_s=sidechain.attack_ms / 1000 + DUCK_DIP_SEARCH_S,
-        recover_s=(sidechain.attack_ms + sidechain.release_ms + after_ms) / 1000,
+        recover_s=(dip_ms + after_ms) / 1000,
         reached_db=sidechain.depth_db - DUCK_DEPTH_SLACK_DB,
     )
     name = f"sidechain: {target}"

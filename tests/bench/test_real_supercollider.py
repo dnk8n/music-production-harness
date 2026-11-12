@@ -43,7 +43,7 @@ def test_synth_kit_benchmarks_pass_with_real_supercollider(
 
 
 @pytest.mark.req("REQ-BEN-12")
-@pytest.mark.parametrize("take", ["exaggerated", "bypass"])
+@pytest.mark.parametrize("take", ["exaggerated", "over-the-top", "bypass"])
 def test_bm_sc_01_takes_pass_with_real_supercollider(
     real: SubprocessRunner, tmp_path: Path, take: str
 ) -> None:

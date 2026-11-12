@@ -272,3 +272,121 @@ def test_every_score_names_the_project_it_is_written_under(benchmark_id: str) ->
     heading = text.index(f"### {benchmark_id}:")
     section = re.findall(r"^## (.+)$", text[:heading], re.MULTILINE)[-1]
     assert score.load(benchmark_id).project == section
+
+
+# --- triplet grids and feel (REQ-BEN-13) ---------------------------------------------
+
+TRIPLETS = """
+id = "BM-T3"
+bpm = 120
+bars = 2
+feel = [41, 31, 28]
+
+[voices.kick]
+grid = "X . . . X . . . X . . . X . . ."
+sound = { role = "kick" }
+
+[voices.bell]
+grid = "X . x . x x . x . x . x"
+sound = { role = "bell" }
+
+[variants.even]
+feel = [1, 1, 1]
+
+[variants.flat]
+voices = { bell = { grid = "X . . x . . x x . . x . x . . x" } }
+"""
+
+
+def beats(found: list[score.Event], voice: str, beat_s: float, steps: int = 12) -> list[float]:
+    return [round(e.time_s / beat_s, 4) for e in found if e.voice == voice and e.step < steps]
+
+
+@pytest.mark.req("REQ-BEN-13")
+def test_triplet_grids_play_beside_sixteenths_with_the_feel() -> None:
+    loaded = score.load_text(TRIPLETS)
+    bell = loaded.voice("bell")
+    assert (bell.steps, bell.triplets, loaded.voice("kick").steps) == (12, True, 16)
+    assert loaded.triplets and loaded.feel == (41.0, 31.0, 28.0)
+    found = score.events(loaded)
+    # Long, short, short: the second pulse of a beat starts 41% in, the third 72% in.
+    assert beats(found, "bell", loaded.beat_s) == [0.0, 0.72, 1.41, 1.72, 2.41, 3.0, 3.72]
+    assert beats(found, "kick", loaded.beat_s, 16) == [0.0, 1.0, 2.0, 3.0]  # the four stays put
+    second_bar = [e for e in found if e.voice == "bell"][7]
+    assert second_bar.step == 12 and second_bar.time_s == pytest.approx(4 * loaded.beat_s)
+    assert score.bar_one(loaded, bell) == "X . x . x x . x . x . x"
+    assert score.feel_shares(score.EVEN) == pytest.approx([0, 1 / 3, 2 / 3])
+    assert score.triplet_time(4, 0.5, score.EVEN) == pytest.approx(0.5 + 0.5 / 3)
+
+
+@pytest.mark.req("REQ-BEN-13")
+@pytest.mark.req("REQ-BEN-07")
+def test_variants_can_change_a_drum_grid_or_the_feel() -> None:
+    loaded = score.load_text(TRIPLETS)
+    even, variant = score.variant_of(loaded, "even")
+    assert even.feel == score.EVEN and not variant.as_scored
+    thirds = [0.0, 0.6667, 1.3333, 1.6667, 2.3333, 3.0, 3.6667]
+    assert beats(score.events(even), "bell", even.beat_s) == thirds
+    flat, variant = score.variant_of(loaded, "flat")
+    assert flat.voice("bell").steps == 16 and not flat.triplets and not variant.as_scored
+    assert score.bar_one(flat, flat.voice("bell")) == "X . . x . . x x . . x . x . . x"
+    assert len({loaded.digest(), even.digest(), flat.digest()}) == 3
+
+
+@pytest.mark.req("REQ-BEN-06")
+@pytest.mark.parametrize(
+    ("benchmark_id", "digest"),
+    [("BM-DRUM-01", "a04d3a85636c9254"), ("BM-BASS-01", "e7de9642d67aaa1b")],
+)
+def test_score_hashes_stay_put_when_a_new_field_keeps_its_default(
+    benchmark_id: str, digest: str
+) -> None:
+    # Renders and Dean's verdicts are filed under these hashes, so a new score
+    # field (feel, sidechain) must leave scores that don't use it hashed as before.
+    assert score.load(benchmark_id).digest() == digest
+
+
+@pytest.mark.req("REQ-BEN-13")
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        (("feel = [41, 31, 28]", "feel = [41, 31]"), "BM-T3: feel needs 3 lengths above 0"),
+        (("feel = [41, 31, 28]", "feel = [41, 0, 28]"), "feel needs 3 lengths above 0"),
+        (("feel = [41, 31, 28]", 'feel = "swung"'), "feel needs 3 lengths above 0"),
+        (("feel = [1, 1, 1]", "feel = [1, true, 1]"), "variant even: feel needs 3 lengths"),
+        (('"X . x . x x . x . x . x"', '"X . x . x x . x . x"'), "a grid needs 16 symbols"),
+        (('grid = "X . . x . . x x', 'grid = "X . . x . . x'), "a grid needs 16 symbols"),
+    ],
+)
+def test_triplet_mistakes(change: tuple[str, str], message: str) -> None:
+    with pytest.raises(ScoreError, match=message):
+        score.load_text(TRIPLETS.replace(*change, 1))
+
+
+@pytest.mark.req("REQ-BEN-13")
+def test_only_drum_grids_go_triplet() -> None:
+    triplet_gate = ACID.replace(
+        'gate   = "x  x  x  .  x   x  x  x  x  x   .  x  x  x  x  x"', 'gate = "' + "x " * 12 + '"'
+    )
+    with pytest.raises(ScoreError, match="gate row needs 16 steps"):
+        score.load_text(triplet_gate)
+    changed = ACID + '[variants.tight]\nvoices = { bass = { grid = "' + "x " * 16 + '" } }\n'
+    with pytest.raises(ScoreError, match="only a drum grid can change"):
+        score.load_text(changed)
+
+
+@pytest.mark.req("REQ-BEN-13")
+def test_north_star_scores_carry_their_feel() -> None:
+    afro_01, afro_02 = score.load("BM-AFRO-01"), score.load("BM-AFRO-02")
+    assert afro_01.feel == score.EVEN and afro_01.project == afro_02.project == "North star"
+    assert afro_02.feel == (41.0, 31.0, 28.0)  # Polak and London's average, as the spec says
+    assert score.variant_of(afro_02, "even")[0].feel == score.EVEN
+    flattened, _ = score.variant_of(afro_01, "flattened")
+    assert {v.name: v.steps for v in flattened.voices} == {
+        "kick": 16,
+        "chh": 16,
+        "bell": 16,
+        "shaker": 16,
+    }
+    names = [v.name for v in score.all_variants(afro_02)]
+    assert names == ["renoise", "supercollider", "synth-kit", "even"]  # a take per software

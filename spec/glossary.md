@@ -15,6 +15,10 @@
 | **Delivery** | The final 48 kHz / 24-bit AIFF. The only point where sample rate conversion (SRC) and dither happen. |
 | **Benchmark** | A short render with a written description of what Dean should hear, automated measurements, and Dean's verdict. ID `BM-...`. |
 | **Verdict** | Dean's pass/fail plus notes on a benchmark render, captured by the feedback page. |
+| **Take** | One way of making a benchmark (engine, sounds, levels): a variant. All takes are equal. |
+| **Triplet grid** | A 12-step grid: eighth-note triplets, three to a beat, playing alongside 16-step grids (REQ-BEN-13). |
+| **Feel** | Where a beat's three triplet pulses fall, as shares of the beat: even, or uneven like the long-short-short of jembe drumming (REQ-BEN-13). |
+| **Timeline** | The repeating bell pattern that organises an African drum ensemble, such as the standard bell pattern in BM-AFRO-01. |
 | **Gate** | A check a change must pass: deterministic, advisory AI, human. |
 | **Licence marker** | `licence:clear` when every ingredient of a render has a publishable licence, otherwise `licence:private`. |
 | **Doctor** | `mph doctor`: read-only diagnosis of installation and config, with a fix for each problem. |

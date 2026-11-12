@@ -35,7 +35,8 @@ versions, measurements with pass/fail, loudness, true peak, and the licence mark
 
 ### REQ-BEN-04: Scores are data checked against this file
 Each benchmark's score is a TOML file in `src/mph/bench/scores/`: tempo,
-swing, bars, voices with their grids, velocity rules and a humanisation seed.
+swing and feel (REQ-BEN-13), bars, voices with their grids, velocity rules
+and a humanisation seed.
 A test checks every score's tempo, swing and bar-1 grid against the grid
 written here, so the score can't drift from the description.
 - **Why:** this file stays the source of truth (ADR-0001), and the renderer
@@ -91,10 +92,11 @@ standard variant, because it always renders there (REQ-BEN-10, REQ-BEN-12).
 
 A score can add its own under `[variants.<name>]`: a title, an engine,
 and per-voice changes to `sound` (role, words, `synth`, or `pick`, the Nth
-best catalogue match), `gain_db` and synth `params` (such as a filter
-cutoff). A score with a sidechain can also change its `depth_db`, `attack_ms`
-and `release_ms` (REQ-BEN-12). A declared variant with no engine uses the
-engine REQ-BEN-10 picks.
+best catalogue match), `gain_db`, synth `params` (such as a filter
+cutoff) and a drum voice's `grid`. A score with a sidechain can also change
+its `depth_db`, `attack_ms` and `release_ms` (REQ-BEN-12), and any score its
+`feel` (REQ-BEN-13). A declared variant with no engine uses the engine
+REQ-BEN-10 picks.
 `mph bench render BM-...` renders every variant; one whose engine isn't
 installed here is skipped with a note, not counted as a failure.
 `--variant NAME` renders just that one, and fails if it can't. Each variant
@@ -124,8 +126,11 @@ templates get the same gain.
 | clap | -14 |
 | break | -14 |
 | tom | -16 |
+| dunun | -16 |
 | conga | -17 |
+| djembe | -17 |
 | perc | -18 |
+| bell | -19 |
 | rim | -20 |
 | clave | -20 |
 | hat_open | -21 |
@@ -204,6 +209,28 @@ compare against it:
   the kick masks the first 100 ms after each hit, and by then the dip was
   nearly over.
 - **Verify:** test
+
+### REQ-BEN-13: Triplet grids and feel
+A drum voice's grid has 16 steps (sixteenths) or 12 (eighth-note triplets,
+three to a beat). Both kinds can play in one score: their beats line up,
+and their subdivisions don't. `swing` moves sixteenths only. The score's
+`feel` places the triplets. It gives the lengths of a beat's three pulses as
+shares of the beat, and is even (`[1, 1, 1]`) unless the score says
+otherwise. Each triplet voice gets a feel check: the mean measured position
+of its second and third pulses within their beat must be within 0.005 of a
+beat of where the feel puts them. A declared variant can change a voice's
+`grid` or the score's `feel`, for an A/B. In Renoise, a song with a triplet
+voice runs at 12 lines per beat, so sixteenths fall every 3 lines and
+triplets every 4. Both sit on whole lines, and only swing and an uneven
+feel go in the delay column, where Dean can see and change them.
+- **Why:** West African bell patterns, and the drums that play around them,
+  are ternary, and techno is binary. Track 1 fuses the two, so a score has
+  to hold both in one bar without rounding either into the other. Even
+  triplets aren't the whole story either. In measured performances of
+  Malian drumming, the three pulses of a beat are consistently unequal,
+  long-short-short at about 41:31:28 (Polak and London, 2014). That lean is
+  much of what makes an ensemble sound played rather than programmed.
+- **Verify:** test, measure
 
 ## Drum patterns
 
@@ -504,6 +531,215 @@ phrases, each starting on a downbeat, with no music bleed and no chopped words.
 Marked `licence:clear` only if every ingredient is publishable.
 - **Why:** track 1 fuses spoken word with techno, and the library has none.
   Tests download, licence tracking, separation and phrase detection.
+- **Verify:** measure, listen
+
+## North star
+
+The palette of track 1, the north star of Dean's brief: spoken word over
+Detroit techno, with a Jersey garage twist (Tony Humphries, Kerri Chandler)
+and African drums that mix machines with recordings. Each benchmark tests
+one capability the track needs that the benchmarks above don't cover, with
+a pattern from that music. The meeting has a precedent: Jeff Mills played a
+TR-909 live against Tony Allen's Afrobeat kit on *Tomorrow Comes the
+Harvest* (2018).
+Every benchmark here gets a take for each piece of software, made the way
+that software's users would make it (Dean, 2026-11-11, issue #30).
+
+Grids here may have 12 steps instead of 16: eighth-note triplets, three to a
+beat (REQ-BEN-13). Beats fall on steps 1, 4, 7 and 10 of a 12-step grid, and
+on 1, 5, 9 and 13 of a 16-step one. The library has no agogo, shekere or
+talking drum, and its djembes are all loops (as of 2026-11-11). So the bell,
+djembe and dunun voices are SuperCollider synths until one-shots arrive,
+for example with `mph catalogue fetch freesound agogo --clear-only`.
+
+Sources: the standard bell pattern
+([Bell pattern](https://en.wikipedia.org/wiki/Bell_pattern)); the timing of
+Malian drumming (Polak and London,
+[Timing and Meter in Mande Drumming from Mali](https://mtosmt.org/issues/mto.14.20.1/mto.14.20.1.polak-london.html),
+Music Theory Online 20.1, 2014); the talking drum
+([When Music Speaks](https://www.frontiersin.org/articles/10.3389/fcomm.2021.652690/text),
+Frontiers in Communication, 2021); parallel chords
+([Attack Magazine](https://www.attackmagazine.com/technique/passing-notes/parallel-chords/));
+the M1 organ bass
+([MusicRadar](https://www.musicradar.com/tuition/tech/how-to-create-a-korg-m1-style-organ-bass-sound-642650));
+the Jersey sound
+([Gray Area](https://grayarea.co/magazine/garage-house-and-the-new-jersey-sound));
+Mills and Allen
+([Rolling Stone](https://www.rollingstone.com/music/music-features/producer-jeff-mills-talks-tony-allen-afrobeat-album-731357/)).
+
+### BM-AFRO-01: Bell timeline over the four
+122 BPM, straight. The West African standard bell pattern (seven strokes in
+twelve triplet pulses) and a triplet shaker, over a four-to-the-floor kick
+and offbeat hats.
+```
+kick   X . . . X . . . X . . . X . . .
+chh    . . x . . . x . . . x . . . x .
+bell   X . x . x x . x . x . x
+shaker X x x X x x X x x X x x
+```
+The bell is an agogo or gankogui from the catalogue (role `bell`), else a
+synth bell. A `flattened` take moves the bell and shaker onto sixteenths:
+the bell plays the pattern's usual 4/4 form,
+`X . . x . . x x . . x . x . . x`, and the shaker plays every sixteenth.
+In Renoise, the song runs at 12 lines per beat (REQ-BEN-13), so every
+triplet stroke sits on a line of its own. SuperCollider schedules each
+stroke at its exact sample.
+Hear: two clocks at once. The kick and hats keep Detroit's straight four,
+while the bell's lopsided seven-stroke cycle and the shaker roll in threes
+over them. The bell meets the kick only on beats 1 and 4. Its other strokes
+fall between, on triplet positions a sixteenth grid can't reach, so the
+groove lilts instead of driving. In the flattened take the lilt goes and
+the groove squares up.
+- **Why:** the bell pattern is the timeline of West African drumming, the
+  part every other drum keys to, and it's ternary: three pulses to a beat.
+  Techno is binary. Track 1 fuses the two, so the system must hold both in
+  one bar without rounding either into the other. BM-DRUM-08's clave lives
+  on the sixteenth grid. This is the ternary half.
+- **Verify:** measure, listen
+
+### BM-AFRO-02: Jembe feel
+122 BPM. A 12/8 ensemble over a straight four-to-the-floor kick:
+BM-AFRO-01's bell and shaker, djembe tones and slaps answering each other on
+the short pulses, and a dunun that leads into beats 3, 4 and 1. Every triplet voice
+plays with the jembe feel: each beat's three pulses last 41%, 31% and 28%
+of it (long, short, short), the average Polak and London measured in
+Malian drumming (REQ-BEN-13).
+```
+kick   X . . . X . . . X . . . X . . .
+bell   X . x . x x . x . x . x
+shaker X x x X x x X x x X x x
+tone   . x x . . . . x x . . .
+slap   . . . . x x . . . . x x
+dunun  . . . . . X . . x . . x
+```
+Shaker velocities are humanised by ±8% (seeded). Tones and slaps are
+strokes of one djembe: catalogue one-shots (role `djembe`, matching "tone"
+or "slap"), else the synth djembe with its `stroke` set. The dunun is a
+catalogue one-shot (role `dunun`), else a synth. An `even` take plays
+the same parts in equal thirds. In Renoise, the feel is in the delay column
+of a 12-lines-per-beat song. SuperCollider schedules each stroke at its
+exact sample.
+Hear: next to BM-AFRO-01's even triplets, the ensemble leans. The first
+pulse of each beat is held a little long and the next two hurry in, so the
+tones and slaps tumble toward the next kick. It sounds played rather than
+programmed, while every kick stays exactly on the grid. In the even take
+the parts sit squarely in thirds, and the lean goes.
+- **Why:** African drumming's timing isn't even triplets. Measured
+  performances split each beat unequally and consistently (Polak and
+  London, 2014), and that feel is much of what separates a played ensemble
+  from a programmed one. Track 1's organic drums need it, and the kick has
+  to stay locked while they lean.
+- **Verify:** measure, listen
+
+### BM-AFRO-03: Borrowed groove
+122 BPM. A recorded conga loop from the catalogue (role `conga`, a loop
+near 122 BPM: in Dean's library, LUS_122_Congas_08) plays over BM-DRUM-01's
+kick, with closed hats on every sixteenth and a shaker on the offbeat
+eighths. mph finds the loop's onsets and measures how far each sixteenth of
+the loop sits from the grid, on average: its groove. It then moves the hats
+and shaker by the same amounts. The kick stays on the grid. Renoise has no
+groove extraction, so its take writes the borrowed offsets into the delay
+column, where Dean can see and edit them. SuperCollider schedules each hit
+at its borrowed time. A `grid` take leaves the hats and shaker on the grid.
+Measurements: the borrowed groove is reported (an offset in ms for each
+sixteenth). Every programmed hit lands within 1 ms of its borrowed position,
+and within 3 ms of the loop's own onset on the same sixteenth, where it has
+one.
+Hear: the hats and shaker sit in the congas' pocket. There are no flams
+between the recorded hands and the programmed parts, and the hats pick up
+the loop's push and drag. In the `grid` take they flam against the congas.
+- **Why:** the brief combines electronic sounds with organic recordings.
+  Quantising a recording kills its feel, and leaving the machine on the grid
+  makes the two flam. Producers fix this by borrowing the recording's groove
+  (MPC and DAW groove templates).
+- **Verify:** measure, listen
+
+### BM-AFRO-04: Talking drum answers
+A talking drum (the Yorùbá gángan or dùndún) answers each spoken phrase of
+BM-VOX-03 with a short figure of rising and falling glides, the way the
+drum imitates the tones of Yorùbá speech. Each stroke's glide (its start and
+end pitch) is scored. SuperCollider gives the drum voice a pitch envelope.
+Renoise uses pitch-slide commands on the note, or the instrument's pitch
+envelope. Measurements: each stroke's pitch at its start and end is within
+50 cents of the score, and no stroke starts while the voice is speaking.
+Hear: the drum seems to talk back. Its glides follow the rise and fall of
+the voice, and it never plays over a phrase.
+- **Why:** the talking drum is speech made into rhythm, so it is where the
+  brief's spoken word and African drums meet. It needs pitch movement within
+  a hit, which no benchmark has yet.
+- **Verify:** measure, listen
+
+### BM-MIX-01: Layered kick
+BM-DRUM-01's kick, with each 909-style kick layered with a djembe bass
+stroke (or a dunun). The two are lined up so their low ends add. mph slides
+the organic hit, by under 5 ms, to where its low band best correlates with
+the kick's, and flips its polarity if that correlation is negative. In
+Renoise, both samples sit in one instrument on the same key, the djembe's
+sample start offset to align it. In SuperCollider, both buffers play on each
+hit. A `raw` take stacks them unaligned.
+Measurements: the layered hit's energy below 150 Hz is at least that of the
+louder layer alone, so nothing cancels, and the two onsets align within
+0.5 ms.
+Hear: one kick with skin and wood on top of the 909's punch. It is bigger,
+not doubled or flammy. The `raw` take sounds thinner and phasey.
+- **Why:** layering is how producers blend organic recordings with
+  electronic hits, the brief's core sound. Two low ends out of phase cancel,
+  which is easy to get wrong by ear and easy to measure.
+- **Verify:** measure, listen
+
+### BM-KEYS-01: Detroit parallel stabs
+124 BPM, over BM-DRUM-01. One chord shape (a minor ninth: root, minor
+third, fifth, minor seventh and ninth) moved up and down unchanged, the
+"chord memory" of Detroit techno and Jersey deep house (Underground
+Resistance's "Timeline", Kerri Chandler's parallel minor sevenths in "Bar A
+Thym"). Short stabs fall on off-beat sixteenths, and the last stab of every
+second bar is thrown into a dotted-eighth delay. Renoise does it the sampler
+way: one chord sample (the voicing rendered once by SuperCollider, or a
+chord one-shot from the catalogue) played at each root, so higher chords are
+also shorter, as on an old sampler. SuperCollider plays every note of the
+shape as its own synth voice.
+Measurements: every stab lands within 1 ms, and each stab's strongest pitch
+classes are the five notes of its chord.
+Hear: stabs that hang in the air and shift together, dark and hopeful at
+once, with the echo answering at the end of each phrase.
+- **Why:** the parallel minor chord is Detroit's harmonic signature, and it
+  runs through Jersey deep house too. It tests chords (several notes on one
+  step) and transposed samples, which no benchmark has yet.
+- **Verify:** measure, listen
+
+### BM-BASS-02: Jersey organ bass
+122 BPM, 16th swing 58%, over BM-DRUM-02. The garage organ bass of the
+Korg M1's "Organ 2" preset: a triangle-saw blend at the lowest octave, a
+square three octaves up and a triangle a fifth above, with a fast filter
+envelope and a touch of chorus. It plays a syncopated line with octave
+jumps. In Renoise, the organ is sampled once per octave from SuperCollider
+and played as a multi-sample instrument. SuperCollider plays the synth.
+Measurements: every note lands within 1 ms and within 10 cents of its pitch,
+and the low end stays mono (inter-channel correlation above 0.9 below
+120 Hz) despite the chorus.
+Hear: round, woody and percussive, with the honk of early-90s New Jersey
+and New York garage.
+- **Why:** the organ bass is the Jersey sound's signature bass and the
+  "twist" in the brief. It tests a pitched instrument whose timbre changes
+  across its range.
+- **Verify:** measure, listen
+
+### BM-VOX-03: Sermon in the gaps
+Phrases of a public domain spoken word reading are cut at silences with
+BM-VOX-02's pipeline. LibriVox readings, such as Paul Laurence Dunbar's
+poems, keep the render `licence:clear`. The phrases are placed on downbeats
+in the bars where BM-KEYS-01's stabs rest. While the voice speaks, the music
+dips 3 dB, ducked by the voice the way BM-SC-01 ducks by the kick. The last
+word of each phrase is thrown into a dotted-eighth dub delay.
+Measurements: every phrase starts within 5 ms of its downbeat, the music is
+3 dB (±0.5 dB) lower while the voice speaks, and no phrase overlaps a stab.
+Hear: the voice preaches over the groove like a sermon over a congregation.
+Every word is clear. The band leans back when it speaks and fills the space
+when it pauses, and the echo carries the last word into the next bar.
+- **Why:** spoken word is the lead of track 1, and the library has none.
+  Call and response between preacher and congregation runs through gospel,
+  where the Jersey sound comes from. This builds on BM-VOX-02 (download,
+  separation, phrases) and BM-SC-01 (ducking).
 - **Verify:** measure, listen
 
 ## Delivery and professional QA

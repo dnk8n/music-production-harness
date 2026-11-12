@@ -1,0 +1,29 @@
+# spec/components/benchmarks.md#bm-afro-01: the standard bell pattern on a triplet grid (REQ-BEN-13)
+id = "BM-AFRO-01"
+title = "Bell timeline over the four"
+hear = "two clocks at once. The kick and hats keep Detroit's straight four, while the bell's lopsided seven-stroke cycle and the shaker roll in threes over them. The bell meets the kick only on beats 1 and 4. Its other strokes fall between, on triplet positions a sixteenth grid can't reach, so the groove lilts instead of driving. In the flattened take the lilt goes and the groove squares up."
+bpm = 122
+project = "North star"
+bars = 8
+
+[voices.kick]
+grid = "X . . . X . . . X . . . X . . ."
+sound = { role = "kick", words = ["909"] }
+
+[voices.chh]
+grid = ". . x . . . x . . . x . . . x ."
+sound = { role = "hat", words = ["909"] }
+seconds = 0.25
+
+[voices.bell]
+grid = "X . x . x x . x . x . x"
+sound = { role = "bell" }
+
+[voices.shaker]
+grid = "X x x X x x X x x X x x"
+sound = { role = "shaker" }
+seconds = 0.2
+
+[variants.flattened]
+title = "the bell and shaker squeezed onto sixteenths, as most Afro house programs them"
+voices = { bell = { grid = "X . . x . . x x . . x . x . . x" }, shaker = { grid = "X x x x X x x x X x x x X x x x" } }

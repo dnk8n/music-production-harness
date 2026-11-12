@@ -39,6 +39,9 @@ SYNTHS: dict[str, tuple[str, dict[str, float]]] = {
     "clave": ("mph_clave", {}),
     "conga": ("mph_conga", {}),
     "shaker": ("mph_shaker", {}),
+    "bell": ("mph_bell", {}),
+    "djembe": ("mph_djembe", {}),  # a voice's params pick the stroke: 0 bass, 1 tone, 2 slap
+    "dunun": ("mph_dunun", {}),
 }
 
 

@@ -115,7 +115,9 @@ def _hit_args(plan: Plan, index: int, voice: Voice, event: Event, node: int) -> 
     choice = plan.choices[index]
     gain = plan.gains[index] if plan.gains else 1.0
     args: list[Arg] = ["out", 2 * index, "amp", event.velocity * gain]
-    for name, value in sorted(choice.params.items()):
+    # A synth voice also takes the score's params for it, such as a djembe's stroke.
+    params = choice.params if choice.is_sample else {**choice.params, **dict(voice.params)}
+    for name, value in sorted(params.items()):
         args += [name, float(value)]
     if not choice.is_sample:
         return [*args, "seed", index + 1, "rid", node % RANDOM_GENERATORS]

@@ -226,6 +226,7 @@ def measure(
             matches[voice.name] += audio.match_hits(stems[voice.name], tpl, group, rate)
     found_checks = [checks.timing(matches), checks.velocity(matches)]
     found_checks += checks.swing(score, matches)
+    found_checks += checks.feel(score, matches)
     found_checks += checks.chokes(score, found, stems, peaks, rate)
     found_checks += checks.humanise(score, matches)
     for voice in (v for v in score.voices if v.melodic):

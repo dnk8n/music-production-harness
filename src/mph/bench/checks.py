@@ -9,15 +9,16 @@ from __future__ import annotations
 import math
 import statistics
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 
 from mph.bench import audio
 from mph.bench.audio import Audio, Match
-from mph.bench.score import Event, Score, Sidechain
+from mph.bench.score import Event, Score, Sidechain, events, feel_shares
 
 TIMING_LIMIT_MS = 1.0  # REQ-BEN-01
 VELOCITY_LIMIT = 0.1
 SWING_LIMIT = 0.005
+FEEL_LIMIT = 0.005  # of a beat (REQ-BEN-13)
 CHOKE_LIMIT_DB = -60.0
 CHOKE_SETTLE_S = 0.008  # a choke fades: 5 ms in SuperCollider, about 7 ms in Renoise
 EDGE_LIMIT = 3.0  # a hard cut is many times bigger than the jumps around it
@@ -78,7 +79,10 @@ def velocity(matches: Mapping[str, Sequence[Match]]) -> Check:
 
 def swing(score: Score, matches: Mapping[str, Sequence[Match]]) -> list[Check]:
     found = []
+    triplets = {v.name for v in score.voices if v.triplets}  # they get a feel check instead
     for name, voice_matches in matches.items():
+        if name in triplets:
+            continue
         measured = audio.swing_of(voice_matches, score.step_s)
         if measured is None:
             continue
@@ -89,6 +93,32 @@ def swing(score: Score, matches: Mapping[str, Sequence[Match]]) -> list[Check]:
                 round(measured, 4),
                 f"{score.swing} +/- {SWING_LIMIT}",
                 error <= SWING_LIMIT,
+            )
+        )
+    return found
+
+
+def feel(score: Score, matches: Mapping[str, Sequence[Match]]) -> list[Check]:
+    """REQ-BEN-13: each triplet voice's later pulses start where the feel puts them."""
+    scored = feel_shares(score.feel)
+    found = []
+    for voice in (v for v in score.voices if v.triplets):
+        measured = audio.feel_of(matches[voice.name], score.beat_s)
+        if not measured:
+            continue  # it only plays on the beat
+        errors = {pulse: abs(at - scored[pulse]) for pulse, at in measured.items()}
+        worst = max(errors.values())
+        note = "; ".join(
+            f"pulse {pulse + 1} at {at:.3f} of the beat, scored {scored[pulse]:.3f}"
+            for pulse, at in measured.items()
+        )
+        found.append(
+            Check(
+                f"feel: {voice.name} worst pulse error (share of a beat)",
+                round(worst, 4),
+                f"<= {FEEL_LIMIT}",
+                worst <= FEEL_LIMIT,
+                note,
             )
         )
     return found
@@ -129,13 +159,23 @@ def chokes(
 
 
 def humanise(score: Score, matches: Mapping[str, Sequence[Match]]) -> list[Check]:
+    """Humanised velocities vary, by no more than the score allows, and render as
+    scored. Each hit is compared with its velocity before humanising, so a part
+    with accents (BM-AFRO-02's shaker) is judged on the humanising alone."""
+    plain_score = replace(score, voices=tuple(replace(v, humanise=0.0) for v in score.voices))
+    plain = {(e.voice, e.step): e.velocity for e in events(plain_score)}
     found = []
     for voice in score.voices:
         if not voice.humanise:
             continue
-        ratios = [m.level / m.event.velocity for m in matches[voice.name] if m.event.velocity]
-        intended = [m.event.velocity for m in matches[voice.name]]
-        spread = (max(intended) - min(intended)) / max(intended) if intended else 0.0
+        own = matches[voice.name]
+        ratios = [m.level / m.event.velocity for m in own if m.event.velocity]
+        factors = [
+            m.event.velocity / plain[voice.name, m.event.step]
+            for m in own
+            if plain.get((voice.name, m.event.step))
+        ]
+        spread = (max(factors) - min(factors)) / max(factors) if factors else 0.0
         measured = (max(ratios) - min(ratios)) if ratios else 0.0
         found.append(
             Check(

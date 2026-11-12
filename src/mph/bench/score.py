@@ -1,13 +1,15 @@
 """Benchmark scores as data (spec/components/benchmarks.md, REQ-BEN-04).
 
 A score is a TOML file: tempo, swing, bars, and one table per voice. Each
-voice has a 16-step grid (the same notation as the spec), or a ``pulse``
-that repeats every N sixteenths across bar lines (polyrhythm), or a list of
-break ``slices``. Velocity rules (alternation, ramps, seeded humanisation)
-are optional. A melodic voice (BM-BASS-01) has 16 ``notes`` with a ``gate``
-grid, plus optional ``accent`` and ``slide`` rows and synth ``params``.
-``events`` turns a score into hits at exact sample positions, so rendering
-and measuring both start from the same list.
+voice has a grid (the same notation as the spec) of 16 sixteenths or 12
+eighth-note triplets (REQ-BEN-13), or a ``pulse`` that repeats every N
+sixteenths across bar lines (polyrhythm), or a list of break ``slices``.
+Velocity rules (alternation, ramps, seeded humanisation) are optional. A
+melodic voice (BM-BASS-01) has 16 ``notes`` with a ``gate`` grid, plus
+optional ``accent`` and ``slide`` rows and synth ``params``. ``swing`` moves
+sixteenths, and ``feel`` places triplets within their beat. ``events`` turns
+a score into hits at exact sample positions, so rendering and measuring both
+start from the same list.
 """
 
 from __future__ import annotations
@@ -22,9 +24,13 @@ from dataclasses import asdict, dataclass, replace
 from importlib import resources
 from typing import Any
 
-STEPS = 16
+STEPS = 16  # sixteenths in a bar: the usual grid
+TRIPLETS = 12  # eighth-note triplets in a bar: a triplet grid (REQ-BEN-13)
+BEATS = 4  # beats in a bar
+PULSES = TRIPLETS // BEATS  # triplet pulses in a beat
 VELOCITY = {"X": 1.0, "x": 0.8, "o": 0.8}
 STRAIGHT = 0.5
+EVEN: tuple[float, ...] = (1.0, 1.0, 1.0)  # a feel with equal thirds
 NOTE_LENGTH = 0.5  # of a step, for notes that don't slide
 PITCH_CLASS = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 DEFAULT_TAIL_S = 1.0
@@ -61,7 +67,7 @@ class Sound:
 class Voice:
     name: str
     sound: Sound
-    grid: str = ""  # 16 symbols
+    grid: str = ""  # 16 symbols, or 12 for eighth-note triplets
     pulse: int = 0  # hit every N sixteenths, continuing across bars
     slices: tuple[int, ...] = ()  # 1-based slice numbers, one per 8th note
     velocities: tuple[float, ...] = ()  # cycled per hit, overriding the grid symbol
@@ -78,6 +84,15 @@ class Voice:
     @property
     def melodic(self) -> bool:
         return bool(self.notes)
+
+    @property
+    def steps(self) -> int:
+        """Grid steps in a bar: 16 sixteenths, or 12 triplets (REQ-BEN-13)."""
+        return len(self.grid.split()) if self.grid else STEPS
+
+    @property
+    def triplets(self) -> bool:
+        return self.steps == TRIPLETS
 
 
 Params = tuple[tuple[str, float], ...]
@@ -112,14 +127,16 @@ class Variant:
     every_voice_synth: bool = False
     params: tuple[tuple[str, Params], ...] = ()  # voice -> synth controls changed
     sidechain: tuple[tuple[str, float], ...] = ()  # SIDECHAIN_CHANGES field -> its new value
+    grids: tuple[tuple[str, str], ...] = ()  # voice -> its replacement grid (REQ-BEN-13)
+    feel: tuple[float, ...] = ()  # the score's feel replaced; () keeps it
 
     @property
     def as_scored(self) -> bool:
-        """True when every voice plays the score's own sounds, levels and
-        controls. A sidechain change doesn't count: it changes what happens
+        """True when every voice plays the score's own sounds, levels, controls
+        and timing. A sidechain change doesn't count: it changes what happens
         to the voices afterwards, not what they play."""
         changed = self.sounds or self.gains or self.params or self.every_voice_synth
-        return not changed
+        return not (changed or self.grids or self.feel)
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,10 +154,20 @@ class Score:
     variant: str = ""  # which one this is; "" = the score as written, before a variant
     project: str = ""  # the group it belongs to (REQ-BEN-11)
     sidechain: Sidechain | None = None
+    feel: tuple[float, ...] = EVEN  # lengths of a beat's three triplet pulses (REQ-BEN-13)
 
     @property
     def step_s(self) -> float:
         return 60.0 / self.bpm / 4
+
+    @property
+    def beat_s(self) -> float:
+        return 60.0 / self.bpm
+
+    @property
+    def triplets(self) -> bool:
+        """True when a voice plays on a triplet grid (REQ-BEN-13)."""
+        return any(v.triplets for v in self.voices)
 
     @property
     def length_s(self) -> float:
@@ -173,6 +200,8 @@ class Score:
         shape.pop("project")  # nor does the group it is listed in
         if shape["sidechain"] is None:
             shape.pop("sidechain")  # so scores without one keep the hashes they had
+        if self.feel == EVEN:
+            shape.pop("feel")  # nor do scores from before feel existed (REQ-BEN-13)
         payload = json.dumps({"score": shape, "extra": extra or {}}, sort_keys=True)
         return hashlib.blake2b(payload.encode(), digest_size=8).hexdigest()
 
@@ -180,7 +209,7 @@ class Score:
 @dataclass(frozen=True, slots=True)
 class Event:
     voice: str
-    step: int  # global sixteenth index from the start
+    step: int  # global index into its voice's grid: sixteenths, or triplets (REQ-BEN-13)
     time_s: float  # after swing
     velocity: float
     slice: int = 0  # 1-based break slice, 0 for ordinary hits
@@ -202,11 +231,14 @@ class Event:
 
 
 def cells(grid: str, *, hold: bool = False) -> list[str]:
+    """A grid's symbols: 16 sixteenths, or 12 eighth-note triplets (REQ-BEN-13)."""
     allowed = (*VELOCITY, ".", *((HOLD,) if hold else ()))
     symbols = grid.split()
-    if len(symbols) != STEPS or any(s not in allowed for s in symbols):
+    if len(symbols) not in (STEPS, TRIPLETS) or any(s not in allowed for s in symbols):
         shown = " ".join(allowed)
-        raise ScoreError(f"a grid needs {STEPS} symbols from {shown}: {grid!r}")
+        raise ScoreError(
+            f"a grid needs {STEPS} symbols from {shown} ({TRIPLETS} for triplets): {grid!r}"
+        )
     return symbols
 
 
@@ -231,6 +263,16 @@ def _params(raw: dict[str, Any]) -> Params:
     return tuple(sorted((str(k), float(v)) for k, v in raw.items()))
 
 
+def _feel(raw: object, where: str) -> tuple[float, ...]:
+    """A beat's three triplet pulses, as lengths in any unit: [41, 31, 28]."""
+    numbers = raw if isinstance(raw, list) else []
+    if len(numbers) != PULSES or not all(
+        isinstance(v, int | float) and not isinstance(v, bool) and v > 0 for v in numbers
+    ):
+        raise ScoreError(f"{where}: feel needs {PULSES} lengths above 0, one per pulse of a beat")
+    return tuple(float(v) for v in numbers)
+
+
 def _sound(raw: dict[str, Any]) -> Sound:
     words = raw.get("words", ())
     return Sound(
@@ -239,6 +281,19 @@ def _sound(raw: dict[str, Any]) -> Sound:
         str(raw.get("synth", "")),
         int(raw.get("pick", 1)),
     )
+
+
+def _grids(
+    name: str, changes: dict[str, Any], voices: dict[str, Voice]
+) -> tuple[tuple[str, str], ...]:
+    """A variant's new drum grids, one per voice it changes (REQ-BEN-13)."""
+    found = []
+    for voice, change in changes.items():
+        if "grid" in change:
+            if not voices[voice].grid or voices[voice].melodic:
+                raise ScoreError(f"variant {name}: only a drum grid can change ({voice})")
+            found.append((voice, " ".join(cells(str(change["grid"])))))
+    return tuple(found)
 
 
 def _variant(name: str, raw: dict[str, Any], voices: dict[str, Voice]) -> Variant:
@@ -261,6 +316,7 @@ def _variant(name: str, raw: dict[str, Any], voices: dict[str, Voice]) -> Varian
             f"variant {name} changes {sorted(unknown)} of the sidechain; "
             f"it can change {', '.join(SIDECHAIN_CHANGES)}"
         )
+    feel = _feel(raw["feel"], f"variant {name}") if "feel" in raw else ()
     return Variant(
         name,
         str(raw.get("title", name)),
@@ -269,6 +325,8 @@ def _variant(name: str, raw: dict[str, Any], voices: dict[str, Voice]) -> Varian
         tuple(gains),
         params=tuple(params),
         sidechain=tuple((k, float(sidechain[k])) for k in SIDECHAIN_CHANGES if k in sidechain),
+        grids=_grids(name, changes, voices),
+        feel=feel,
     )
 
 
@@ -307,6 +365,8 @@ def _melodic_voice(voice: Voice, gate: str) -> Voice:
         raise ScoreError(f"voice {voice.name}: notes needs {STEPS} entries")
     if not gate:
         raise ScoreError(f"voice {voice.name}: a melodic voice needs a gate row")
+    if len(gate.split()) != STEPS:
+        raise ScoreError(f"voice {voice.name}: a melodic voice's gate row needs {STEPS} steps")
     for note, symbol in zip(voice.notes, cells(gate, hold=True), strict=True):
         if note != HOLD or symbol in VELOCITY:  # a held or silent step needn't name a note
             midi(note)
@@ -366,6 +426,7 @@ def parse(raw: dict[str, Any]) -> Score:
             title=str(raw.get("title", "")),
             hear=str(raw.get("hear", "")),
             project=str(raw.get("project", "")),
+            feel=_feel(raw["feel"], str(raw["id"])) if "feel" in raw else EVEN,
         )
         by_name = {v.name: v for v in voices}
         declared = tuple(
@@ -421,9 +482,27 @@ def swung_time(step: int, step_s: float, swing: float) -> float:
     return pair * 2 * step_s + (2 * step_s * swing if offbeat else 0.0)
 
 
+def feel_shares(feel: tuple[float, ...]) -> list[float]:
+    """Where each pulse of a beat starts, as a share of the beat: [0, 0.41, 0.72]."""
+    total = sum(feel)
+    return [sum(feel[:pulse]) / total for pulse in range(PULSES)]
+
+
+def triplet_time(step: int, beat_s: float, feel: tuple[float, ...]) -> float:
+    """A triplet step's time: its beat, plus its pulse's place in the feel (REQ-BEN-13)."""
+    beat, pulse = divmod(step, PULSES)
+    return (beat + feel_shares(feel)[pulse]) * beat_s
+
+
+def step_time(score: Score, voice: Voice, step: int) -> float:
+    if voice.triplets:
+        return triplet_time(step, score.beat_s, score.feel)
+    return swung_time(step, score.step_s, score.swing)
+
+
 def _hits(voice: Voice, bars: int) -> Iterator[tuple[int, float, int]]:
     """(global step, velocity from the symbol, slice) before velocity rules."""
-    total = bars * STEPS
+    total = bars * voice.steps
     if voice.pulse:
         yield from ((step, VELOCITY["x"], 0) for step in range(0, total, voice.pulse))
     elif voice.slices:
@@ -434,7 +513,7 @@ def _hits(voice: Voice, bars: int) -> Iterator[tuple[int, float, int]]:
     else:
         symbols = cells(voice.grid)
         for step in range(total):
-            symbol = symbols[step % STEPS]
+            symbol = symbols[step % voice.steps]
             if symbol != ".":
                 yield step, VELOCITY[symbol], 0
 
@@ -443,8 +522,8 @@ def _velocity(voice: Voice, n: int, step: int, base: float, rng: random.Random) 
     velocity = voice.velocities[n % len(voice.velocities)] if voice.velocities else base
     ramp = voice.ramp
     if ramp:
-        bar, position = divmod(step, STEPS)
-        first = STEPS - ramp.steps
+        bar, position = divmod(step, voice.steps)
+        first = voice.steps - ramp.steps
         if (bar + 1) % ramp.every_bars == 0 and position >= first:
             fraction = (position - first) / max(ramp.steps - 1, 1)
             velocity = ramp.start + (ramp.end - ramp.start) * fraction
@@ -495,7 +574,7 @@ def events(score: Score) -> list[Event]:
             continue
         rng = random.Random(score.seed * 1000 + index)  # noqa: S311 - musical, not crypto
         for n, (step, base, number) in enumerate(_hits(voice, score.bars)):
-            time_s = swung_time(step, score.step_s, score.swing)
+            time_s = step_time(score, voice, step)
             velocity = _velocity(voice, n, step, base, rng)
             found.append(Event(voice.name, step, time_s, velocity, number))
     found.sort(key=lambda e: (e.time_s, e.voice))
@@ -504,9 +583,9 @@ def events(score: Score) -> list[Event]:
 
 def bar_one(score: Score, voice: Voice) -> str:
     """Bar 1 of a voice in grid notation, for checking against the spec."""
-    hits = {e.step: e for e in events(score) if e.voice == voice.name and e.step < STEPS}
+    hits = {e.step: e for e in events(score) if e.voice == voice.name and e.step < voice.steps}
     symbols = []
-    for step in range(STEPS):
+    for step in range(voice.steps):
         hit = hits.get(step)
         if hit is None:
             symbols.append(".")
@@ -549,6 +628,7 @@ def variant_of(score: Score, name: str) -> tuple[Score, Variant]:
         names = ", ".join(v.name for v in all_variants(score))
         raise ScoreError(f"{score.id} has no variant {name!r} (have: {names})")
     sounds, gains, params = dict(found.sounds), dict(found.gains), dict(found.params)
+    grids = dict(found.grids)
     voices = []
     for voice in score.voices:
         sound = sounds.get(voice.name, voice.sound)
@@ -559,9 +639,14 @@ def variant_of(score: Score, name: str) -> tuple[Score, Variant]:
             replace(
                 voice,
                 sound=sound,
+                grid=grids.get(voice.name, voice.grid),
                 gain_db=gains.get(voice.name, voice.gain_db),
                 params=changed,
             )
         )
     sidechain = _changed_sidechain(score.sidechain, found)
-    return replace(score, voices=tuple(voices), variant=found.name, sidechain=sidechain), found
+    feel = found.feel or score.feel
+    changed_score = replace(
+        score, voices=tuple(voices), variant=found.name, sidechain=sidechain, feel=feel
+    )
+    return changed_score, found

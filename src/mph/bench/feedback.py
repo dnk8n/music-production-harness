@@ -93,6 +93,17 @@ def legacy_hashes(found: list[dict[str, Any]]) -> frozenset[str]:
     )
 
 
+def standing(
+    renders: Path, conn: sqlite3.Connection | None, benchmark_id: str, variant: str
+) -> tuple[dict[str, Any] | None, dict[str, str] | None]:
+    """A take's newest render and the verdict that stands for it (REQ-BEN-14)."""
+    found = reports(renders, benchmark_id)
+    made = newest_by_variant(found).get(variant)
+    if made is None:
+        return None, None
+    return made, effective(made, verdicts(conn, benchmark_id), legacy_hashes(found))
+
+
 def newest_takes(renders: Path, benchmark_id: str) -> list[dict[str, Any]]:
     """The newest report of each take the benchmark has now, in take order."""
     newest = newest_by_variant(reports(renders, benchmark_id))

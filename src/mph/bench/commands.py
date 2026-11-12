@@ -7,13 +7,14 @@ first use, so ``mph bench list`` stays instant.
 from __future__ import annotations
 
 import argparse
+import sqlite3
 import sys
 from collections.abc import Sequence
 from contextlib import closing, nullcontext
 from pathlib import Path
 from typing import Any
 
-from mph.bench import feedback, jit, score
+from mph.bench import feedback, jit, rerender, score
 from mph.catalogue import commands as catalogue_commands
 from mph.catalogue import db
 from mph.config import Config
@@ -44,6 +45,7 @@ def dispatch(args: argparse.Namespace, cfg: Config, runner: Runner, home: Path) 
         engine=args.engine,
         home=home,
         variants=args.variant,
+        force=args.force_rerender,
     )
 
 
@@ -133,6 +135,7 @@ def cmd_render(
     engine: str = "auto",
     home: Path | None = None,
     variants: Sequence[str] = (),
+    force: bool = False,
 ) -> int:
     from mph.bench import kit, render, sc  # noqa: PLC0415 - heavy audio imports, on demand
     from mph.renoise import bridge  # noqa: PLC0415
@@ -142,13 +145,21 @@ def cmd_render(
         print("name a benchmark (see `mph bench list`) or use --all", file=sys.stderr)
         return 2
     catalogue = cfg.data_dir / db.FILENAME
-    failed = 0
+    failed = skipped = 0
     session = bridge.Session()  # one Renoise, started by mph, for every job (REQ-REN-03)
     with closing(db.connect(catalogue)) if catalogue.is_file() else nullcontext() as conn:
         for benchmark_id, variant, named in _jobs(chosen, variants):
             if not named and (why := _cannot(benchmark_id, variant, home)):
                 print(f"{benchmark_id} [{variant}]: skipped, {why}")
                 continue
+            decision = _decide(
+                cfg, conn, benchmark_id, variant, engine=engine, home=home, force=force
+            )
+            if not decision.render:
+                print(f"{benchmark_id} [{variant}]: skipped, {decision.why}")
+                skipped += 1
+                continue
+            print(f"{benchmark_id} [{variant or 'first take'}]: rendering, {decision.why}")
             try:
                 outcome = render.run(
                     benchmark_id,
@@ -167,8 +178,36 @@ def cmd_render(
             print_report(outcome.report)
             print(f"  files  {outcome.folder}   (made in {outcome.report['engine']})")
             failed += not outcome.passed
+    if skipped:
+        print(f"\n{skipped} skipped: a pass is a pass. --force-rerender renders them anyway.")
     print("\nlisten and give verdicts: mph bench serve")
     return 1 if failed else 0
+
+
+def _decide(
+    cfg: Config,
+    conn: sqlite3.Connection | None,
+    benchmark_id: str,
+    variant: str,
+    *,
+    engine: str,
+    home: Path | None,
+    force: bool,
+) -> rerender.Decision:
+    """Whether this take renders (REQ-BEN-14). One that can't even be planned
+    renders, so that render explains what's wrong."""
+    from mph.bench import render, sc  # noqa: PLC0415 - heavy audio imports, on demand
+
+    try:
+        take, chosen_variant, chosen = render.take(
+            benchmark_id, variant, engine, Path.home() if home is None else home
+        )
+    except (score.ScoreError, sc.RenderError, OSError):
+        return rerender.Decision(True, "to report what's wrong")
+    renders = cfg.data_dir / RENDERS
+    made, verdict = feedback.standing(renders, conn, benchmark_id, chosen_variant.name)
+    current = render.take_inputs(cfg, take, chosen)
+    return rerender.decide(made, verdict, current, force=force)
 
 
 def _cannot(benchmark_id: str, variant: str, home: Path | None) -> str:

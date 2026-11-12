@@ -182,6 +182,11 @@ def _add_bench(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None
         help="render just this take (repeatable); default: every take",
     )
     render.add_argument(
+        "--force-rerender",
+        action="store_true",
+        help="render takes that passed with nothing changed too (REQ-BEN-14)",
+    )
+    render.add_argument(
         "--variants", action="store_true", help=argparse.SUPPRESS
     )  # every take renders by default now; kept so old commands still work
     bench_sub.add_parser("report", help="the latest result for one benchmark").add_argument(

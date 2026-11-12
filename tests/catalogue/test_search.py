@@ -267,6 +267,8 @@ def test_cli_renders_reasons_and_json(
     assert "1 matches, best 1:" in out
     assert "why: hat (filename 0.6); 128 BPM (filename)" in out
     assert "| -18.0 LUFS | commercial-pack" in out
+    assert "     hat2 | role hat, bpm 128, form loop" in out  # hash, then strongest labels
+    assert "every label of one sound: mph catalogue sound HASH" in out
     assert "have no loudness yet" in out
     assert commands.cmd_search(cfg, args("--key", "Dm", "--role", "bass", "--json")) == 0
     hits = json.loads(capsys.readouterr().out)

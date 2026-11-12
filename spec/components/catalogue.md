@@ -1,6 +1,6 @@
 # Catalogue
 
-**Status:** built (step 2: REQ-CAT-01 to 08)
+**Status:** built (step 2: REQ-CAT-01 to 09)
 
 A local search engine over every sound the harness can use, with full
 provenance. The first source is `/Users/dean/dj/samples` (about 4,000 files,
@@ -12,6 +12,8 @@ provenance. The first source is `/Users/dean/dj/samples` (about 4,000 files,
 - `mph catalogue stats`: counts by pack, format and role.
 - `mph catalogue analyse [--role R] [--pack P] [--limit N] [--workers N] [--force]`: measure on demand, cached per analyser version (ADR-0008).
 - Later in step 2: `mph catalogue search`, `refresh`, `stash`, `fetch`.
+- `mph catalogue sound REF [--json]`: everything mph knows about one sound, every label
+  with where it came from and how sure it is (REQ-CAT-09).
 
 ## Data model
 
@@ -81,11 +83,17 @@ Key, BPM and role hints parsed from folder and file names (e.g. "Acid Techno
 (Ab, 131bpm)", "MXE_128_Vocals_19") are stored as tags with
 `origin=filename`. Audio analysis confirms or contradicts them, and both are kept.
 
+Genre names and artist credits never give a role, however deep they sit:
+"bass" in BASS_HOUSE_AND_GARAGE, "Future Bass" or "Drum & Bass", and
+everything before "presents" (TOM MIDDLETON PRESENTS DUB BASS HOUSE).
+
 The pack's folder and the folder just inside it name things more than they
-label them: often a product or a kit (BASS_HOUSE_AND_GARAGE, TOM MIDDLETON,
-"Drum & Bass (F, 174bpm)"). They still give tempo, key and form, but a role
-only when it agrees with the roles the file name and deeper folders give, or
-when those give none ("Mutant Breaks").
+label them: often a kit or a broad category ("Mutant Breaks", "80s Synthpop
+(Dm, 87bpm)", "Pads and Chords"). They still give tempo, key and form, but a
+role only when it agrees with the roles the file name and deeper folders
+give, or when those give none ("Mutant Breaks"). A pack folder named only for
+its sounds ("Stab Bass Sample Pack") labels them like any other folder; a list
+of kinds ("Kicks & Snares") still lets the file name say which.
 
 A downloaded sound keeps the labels it got from its title and keywords when
 it was fetched (REQ-CAT-07). Its path in the download store is a remote id
@@ -97,6 +105,12 @@ and a file name, so it adds none.
   so it still counts when nothing else does. Reading a download's labels again
   from its path made its remote id its pack and lost the roles its title and
   keywords gave, which can't be made again because the keywords aren't kept.
+  On Dean's library the products sit a level deeper, inside a year folder
+  (LOOPMASTERS 4GB Pack/LOOPMASTERS_2014/BASS_HOUSE_AND_GARAGE_2), so a rule
+  about the top two levels missed them, and took bass off the Stab Bass pack.
+  The genre and artist words were what was wrong, wherever they sit: 251 of
+  his 4,060 files lost a bass, drums or tom label they got that way
+  (2026-11-12).
 - **Verify:** test
 
 ### REQ-CAT-04: Just-in-time analysis, cached by analyser version
@@ -112,7 +126,9 @@ hard; fit is a sum of confidence-weighted matches, and each result lists the
 reasons behind its score. Tempo matches allow half and double time; one-shots
 and sounds with no key pass tempo and key filters without gaining score.
 Each result names its licence, the one a render's report would record
-(REQ-BEN-05): a download's own, else its source's.
+(REQ-BEN-05): a download's own, else its source's. It also shows the start of
+the sound's hash and its strongest labels, so `mph catalogue sound` can show
+the rest.
 Words match whole words of a sound's paths and labels, never part of one:
 "dub" doesn't find DUBSTEP and "m1" doesn't find Tom1. Plurals match ("kick"
 finds Kicks), joined-up words count as theirs (TR909 has 909, ClosedHat has
@@ -122,7 +138,21 @@ closed and hat), and a phrase ("open hat") matches in that order.
   128 BPM", and picking samples has to be explainable. Whether a track can
   be published depends on the licences of its sounds, so choosing one should
   show it (2026-11-11). Matching parts of words found the wrong sounds:
-  "hand" found Ghandi, "m1" Tom1 and "dub" DUBSTEP (2026-11-11).
+  "hand" found Ghandi, "m1" Tom1 and "dub" DUBSTEP (2026-11-11). A search
+  without `--role` showed no labels, so it couldn't answer "is this a pad or
+  a chord?" (2026-11-12).
+- **Verify:** test
+
+### REQ-CAT-09: One sound in full
+`mph catalogue sound REF` shows everything mph knows about one sound, found
+by its hash, a unique hash prefix of 6 or more characters, or its path:
+every label with where it came from and how sure it is, its files and their
+licences, analysis, download source, what it was made from, stashes, whether
+it is on disk and which renders used it. It is the query channel's `sound`
+answer (REQ-QRY-03); `--json` prints that answer as it is.
+- **Why:** Dean couldn't check a label change kit-diff reported. Search shows
+  no labels unless asked for a role and doesn't take a hash, and the only way
+  in was `mph mcp call sound` (2026-11-12).
 - **Verify:** test
 
 ### REQ-CAT-06: Provenance and non-destructive refresh

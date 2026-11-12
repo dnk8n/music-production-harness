@@ -4,6 +4,9 @@
 - ``install`` registers ``serve`` for every Claude Code session on this Mac
   (REQ-QRY-07).
 - ``call`` runs one tool and prints what Claude would see (REQ-QRY-08).
+
+``mph catalogue sound`` is here too: the ``sound`` tool's answer, laid out
+for people (REQ-CAT-09), so Dean and Claude see the same facts (REQ-QRY-03).
 """
 
 from __future__ import annotations
@@ -14,12 +17,13 @@ import json
 import os
 import shlex
 import sys
+import textwrap
 from pathlib import Path
-from typing import IO
+from typing import IO, Any
 
 from mph import config
 from mph.proc import Runner
-from mph.query import Unanswerable, mcp, tools
+from mph.query import Unanswerable, answers, mcp, tools
 from mph.query.answers import Library
 
 SERVER_NAME = "mph"
@@ -118,3 +122,80 @@ def cmd_call(library: Library, name: str, raw: str) -> int:
         return 1
     print(json.dumps(json.loads(answer), indent=2, ensure_ascii=False))
     return 0
+
+
+def cmd_sound(library: Library, ref: str, *, as_json: bool = False) -> int:
+    """`mph catalogue sound REF`: everything mph knows about one sound (REQ-CAT-09)."""
+    try:
+        answer = answers.sound(library, ref)
+    except Unanswerable as exc:
+        print(str(exc).replace("`search_sounds`", "`mph catalogue search`"), file=sys.stderr)
+        return 1
+    print(json.dumps(answer, indent=2, ensure_ascii=False) if as_json else render_sound(answer))
+    return 0
+
+
+def render_sound(answer: dict[str, Any]) -> str:
+    """The ``sound`` answer as text: every label with where it came from and how
+    sure it is, then files, analysis, download and renders."""
+    lines = [answer["hash"], f"  {_format(answer)}"]
+    if answer["probe_error"]:
+        lines.append(f"  unreadable: {answer['probe_error']}")
+    lines.append("files:")
+    lines += [f"  {f['source']}: {f['path']} ({f['source_licence']})" for f in answer["files"]]
+    lines.append("labels:" if answer["tags"] else "labels: none")
+    width = max((len(str(t["value"])) for t in answer["tags"]), default=0)
+    lines += [
+        f"  {t['name']:9} {t['value']:{width}}  {t['origin']:8}  {t['confidence']:g}"
+        for t in answer["tags"]
+    ]
+    for found in answer["analysis"]:
+        head = f"analysis {found['analyser']} v{found['version']}, {found['analysed_at']}: "
+        if found["error"]:
+            lines.append(f"{head}failed: {found['error']}")
+            continue
+        facts = ", ".join(f"{k} {_value(v)}" for k, v in sorted(found["features"].items()))
+        lines += textwrap.wrap(head + facts, width=100, subsequent_indent="    ")
+    lines += _provenance(answer)
+    return "\n".join(lines)
+
+
+def _format(answer: dict[str, Any]) -> str:
+    parts = [
+        answer["origin"],
+        answer["container"] or "?",
+        f"{answer['sample_rate']} Hz" if answer["sample_rate"] else "",
+        f"{answer['bit_depth']}-bit" if answer["bit_depth"] else "",
+        f"{answer['channels']} ch" if answer["channels"] else "",
+        f"{answer['duration_s']:.1f} s" if answer["duration_s"] is not None else "",
+    ]
+    return ", ".join(p for p in parts if p)
+
+
+def _value(value: object) -> str:
+    if isinstance(value, float):
+        return f"{value:.2f}".rstrip("0").rstrip(".")
+    return value if isinstance(value, str) else json.dumps(value)
+
+
+def _provenance(answer: dict[str, Any]) -> list[str]:
+    lines = []
+    if found := answer["download"]:
+        lines.append(
+            f"download: {found['source_id']} {found['remote_id']}, {found['title']!r} by "
+            f"{found['creator']}, {found['licence']}, {found['page_url']}"
+        )
+    if answer["made_from"]:
+        lines.append(f"made from: {json.dumps(answer['made_from'])}")
+    if answer["stashes"]:
+        lines.append(f"stashes: {', '.join(answer['stashes'])}")
+    disk = answer["on_disk"]
+    lines.append(f"on disk: {disk['path']}" if disk["present"] else "on disk: no")
+    used = answer["used_in_renders"]
+    lines.append(f"used in {used['count']} renders" + (", newest:" if used["count"] else ""))
+    lines += [
+        f"  {r['benchmark']} {r['take']} ({r['voice']}), {r['rendered_at']}" for r in used["newest"]
+    ]
+    if note := answer.get("note"):
+        lines.append(note)
+    return lines

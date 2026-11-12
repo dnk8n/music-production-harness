@@ -61,11 +61,19 @@ def roles(conn: sqlite3.Connection) -> dict[str, list[str]]:
 
 
 def paths(conn: sqlite3.Connection) -> dict[str, str]:
-    rows = conn.execute(
-        "SELECT f.asset_hash, min(f.rel_path) FROM source_file f "
-        "JOIN source s ON s.id = f.source_id WHERE s.kind = 'local' GROUP BY f.asset_hash"
+    """Each sound as people know it: its first path in a sample folder, else
+    its download as downloads/SOURCE/TITLE (its own path there is a remote id)."""
+    found = dict(
+        conn.execute(
+            "SELECT f.asset_hash, min(f.rel_path) FROM source_file f "
+            "JOIN source s ON s.id = f.source_id WHERE s.kind = 'local' GROUP BY f.asset_hash"
+        )
     )
-    return {digest: path for digest, path in rows}
+    for digest, source, title in conn.execute(
+        "SELECT asset_hash, source_id, title FROM download ORDER BY source_id, remote_id"
+    ):
+        found.setdefault(digest, f"downloads/{source}/{title}")
+    return found
 
 
 def write(copy: Path, out: Path) -> None:

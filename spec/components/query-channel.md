@@ -70,8 +70,9 @@ never reads a secret: doctor only checks whether each one is set.
 
 ### REQ-QRY-03: Same answers as the CLI and the page
 Each tool answers from the same code as the command or page that shows the
-same thing: search from REQ-CAT-05, takes and the verdicts that stand from
-the listening page (REQ-FBK-01, REQ-FBK-02), findings from `mph doctor`.
+same thing: search from REQ-CAT-05, one sound from `mph catalogue sound`
+(REQ-CAT-09), takes and the verdicts that stand from the listening page
+(REQ-FBK-01, REQ-FBK-02), findings from `mph doctor`.
 Benchmark tools work without a catalogue. Catalogue tools say to run
 `mph catalogue scan` when there isn't one yet.
 - **Why:** Claude and Dean must see the same facts. A second implementation

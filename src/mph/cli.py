@@ -131,6 +131,13 @@ def _add_search(cat_sub: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     find.add_argument("--licence", help="e.g. commercial-pack, cc0")
     find.add_argument("--limit", type=int, default=20)
     find.add_argument("--json", action="store_true", help="machine-readable output")
+    one = cat_sub.add_parser(
+        "sound",
+        help="everything mph knows about one sound: every label, its files, analysis, licence",
+        description="e.g. mph catalogue sound e9313d",
+    )
+    one.add_argument("ref", help="a hash, a unique hash prefix of 6 or more characters, or a path")
+    one.add_argument("--json", action="store_true", help="the answer the MCP `sound` tool gives")
 
 
 def _add_provenance(cat_sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -250,6 +257,8 @@ def _library_commands(
 ) -> int:
     if args.command == "mcp":
         return query_commands.dispatch(args, Library(cfg, ctx, store), ctx.runner)
+    if args.action == "sound":  # the query channel's answer, shown for people (REQ-QRY-03)
+        return query_commands.cmd_sound(Library(cfg, ctx, store), args.ref, as_json=args.json)
     return catalogue_commands.dispatch(args, cfg, ctx.runner, store)
 
 

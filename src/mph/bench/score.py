@@ -97,7 +97,7 @@ class Voice:
 
 Params = tuple[tuple[str, float], ...]
 HOLD = "-"  # in a melodic gate: hold the note before it for one more step
-SIDECHAIN_CHANGES = ("depth_db", "attack_ms", "release_ms")  # what a variant may change
+SIDECHAIN_CHANGES = ("depth_db", "attack_ms", "hold_ms", "release_ms")  # what a variant may change
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,6 +109,7 @@ class Sidechain:
     depth_db: float = 6.0
     attack_ms: float = 2.0
     release_ms: float = 200.0
+    hold_ms: float = 0.0  # at full depth, between the attack and the release
 
     @property
     def active(self) -> bool:
@@ -380,6 +381,7 @@ def _sidechain(raw: dict[str, Any], voices: dict[str, Voice]) -> Sidechain:
         depth_db=float(raw.get("depth_db", 6.0)),
         attack_ms=float(raw.get("attack_ms", 2.0)),
         release_ms=float(raw.get("release_ms", 200.0)),
+        hold_ms=float(raw.get("hold_ms", 0.0)),
     )
     if unknown := {found.trigger, *found.targets} - set(voices):
         raise ScoreError(f"the sidechain names unknown voices {sorted(unknown)}")
@@ -389,9 +391,10 @@ def _sidechain(raw: dict[str, Any], voices: dict[str, Voice]) -> Sidechain:
 
 
 def _shaped(found: Sidechain, where: str) -> Sidechain:
-    if found.depth_db < 0 or found.attack_ms <= 0 or found.release_ms <= 0:
+    if found.depth_db < 0 or found.attack_ms <= 0 or found.release_ms <= 0 or found.hold_ms < 0:
         raise ScoreError(
-            f"{where} needs a depth of 0 dB or more, and a positive attack and release"
+            f"{where} needs a depth of 0 dB or more, a positive attack and release, "
+            "and a hold of 0 ms or more"
         )
     return found
 
@@ -408,6 +411,7 @@ def _changed_sidechain(sidechain: Sidechain | None, variant: Variant) -> Sidecha
         depth_db=changes.get("depth_db", sidechain.depth_db),
         attack_ms=changes.get("attack_ms", sidechain.attack_ms),
         release_ms=changes.get("release_ms", sidechain.release_ms),
+        hold_ms=changes.get("hold_ms", sidechain.hold_ms),
     )
     return _shaped(changed, f"variant {variant.name}'s sidechain")
 

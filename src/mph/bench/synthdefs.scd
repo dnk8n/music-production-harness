@@ -214,12 +214,14 @@ write.(SynthDef(\mph_pad, { |out = 0, amp = 1, gate = 1, freq = 130.81, acc = 0,
 
 // Sidechain (REQ-BEN-12). Each trigger hit starts an mph_duck at its own
 // sample: it writes how much level to take away (0 to depth) to a private
-// bus, rising over the attack and falling back along a half cosine over the
-// release. An mph_ducker per target runs after the voices and scales that
-// target's two channels by 1 minus the bus, never past the depth, so
-// overlapping dips add up but stop at the full depth.
-write.(SynthDef(\mph_duck, { |bus = 512, depth = 0.5, attack = 0.002, release = 0.2|
-    var env = EnvGen.ar(Env([0, depth, 0], [attack, release], [\lin, \sin]), doneAction: 2);
+// bus, rising over the attack, staying at the depth for the hold, and
+// falling back along a half cosine over the release. An mph_ducker per
+// target runs after the voices and scales that target's two channels by
+// 1 minus the bus, never past the depth, so overlapping dips add up but
+// stop at the full depth.
+write.(SynthDef(\mph_duck, { |bus = 512, depth = 0.5, attack = 0.002, hold = 0, release = 0.2|
+    var env = EnvGen.ar(
+        Env([0, depth, depth, 0], [attack, hold, release], [\lin, \lin, \sin]), doneAction: 2);
     OffsetOut.ar(bus, env);
 }));
 

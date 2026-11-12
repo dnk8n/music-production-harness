@@ -1,7 +1,7 @@
 # spec/components/benchmarks.md#bm-sc-01: BM-DRUM-01, the BM-BASS-01 acid line and a pad, ducked by the kick
 id = "BM-SC-01"
 title = "Kick-triggered ducking"
-hear = "the pad and bass pump with the kick. They dip as each kick lands and swell back up before the next one, and the kick punches through cleanly. The exaggerated take makes the pump obvious. In bypass, the pad and bass hold steady under the kick."
+hear = "the pad and bass pump with the kick. They dip as each kick lands and swell back up before the next one, and the kick punches through cleanly. The exaggerated take makes the pump obvious, and over-the-top overdoes it: the pad and bass drop out under each kick and only swell back later in the beat. In bypass, the pad and bass hold steady under the kick."
 bpm = 130
 project = "Sidechain"
 bars = 8
@@ -46,6 +46,12 @@ release_ms = 400.0
 [variants.exaggerated]
 title = "exaggerated (24 dB, 430 ms release): the pump is impossible to miss"
 sidechain = { depth_db = 24.0, release_ms = 430.0 }
+
+# Too much on purpose, to show what ducking does. Within one beat (462 ms)
+# the release can't grow much more, so the dip holds at the bottom first.
+[variants.over-the-top]
+title = "over the top (36 dB, held 150 ms, 290 ms release): the pad and bass vanish under every kick"
+sidechain = { depth_db = 36.0, hold_ms = 150.0, release_ms = 290.0 }
 
 [variants.bypass]
 title = "sidechain bypassed (0 dB): the pad and bass hold steady"

@@ -14,7 +14,7 @@ from mph.proc import Result, SubprocessRunner
 from mph.query import answers, commands, mcp
 from mph.query.answers import Library
 from tests.fakes import FakeRunner
-from tests.query.conftest import KICK, library_for, make_cfg
+from tests.query.conftest import HAT, KICK, RAIN, TRIMMED, library_for, make_cfg
 
 ON_PATH = {"claude": "/opt/homebrew/bin/claude", "uv": "/opt/homebrew/bin/uv"}
 
@@ -30,6 +30,110 @@ def checkout(tmp_path: Path) -> Path:
     repo.mkdir(parents=True)
     (repo / "pyproject.toml").write_text("[project]\nname = 'mph'\n")
     return repo
+
+
+# --- mph catalogue sound -----------------------------------------------------------------
+
+
+def lines_of(capsys: pytest.CaptureFixture[str]) -> list[str]:
+    return capsys.readouterr().out.splitlines()
+
+
+@pytest.mark.req("REQ-CAT-09")
+def test_sound_lists_every_label_with_its_origin_and_confidence(
+    full: Library, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert commands.cmd_sound(full, KICK[:8]) == 0
+    lines = lines_of(capsys)
+    assert lines[:2] == [KICK, "  source, wav, 44100 Hz, 24-bit, 2 ch, 0.5 s"]
+    assert "  dj: Pack/Kicks/Kick 909.wav (commercial-pack)" in lines
+    labels = [line.split() for line in lines[lines.index("labels:") + 1 :][:3]]
+    assert labels == [
+        ["form", "oneshot", "analysis", "0.9"],
+        ["pack", "Pack", "folder", "0.5"],
+        ["role", "kick", "filename", "0.6"],
+    ]
+    assert "analysis core v2, 2026-11-02T10:00Z: duration_s 0.5, form oneshot, lufs -9.5" in lines
+    assert any(line.startswith("on disk: ") and line.endswith("Kick 909.wav") for line in lines)
+    assert lines[-2:] == [
+        "  BM-DRUM-02 renoise (kick), 2026-11-09T09:00:00Z",
+        "  BM-DRUM-02 renoise (kick), 2026-11-08T09:00:00Z",
+    ]
+
+
+@pytest.mark.req("REQ-CAT-09")
+def test_sound_shows_downloads_lineage_and_failed_analysis(
+    full: Library, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert commands.cmd_sound(full, RAIN) == 0
+    rain = lines_of(capsys)
+    assert (
+        "download: freesound 123, 'Rain on a tin roof' by someone, cc0, "
+        "https://freesound.org/s/123/" in rain
+    )
+    assert "  role      fx  human     1" in rain
+    assert commands.cmd_sound(full, TRIMMED) == 0
+    trimmed = lines_of(capsys)
+    assert "labels: none" in trimmed
+    assert any(line.startswith("made from: ") and "trim" in line for line in trimmed)
+    assert trimmed[-4:-1] == ["stashes: keepers", "on disk: no", "used in 0 renders"]
+    assert "not analysed yet" in trimmed[-1]
+    assert commands.cmd_sound(full, HAT) == 0
+    assert "analysis core v2, 2026-11-02T10:00Z: failed: could not decode" in lines_of(capsys)
+
+
+@pytest.mark.req("REQ-CAT-09")
+def test_an_unreadable_sound_says_why() -> None:
+    answer: dict[str, Any] = {
+        "hash": "ab" * 32,
+        "origin": "source",
+        "container": None,
+        "sample_rate": None,
+        "bit_depth": None,
+        "channels": None,
+        "duration_s": None,
+        "probe_error": "moov atom not found",
+        "files": [],
+        "tags": [],
+        "analysis": [],
+        "download": None,
+        "made_from": None,
+        "stashes": [],
+        "on_disk": {"path": None, "present": False},
+        "used_in_renders": {"count": 0, "newest": []},
+    }
+    assert commands.render_sound(answer).splitlines()[1:3] == [
+        "  source, ?",
+        "  unreadable: moov atom not found",
+    ]
+
+
+@pytest.mark.req("REQ-CAT-09")
+def test_sound_errors_name_the_cli_search(
+    full: Library, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert commands.cmd_sound(full, "ffffff") == 1
+    err = capsys.readouterr().err
+    assert "matches no sounds" in err and "`mph catalogue search`" in err
+    fresh = library_for(make_cfg(tmp_path / "fresh"), tmp_path)
+    assert commands.cmd_sound(fresh, KICK) == 1
+    assert "no catalogue yet" in capsys.readouterr().err
+
+
+@pytest.mark.req("REQ-CAT-09")
+@pytest.mark.req("REQ-QRY-03")
+def test_mph_catalogue_sound_json_is_the_tools_answer(
+    full: Library, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config_file = full.cfg.data_dir.parent / "mph.toml"
+    config_file.write_text(f"[paths]\ndata_dir = '{full.cfg.data_dir}'\n")
+    monkeypatch.setenv("MPH_CONFIG", str(config_file))
+    assert cli.main(["catalogue", "sound", KICK[:6], "--json"]) == 0
+    printed = json.loads(capsys.readouterr().out)
+    assert printed["hash"] == KICK
+    assert printed["tags"] == answers.sound(full, KICK)["tags"]
+    assert cli.main(["catalogue", "sound", "Pack/Kicks/Kick 909.wav"]) == 0
+    assert capsys.readouterr().out.startswith(KICK)
 
 
 # --- mph mcp call ----------------------------------------------------------------------

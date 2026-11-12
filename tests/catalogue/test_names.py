@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from mph.catalogue.names import Prior, parse_key, priors_for
+from mph.catalogue.names import Prior, parse_key, priors_for, priors_from_text
 
 
 def values(rel: str, name: str) -> set[str]:
@@ -113,7 +113,7 @@ def test_folder_listing_several_roles_is_split() -> None:
         # nothing nearer names a role, so the pack's or product's name stands in
         ("Mutant Breaks/MB_Amen_120.wav", {"break"}),
         ("Photek Full/Breaks/120/Amen.wav", {"break"}),
-        ("LM 4GB/BASS_HOUSE_AND_GARAGE_2/BHG2_124_Loop_01.wav", {"bass"}),
+        ("LM 4GB/Latin Bass/LB_124_Loop_01.wav", {"bass"}),
     ],
 )
 def test_pack_and_product_names_only_back_up_roles(rel: str, roles: set[str]) -> None:
@@ -122,9 +122,74 @@ def test_pack_and_product_names_only_back_up_roles(rel: str, roles: set[str]) ->
 
 @pytest.mark.req("REQ-CAT-03")
 def test_pack_and_product_names_still_give_tempo_key_and_agreeing_roles() -> None:
-    kit = priors_for("Novation 3rd Drop/Drum & Bass (F#m, 174bpm)/Bass/Reese 01.wav")
+    kit = priors_for("Novation 3rd Drop/Deep Bass (F#m, 174bpm)/Bass/Reese 01.wav")
     assert Prior("bpm", "174", "folder", 0.4) in kit
     assert Prior("key", "F#:minor", "folder", 0.4) in kit
-    assert Prior("role", "bass", "folder", 0.2) in kit  # agrees with the folder below it
-    assert values("Stab Bass/Stab 01.wav", "role") == {"stab"}
-    assert Prior("role", "stab", "folder", 0.25) in priors_for("Stab Bass/Stab 01.wav")
+    assert Prior("role", "bass", "folder", 0.4) in kit  # agrees with the folder below it
+    genre = priors_for("Novation 3rd Drop/Drum & Bass (F#m, 174bpm)/Bass/Reese 01.wav")
+    assert {p for p in genre if p.name != "role"} == {p for p in kit if p.name != "role"}
+    assert Prior("role", "bass", "folder", 0.4) not in genre  # a genre, not a sound
+
+
+@pytest.mark.req("REQ-CAT-03")
+@pytest.mark.parametrize(
+    ("rel", "roles"),
+    [
+        # Dean's packs: products sit inside a year folder, deeper than the name levels
+        (
+            "LM 4GB/LM_2014/BASS_HOUSE_AND_GARAGE_2/BHG2_SOUNDS_AND_FX/BHG2_Hat_17.wav",
+            {"hat", "fx"},
+        ),
+        (
+            "LM 4GB/LM_2014/BASS_HOUSE_AND_GARAGE_2/BHG2_WAV_LOOPS/BHG2_120_Cm_Chord_Synth_09.wav",
+            {"chord", "melodic"},
+        ),
+        (
+            "LM 4GB/LM_2015/TOM MIDDLETON PRESENTS DUB BASS HOUSE/LOOPS/TM2_125_C_Background.wav",
+            set(),
+        ),
+        (
+            "LM/LM_2015/TOM MIDDLETON PRESENTS DUB BASS HOUSE/SOUNDS_&_FX/TM2_Attack_Bass.wav",
+            {"bass", "fx"},
+        ),
+        (
+            "LM/LM_2015/JUNE MILLER PRESENTS DARK COMPLEX DRUM & BASS VOL 2/LOOPS/JM2_Atmos.wav",
+            {"pad"},
+        ),
+        ("LM 4GB/LM_2014/THE_MEDIKS_DRUM_&_BASS_SURGERY/MED_Loops/MED_174_Reese_1.wav", set()),
+        ("LM 4GB/LM_2016/CAPSUN_CHILL_TRAP_&_FUTURE_BASS/CT2_Mono_Synth_02.wav", {"melodic"}),
+        # the credit goes, the sounds stay
+        ("LM 4GB/LM_2015/LOOPMASTERS_PRESENTS_FUNK_BASS_LOOPS/FBL_100_Loop_01.wav", {"bass"}),
+        # drums and a bass, not the genre
+        ("Drums and Bass/Loop 01.wav", {"drums", "bass"}),
+    ],
+)
+def test_genres_and_artist_credits_give_no_role_at_any_depth(rel: str, roles: set[str]) -> None:
+    assert values(rel, "role") == roles
+
+
+@pytest.mark.req("REQ-CAT-03")
+@pytest.mark.req("REQ-CAT-07")
+def test_a_downloads_title_and_keywords_skip_genres_too() -> None:
+    priors = priors_from_text("Drum and Bass breakbeat loop, 174 BPM")
+    assert {(p.name, p.value) for p in priors} == {
+        ("role", "break"),
+        ("form", "loop"),
+        ("bpm", "174"),
+    }
+
+
+@pytest.mark.req("REQ-CAT-03")
+@pytest.mark.parametrize(
+    ("rel", "roles"),
+    [
+        ("Stab Bass Sample Pack/Digital Stab 1.wav", {"stab", "bass"}),  # named for its sounds
+        ("Stab Bass Sample Pack/Digital Stab 1 Bb (Processed Filter).wav", {"stab", "bass"}),
+        ("voice/one take.wav", {"vocal"}),
+        ("Kicks & Snares/Snare 01.wav", {"snare"}),  # a list: the file says which
+        ("Mutant Breaks/GG_A Damn Kool Groove 2 168.wav", {"drums"}),  # a name: it backs up
+        ("Deep Bass Pack/Loops/Kicks/Kick 1.wav", {"kick"}),
+    ],
+)
+def test_a_pack_folder_named_only_for_its_sounds_labels_them(rel: str, roles: set[str]) -> None:
+    assert values(rel, "role") == roles

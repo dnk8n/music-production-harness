@@ -4,12 +4,17 @@ Pack naming is a cheap, mostly-right head start: "Acid Techno (Ab, 131bpm)",
 "MXE_128_Vocals_19", "Kick Snare 0005". Everything here is a *prior* with a
 confidence below 1.0; audio analysis later confirms or contradicts it.
 
-The top of a path is names, not labels: the pack ("LOOPMASTERS 4GB Pack") and
-the folder just inside it, often a product or a kit ("BASS_HOUSE_AND_GARAGE",
-"TOM MIDDLETON", "Drum & Bass (F, 174bpm)"). Their role words describe a genre
-or a person as often as a sound, so they only back up a role that the file
-name or a deeper folder names, or stand in when nothing nearer names a role
-("Mutant Breaks").
+Genre names and artist credits hold sound words that say nothing about the
+sound, so they never give a role, however deep they sit: "bass" in
+BASS_HOUSE_AND_GARAGE or "Drum & Bass", and everything before "presents" in
+"TOM MIDDLETON PRESENTS DUB BASS HOUSE".
+
+The top of a path is names more than labels: the pack ("Mutant Breaks") and
+the folder just inside it, often a kit or a broad category ("80s Synthpop (Dm,
+87bpm)", "Pads and Chords"). They only back up a role that the file name or a
+deeper folder names, or stand in when nothing nearer names a role. A pack
+folder named only for its sounds ("Stab Bass Sample Pack") is a label like any
+other folder.
 """
 
 from __future__ import annotations
@@ -19,12 +24,12 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 
 # Bump when parsing rules change: the next scan rebuilds every name-derived tag.
-VERSION = 4
+VERSION = 5
 
 FOLDER_CONFIDENCE = 0.5  # the folder directly containing the file
 FOLDER_DECAY = 0.1  # per level further up the tree
 FOLDER_FLOOR = 0.2  # far-off folders still count a little
-NAME_LEVELS = 2  # the pack's folder and the one inside it name things more than label them
+NAME_LEVELS = 2  # the pack folder and the one inside it name things more than label them
 FILENAME_CONFIDENCE = 0.6
 WEAK = 0.3  # bare numbers that might be a tempo, or might be an index
 
@@ -37,6 +42,16 @@ BPM_EXPLICIT = re.compile(r"(\d{2,3})\s*bpm", re.IGNORECASE)
 BPM_BARE = re.compile(r"(?:^|[_\s-])(\d{2,3})(?=[_\s-]|$)")
 TOKENS = re.compile(r"[a-z]+")
 SPLIT = re.compile(r"[\s_()\[\],.-]+")
+# Sound words that name a genre or credit an artist, never a sound.
+NOT_SOUNDS = re.compile(
+    r"^.*(?<![a-z])presents(?![a-z])"  # the artist or label before "presents"
+    r"|(?<![a-z])(?:bass[\W_]*house|bass[\W_]*music|future[\W_]*bass|uk[\W_]*bass"
+    r"|drum[\W_]*(?:and|n|'n'|&)[\W_]*bass|melodic[\W_]*(?:techno|house))(?![a-z])",
+    re.IGNORECASE,
+)
+JOINERS = re.compile(r"[&+,]|(?<![a-z])(?:and|n)(?![a-z])", re.IGNORECASE)
+# Words that say nothing about a pack's sounds: "Stab Bass Sample Pack".
+FILLER = frozenset({"a", "the", "of", "for", "with", "sample", "sound", "pack", "kit", "vol"})
 BPM_RANGE = range(60, 201)
 BARE_BPM_RANGE = range(70, 181)  # stricter: a bare number is often an index
 
@@ -111,9 +126,13 @@ def _tempo_priors(text: str, origin: str, confidence: float) -> set[Prior]:
     return set()
 
 
+def _known(word: str, words: dict[str, tuple[str, str]] | frozenset[str]) -> bool:
+    return word in words or (word.endswith("s") and word[:-1] in words)
+
+
 def _word_priors(text: str, origin: str, confidence: float) -> set[Prior]:
     hits = set()
-    for word in TOKENS.findall(text.lower()):
+    for word in TOKENS.findall(NOT_SOUNDS.sub(" ", text).lower()):
         hit = VOCAB.get(word) or (VOCAB.get(word[:-1]) if word.endswith("s") else None)
         if hit:
             hits.add(hit)
@@ -144,12 +163,34 @@ def folder_confidence(depth_from_file: int) -> float:
 
 
 def _from_names(named: set[Prior], nearer: set[Prior]) -> set[Prior]:
-    """What the pack's and product's names may add: everything but a role that
-    differs from the roles the file name and deeper folders give. "Bass" in
-    BASS_HOUSE_AND_GARAGE doesn't make its drum loops bass, but "Breaks" is all
-    that says the files in Mutant Breaks are breaks."""
+    """What the names at the top of a path may add: everything but a role that
+    differs from the roles the file name and deeper folders give. "Pads and
+    Chords" doesn't make a pad a chord, but "Breaks" is all that says the files
+    in Mutant Breaks are breaks."""
     roles = {p.value for p in nearer if p.name == "role"}
     return {p for p in named if p.name != "role" or not roles or p.value in roles}
+
+
+def _labels_its_sounds(name: str) -> bool:
+    """Whether a pack folder's name only says what its sounds are ("Stab Bass
+    Sample Pack"), rather than naming the pack ("Mutant Breaks") or listing
+    kinds of sound ("Kicks & Snares")."""
+    text = NOT_SOUNDS.sub(" ", name)
+    if JOINERS.search(text):
+        return False
+    tokens = [t for t in SPLIT.split(text) if t and not any(c.isdigit() for c in t)]
+    words = [
+        word
+        for token in tokens
+        if not (KEY_TOKEN.match(token) and token[0].isupper())  # "Dm" is a key
+        for word in TOKENS.findall(token.lower())
+        if len(word) > 1
+    ]
+    return bool(words) and all(_known(w, VOCAB) or _known(w, FILLER) for w in words)
+
+
+def _is_name(index: int, folder: str) -> bool:
+    return index < NAME_LEVELS and not (index == 0 and _labels_its_sounds(folder))
 
 
 def priors_for(rel_path: str) -> list[Prior]:
@@ -159,10 +200,10 @@ def priors_for(rel_path: str) -> list[Prior]:
     if len(path.parts) > 1:
         priors.add(Prior("pack", path.parts[0], "folder", 1.0))
     folders = path.parts[:-1]
-    named: set[Prior] = set()  # from the pack's and product's names (NAME_LEVELS)
+    named: set[Prior] = set()  # from the names at the top of the path (NAME_LEVELS)
     for index, folder in enumerate(folders):
         found = _component_priors(folder, "folder", folder_confidence(len(folders) - index))
-        (named if index < NAME_LEVELS else priors).update(found)
+        (named if _is_name(index, folder) else priors).update(found)
     priors |= _component_priors(path.stem, "filename", FILENAME_CONFIDENCE)
     priors |= _from_names(named, priors)
     return sorted(priors, key=lambda p: (p.name, -p.confidence, p.value, p.origin))

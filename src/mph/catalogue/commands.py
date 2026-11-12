@@ -19,6 +19,7 @@ from mph.net import Http, UrllibHttp
 from mph.proc import Runner
 
 MAX_ERRORS_SHOWN = 10
+SHOWN_HASH = 12  # characters of a hash in search results: enough for `mph catalogue sound`
 REMOTE_ACTIONS = frozenset({"fetch", "auth", "credits", "refresh"})
 PROVENANCE_ACTIONS = frozenset({"derive", "stash", "purge-cache", "refresh", "lineage"})
 
@@ -201,10 +202,14 @@ def render_search(result: search.Result, query: search.Query) -> str:
     for rank, hit in enumerate(result.hits, start=1):
         length = f"{hit.duration_s:.1f}s" if hit.duration_s is not None else "?s"
         loud = f"{hit.lufs:.1f} LUFS" if hit.lufs is not None else "not analysed"
+        labels = ", ".join(f"{name} {value}" for name, value in hit.facts.items()) or "no labels"
         lines.append(f"{rank:>3}. {hit.path}")
         lines.append(f"     score {hit.score:g} | {length} | {loud} | {hit.licence}")
+        lines.append(f"     {hit.digest[:SHOWN_HASH]} | {labels}")
         if hit.reasons:
             lines.append(f"     why: {'; '.join(hit.reasons)}")
+    if result.hits:
+        lines.append("every label of one sound: mph catalogue sound HASH")
     if result.unanalysed_skipped:
         lines.append(
             f"note: {result.unanalysed_skipped} sounds have no loudness yet and were left out; "

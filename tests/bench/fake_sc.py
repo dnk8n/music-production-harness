@@ -94,14 +94,15 @@ def _note_message(message: osc.Message, at: int, rate: int, notes: dict[int, _No
 
 def _dips(length: int, rate: int, ducks: Started) -> np.ndarray:
     """How much level the mph_duck envelopes take away, summed: a linear
-    attack to the depth, then a half-cosine release back to 0."""
+    attack to the depth, held there, then a half-cosine release back to 0."""
     taken = np.zeros(length)
     for at, args in ducks:
         attack = round(args["attack"] * rate)
         release = round(args["release"] * rate)
         rise = args["depth"] * np.arange(1, attack + 1) / attack
+        held = np.full(round(args["hold"] * rate), args["depth"])
         fall = args["depth"] * (0.5 + 0.5 * np.cos(np.pi * np.arange(1, release + 1) / release))
-        shape = np.concatenate([rise, fall])[: max(length - at, 0)]
+        shape = np.concatenate([rise, held, fall])[: max(length - at, 0)]
         taken[at : at + len(shape)] += shape
     return taken
 

@@ -43,7 +43,7 @@ sidechain = {{ depth_db = 0.0 }}
 @pytest.mark.req("REQ-BEN-12")
 def test_a_sidechain_is_read_from_the_score_and_a_variant_can_bypass_it() -> None:
     loaded = score.load_text(DUCKED)
-    assert loaded.sidechain == Sidechain("kick", ("pad",))  # 6 dB, 2 ms, 200 ms by default
+    assert loaded.sidechain == Sidechain("kick", ("pad",))  # 6 dB, 2 ms, no hold, 200 ms
     assert loaded.supercollider_only == "a melodic part (glides and filter envelopes)"
     drums = score.load_text(DUCKED.replace(PAD, HAT))
     assert drums.supercollider_only == "a sidechain"
@@ -67,6 +67,7 @@ def test_a_sidechain_is_read_from_the_score_and_a_variant_can_bypass_it() -> Non
         ('trigger = "kick"\ntargets = ["kick"]', "targets other than"),
         ('trigger = "kick"\ntargets = ["pad"]\nrelease_ms = 0', "positive attack"),
         ('trigger = "kick"\ntargets = ["pad"]\ndepth_db = -3', "0 dB or more"),
+        ('trigger = "kick"\ntargets = ["pad"]\nhold_ms = -1', "a hold of 0 ms or more"),
     ],
 )
 def test_sidechain_mistakes_are_reported(table: str, message: str) -> None:
@@ -77,18 +78,22 @@ def test_sidechain_mistakes_are_reported(table: str, message: str) -> None:
 
 @pytest.mark.req("REQ-BEN-07")
 @pytest.mark.req("REQ-BEN-12")
-def test_a_variant_can_change_the_depth_attack_and_release() -> None:
+def test_a_variant_can_change_the_depth_attack_hold_and_release() -> None:
     text = DUCKED + "[variants.deep]\nsidechain = { depth_db = 24, release_ms = 430 }\n"
+    text += "[variants.held]\nsidechain = { depth_db = 48, hold_ms = 150, release_ms = 290 }\n"
     loaded = score.load_text(text)
     deep, variant = score.variant_of(loaded, "deep")
     assert deep.sidechain == Sidechain("kick", ("pad",), 24.0, 2.0, 430.0)
     assert variant.as_scored
+    held = score.variant_of(loaded, "held")[0].sidechain
+    assert held == Sidechain("kick", ("pad",), 48.0, 2.0, 290.0, hold_ms=150.0)
     assert loaded.sidechain == Sidechain("kick", ("pad",))  # the score's own is unchanged
     digests = {score.variant_of(loaded, v.name)[0].digest() for v in score.all_variants(loaded)}
-    assert len(digests) == 3  # supercollider, bypass and deep each render on their own
+    assert len(digests) == 4  # supercollider, bypass, deep and held each render on their own
     for change, message in [
-        ("{ ratio = 4 }", "it can change depth_db, attack_ms, release_ms"),
+        ("{ ratio = 4 }", "it can change depth_db, attack_ms, hold_ms, release_ms"),
         ("{ release_ms = -1 }", "variant deep's sidechain needs .* positive attack and release"),
+        ("{ hold_ms = -1 }", "variant deep's sidechain needs .* a hold of 0 ms or more"),
     ]:
         with pytest.raises(ScoreError, match=message):
             score.load_text(DUCKED + f"[variants.deep]\nsidechain = {change}\n")
@@ -133,7 +138,11 @@ def test_every_kick_starts_a_dip_at_its_own_sample(tmp_path: Path) -> None:
     assert [t for t, _ in ducks] == kicks
     args = dict(zip(ducks[0][1].args[4::2], ducks[0][1].args[5::2], strict=True))
     assert args["depth"] == pytest.approx(sc.reduction(6.0)) == pytest.approx(0.4988, abs=1e-4)
-    assert (args["attack"], args["release"]) == (0.002, 0.2)
+    assert (args["attack"], args["hold"], args["release"]) == (0.002, 0.0, 0.2)
+    held = replace(loaded, sidechain=Sidechain("kick", ("pad",), hold_ms=150.0))
+    bundles = sc.build(replace(plan, score=held), score.events(held))
+    duck = next(m for b in bundles for m in b.messages if m.args[:1] == ("mph_duck",))
+    assert dict(zip(duck.args[4::2], duck.args[5::2], strict=True))["hold"] == 0.15
     bypassed = replace(plan, score=score.variant_of(loaded, "bypass")[0])
     names = {m.args[0] for b in sc.build(bypassed, score.events(loaded)) for m in b.messages}
     assert not {"mph_duck", "mph_ducker"} & names
@@ -146,13 +155,16 @@ def _gain(wet_db: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return (dry * (10 ** (wet_db / 20))[:, None]).astype(np.float32), dry
 
 
-def _dip(depth_db: float, attack_s: float, release_s: float, length_s: float = 0.5) -> np.ndarray:
+def _dip(
+    depth_db: float, attack_s: float, release_s: float, length_s: float = 0.5, hold_s: float = 0.0
+) -> np.ndarray:
     n = round(length_s * RATE)
     taken = np.zeros(n)
-    a, r = round(attack_s * RATE), round(release_s * RATE)
+    a, h, r = round(attack_s * RATE), round(hold_s * RATE), round(release_s * RATE)
     depth = sc.reduction(depth_db)
     taken[:a] = depth * np.arange(1, a + 1) / a
-    taken[a : a + r] = depth * (0.5 + 0.5 * np.cos(np.pi * np.arange(1, r + 1) / r))
+    taken[a : a + h] = depth
+    taken[a + h : a + h + r] = depth * (0.5 + 0.5 * np.cos(np.pi * np.arange(1, r + 1) / r))
     return 20 * np.log10(1 - taken)
 
 
@@ -175,6 +187,12 @@ def test_the_dip_is_measured_against_the_dry_target() -> None:
     declared = replace(chain, release_ms=400.0)  # the same curve, when the score asks for it
     assert all(c.passed for c in checks.sidechain(declared, "pad", *_gain(_dip(6, 0.002, 0.4)),
                                                   [0.0], rate=RATE))  # fmt: skip
+    held = _gain(_dip(36, 0.002, 0.29, hold_s=0.15))  # BM-SC-01's over-the-top take
+    over = replace(chain, depth_db=36.0, hold_ms=150.0, release_ms=290.0)
+    assert all(c.passed for c in checks.sidechain(over, "pad", *held, [0.0], rate=RATE))
+    unheld = replace(over, hold_ms=0.0)  # the same dip, but the score says it doesn't hold
+    late = checks.sidechain(unheld, "pad", *held, [0.0], rate=RATE)
+    assert [c.passed for c in late] == [True, True, False, True]
     stepped = _dip(6, 0.002, 0.2)
     stepped[round(0.1 * RATE) :] = 0.0  # snaps back half way: a click, not a curve
     jumpy = checks.sidechain(chain, "pad", *_gain(stepped), [0.0], rate=RATE)
@@ -221,7 +239,7 @@ def test_bm_sc_01_ducks_the_pad_and_acid_under_every_kick(tmp_path: Path) -> Non
     cfg = replace(cfg, retention=replace(cfg.retention, keep_work=True))
     home = renoise_ready(tmp_path, cfg)  # Renoise is ready, but a sidechain needs SuperCollider
     changes = {}
-    for take, depth in [("supercollider", 12.0), ("exaggerated", 24.0)]:
+    for take, depth in [("supercollider", 12.0), ("exaggerated", 24.0), ("over-the-top", 36.0)]:
         outcome = render.run("BM-SC-01", cfg, runner(), None, home=home, variant=take)
         assert outcome.report["engine"] == "supercollider"
         measured = {m["name"]: m for m in outcome.report["measurements"]}  # type: ignore[attr-defined]
@@ -235,6 +253,7 @@ def test_bm_sc_01_ducks_the_pad_and_acid_under_every_kick(tmp_path: Path) -> Non
         assert [m for m in measured.values() if not m["passed"]] == []
         assert (outcome.folder / "work" / "dry.wav").is_file()
     assert changes["exaggerated"] < changes["supercollider"] <= -checks.MIX_AUDIBLE_DB
+    assert changes["over-the-top"] < changes["exaggerated"]  # past exaggerated, for contrast
     bypass = render.run("BM-SC-01", cfg, runner(), None, home=home, variant="bypass")
     names = [m["name"] for m in bypass.report["measurements"]]  # type: ignore[attr-defined]
     assert bypass.passed and not any(n.startswith("sidechain") for n in names)

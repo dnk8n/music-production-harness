@@ -145,11 +145,16 @@ takes taken from its reports, and no score file or "hear" text. A take the
 score here doesn't declare is listed after the declared ones. Both are marked
 `in_checkout: false`, and `benchmark`, `report`, `ratings`, `feedback` and
 `sound` take them like any other. A render from before takes were equal (take `main`) is
-still not a take.
+still not a take. A standard take (`renoise`, `supercollider`, `synth-kit`)
+that the score here no longer makes (REQ-BEN-07) is listed the same way, with
+the state `retired` whatever its rating: it isn't work for agents
+(REQ-QRY-12), and its renders and ratings stay readable.
 - **Why:** BM-SC-01 was rendered and judged from PR #29 while the Mac's
   checkout was on `main`. Its renders and Dean's verdicts were on disk, but
   every benchmark tool refused it (2026-11-11). The north star benchmarks and
   the Renoise takes of issue #30 will be rendered from branches the same way.
+  BM-DRUM-04's synth-kit take stopped being made (rating 156), and its
+  unresolved rating would otherwise wait in the agents' queue for good.
 - **Verify:** test
 
 ### REQ-QRY-10: Ratings as Dean gave them
@@ -188,7 +193,7 @@ missing from the config.
 
 ### REQ-QRY-12: Work for agents
 `feedback` lists what Dean's ratings and ideas ask for. Every unresolved take
-(REQ-FBK-06), grouped by benchmark, with its stars, the feedback of its
+(REQ-FBK-06) that isn't retired (REQ-QRY-09), grouped by benchmark, with its stars, the feedback of its
 standing rating and of the ratings before it on the same take, its failed
 measurements, and whether it was rendered again since it was rated: then it
 waits for Dean's ear, not for an agent. Takes waiting for an agent come

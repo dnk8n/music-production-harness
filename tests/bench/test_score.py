@@ -189,6 +189,86 @@ def test_variant_mistakes_are_reported() -> None:
         score.all_variants(clash)
 
 
+@pytest.mark.req("REQ-BEN-07")
+def test_no_synth_kit_take_for_a_score_of_synths() -> None:
+    """Rating 156: BM-DRUM-04's synth-kit take sounded exactly like its other takes."""
+    synths = VARIED.replace(
+        'sound = { role = "kick", words = ["909"] }', 'sound = { synth = "mph_kick" }'
+    )
+    every = synths.replace('sound = { role = "hat" }', 'sound = { synth = "mph_hat" }')
+    assert "synth-kit" in [v.name for v in score.all_variants(score.load_text(synths))]
+    assert "synth-kit" not in [v.name for v in score.all_variants(score.load_text(every))]
+    assert "synth-kit" not in [v.name for v in score.all_variants(score.load("BM-DRUM-04"))]
+
+
+PINNED = "ab" * 32
+FRESH = (
+    VARIED
+    + f"""
+[variants.fresh-take]
+title = "sounds an agent picked"
+[variants.fresh-take.voices.kick]
+sound = {{ hash = "{PINNED}", why = "a rounder 909 kick" }}
+[variants.fresh-take.voices.chh]
+sound = {{ synth = "mph_hat", why = "the synth hat sits better" }}
+"""
+)
+
+
+@pytest.mark.req("REQ-BEN-16")
+def test_a_voice_can_pin_one_catalogue_sound_with_why() -> None:
+    loaded = score.load_text(FRESH)
+    fresh, variant = score.variant_of(loaded, "fresh-take")
+    kick = fresh.voice("kick").sound
+    # The voice's search stays, for when the pinned sound isn't there.
+    assert (kick.role, kick.words, kick.hash, kick.why) == (
+        "kick",
+        ("909",),
+        PINNED,
+        "a rounder 909 kick",
+    )
+    assert fresh.voice("chh").sound.why == "the synth hat sits better"
+    assert not variant.as_scored
+    # What hashes and reports record: no reason, and no hash where none is pinned.
+    asked = {"role": "kick", "words": ("909",), "synth": "", "pick": 1}
+    assert score.recorded(kick) == {**asked, "hash": PINNED}
+    assert score.recorded(loaded.voice("kick").sound) == asked
+    reworded = score.variant_of(
+        score.load_text(FRESH.replace("a rounder", "a fuller")), "fresh-take"
+    )
+    assert reworded[0].digest() == fresh.digest()  # a reason doesn't change the sound
+    other = score.variant_of(score.load_text(FRESH.replace(PINNED, "cd" * 32)), "fresh-take")
+    assert other[0].digest() != fresh.digest()
+    renoise, _ = score.variant_of(loaded, "renoise")
+    assert renoise.digest() == score.variant_of(score.load_text(VARIED), "renoise")[0].digest()
+    # The synth-kit take plays synths, pins or not.
+    pinned_here = FRESH.replace(
+        'sound = { role = "kick", words = ["909"] }',
+        f'sound = {{ role = "kick", hash = "{PINNED}", why = "picked" }}',
+    )
+    kit, _ = score.variant_of(score.load_text(pinned_here), "synth-kit")
+    assert (kit.voice("kick").sound.synth, kit.voice("kick").sound.hash) == ("auto", "")
+
+
+@pytest.mark.req("REQ-BEN-16")
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ((PINNED, "abc"), "hash needs the sound's 64 hex digits: 'abc'"),
+        ((PINNED, PINNED.upper()), "hash needs the sound's 64 hex digits"),
+        (('why = "a rounder 909 kick"', 'why = " "'), "a pinned sound needs a why"),
+        (('hash = "', 'synth = "mph_kick", hash = "'), "pins a hash or asks for a synth, not both"),
+        (('hash = "', 'role = "", hash = "'), "a pinned sound needs its role"),
+        (('why = "a rounder', 'hsah = "", why = "a rounder'), "a sound takes role, words"),
+    ],
+)
+def test_pin_mistakes_are_reported(change: tuple[str, str], message: str) -> None:
+    with pytest.raises(ScoreError, match=re.escape(message)):
+        score.load_text(FRESH.replace(*change))
+    with pytest.raises(ScoreError, match="voice zz: a sound takes"):
+        score.load_text(GOOD.replace("[voices.a]", "[voices.zz]") + 'sound = { kind = "kick" }\n')
+
+
 # --- melodic voices (BM-BASS-01) --------------------------------------------------------
 
 ACID = """

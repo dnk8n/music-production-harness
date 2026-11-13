@@ -26,6 +26,7 @@ from tests.query.conftest import (
     NEW_SC_TAKE,
     OLD_RENOISE,
     RAIN,
+    RATING_COLUMNS,
     SC_TAKE,
     SYNTH_KIT,
     TRIMMED,
@@ -618,6 +619,39 @@ def test_feedback_lists_unresolved_takes_for_agents(wider: Library) -> None:
     assert synth["score_hash"] == SYNTH_KIT and synth["failed_measurements"] == []
     assert found["to_rate"] == 1  # BM-BRANCHED-01's supercollider take: Dean's turn
     assert "Cite the rating id" in found["how"]
+
+
+@pytest.mark.req("REQ-QRY-09")
+@pytest.mark.req("REQ-QRY-12")
+def test_a_standard_take_the_score_stopped_making_is_retired(full: Library) -> None:
+    """BM-DRUM-04's score is all synths, so its synth-kit take repeated its renoise
+    take and isn't made any more (rating 156). It isn't work for agents."""
+    retired = "8888888888888888"
+    render(
+        full.cfg.data_dir,
+        retired,
+        variant="synth-kit",
+        at="2026-11-12T09:00:00Z",
+        kit=[],
+        benchmark_id="BM-DRUM-04",
+        variant_title="every part a SuperCollider synth",
+    )
+    with closing(db.connect(full.catalogue)) as conn, conn:
+        conn.execute(
+            RATING_COLUMNS,
+            ("BM-DRUM-04", retired, "take", 5, "unresolved", "sounds exactly the same",
+             "2026-11-13T13:20:00Z", "synth-kit", "page", None),
+        )  # fmt: skip
+    electro = next(b for b in ask(full, "benchmarks")["benchmarks"] if b["id"] == "BM-DRUM-04")
+    take = electro["takes"][-1]
+    assert (take["take"], take["in_checkout"], take["state"]) == ("synth-kit", False, "retired")
+    assert take["rating"]["stars"] == 5  # its rating stays readable
+    assert "BM-DRUM-04" not in [b["id"] for b in ask(full, "feedback")["unresolved"]["benchmarks"]]
+    overview = ask(full, "overview")["benchmarks"]
+    assert overview["unresolved_takes"] == 1  # BM-DRUM-02's synth-kit take, as before
+    assert overview["projects"]["Drum patterns"]["rated"]["retired"] == 1
+    made = ask(full, "report", id="BM-DRUM-04", take="synth-kit")["report"]
+    assert made["score_hash"] == retired
 
 
 @pytest.mark.req("REQ-QRY-12")

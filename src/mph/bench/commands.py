@@ -55,12 +55,15 @@ def render_on_demand(cfg: Config, runner: Runner, home: Path) -> jit.RenderOne:
 
     session = bridge.Session()  # one Renoise, started by mph, for the page's renders
 
-    def render_one(benchmark_id: str, variant: str) -> None:
+    def render_one(benchmark_id: str, variant: str) -> str:
+        """Renders a take; returns anything the page should say about it (REQ-REN-08)."""
         from mph.bench import render  # noqa: PLC0415 - heavy audio imports, on first use
 
+        before = len(session.kept)
         catalogue = cfg.data_dir / db.FILENAME
         with closing(db.connect(catalogue)) if catalogue.is_file() else nullcontext() as conn:
             render.run(benchmark_id, cfg, runner, conn, home=home, variant=variant, session=session)
+        return " ".join(kept.note() for kept in session.kept[before:])
 
     return render_one
 
@@ -178,6 +181,8 @@ def cmd_render(
             print_report(outcome.report)
             print(f"  files  {outcome.folder}   (made in {outcome.report['engine']})")
             failed += not outcome.passed
+    for kept in session.kept:  # songs someone had open in Renoise (REQ-REN-08)
+        print(f"\n{kept.note()}")
     if skipped:
         print(f"\n{skipped} skipped: a pass is a pass. --force-rerender renders them anyway.")
     print("\nlisten and give verdicts: mph bench serve")

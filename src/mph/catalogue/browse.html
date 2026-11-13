@@ -382,7 +382,8 @@ function watchRender(then) {
     clearInterval(renderWatch); renderWatch = null;
     if (now.state === "failed") { $("status").textContent = `Couldn't render ${now.id} ${now.variant}: ${now.message}`; return; }
     await showBench();
-    $("status").textContent = `Rendered ${now.id} ${now.variant}.`;
+    const note = now.message && now.message !== "rendered" ? ` ${now.message}` : "";  // REQ-REN-08
+    $("status").textContent = `Rendered ${now.id} ${now.variant}.${note}`;
     if (then) then();
   }, 2000);
 }

@@ -1,7 +1,11 @@
 -- Runs the bridge tool against fake_renoise.lua and prints what happened as JSON.
 --   lua5.1 harness.lua <tool dir> build <plan.lua>
---   lua5.1 harness.lua <tool dir> job <installed tool dir> <ticks> [refuse]
+--   lua5.1 harness.lua <tool dir> job <installed tool dir> <ticks> [option ...]
 --   lua5.1 harness.lua <tool dir> data <file.lua>
+-- Job options: `refuse` (Renoise never starts a new song), `open=<path>`
+-- (someone has that song open before the first tick), `changed` (with
+-- unsaved changes) and `loading=<n>` (no song for the first n ticks, as while
+-- one loads). Each tick moves the clock on 1000 s, so timeouts are quick.
 
 local here = arg[0]:match("^(.*)/") or "."
 local tool_dir, mode = arg[1], arg[2]
@@ -83,16 +87,30 @@ elseif mode == "build" then
   print(json.encode(describe(song)))
 elseif mode == "job" then
   local state = fake.install(arg[3] .. "/")
-  state.refuse_new_song = arg[5] == "refuse"
-  if state.refuse_new_song then
-    os.time = function()
-      return (state.clock or 0)
-    end
+  local options = {}
+  for n = 5, #arg do
+    local key, value = arg[n]:match("^([^=]+)=(.*)$")
+    options[key or arg[n]] = value or true
+  end
+  state.refuse_new_song = options.refuse == true
+  state.clock = 0
+  os.time = function()
+    return state.clock
   end
   dofile(tool_dir .. "/main.lua")
+  if options.open then
+    state.open(options.open, options.changed == true)
+  end
   for n = 1, tonumber(arg[4]) do
     state.clock = n * 1000
+    state.loading = n <= (tonumber(options.loading) or 0)
     state.tick()
   end
-  print(json.encode({ saved = state.saved, renders = fake.renders }))
+  print(json.encode({
+    saved = state.saved,
+    renders = fake.renders,
+    prompts = state.prompts,
+    unsaved = state.unsaved,
+    open = state.song.file_name,
+  }))
 end

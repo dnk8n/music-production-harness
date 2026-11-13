@@ -83,14 +83,51 @@ def test_run_job_writes_the_job_starts_renoise_and_waits(tmp_path: Path) -> None
     runner = FakeRunner(responses={"pgrep": Result(1)})
     tool = Tool({"ok": True, "renoise": "3.5.4", "files": ["a.wav"]})
     tool.target = bridge.jobs_dir(cfg) / "BM-1.result.json"
-    job: luadata.Data = {"songs": []}
+    job: dict[str, luadata.Data] = {"songs": []}
     outcome = bridge.run_job(cfg, runner, home, "BM-1", job, timeout_s=5, clock=tool.clock())
     assert outcome["renoise"] == "3.5.4"
+    scratch = bridge.scratch_dir(cfg)
     assert (bridge.jobs_dir(cfg) / "BM-1.job.lua").read_text("utf-8") == luadata.document(
-        {"songs": []}
+        {
+            "songs": [],
+            "scratch": {
+                "song": str(scratch / "mph-scratch.xrns"),
+                "folder": str(scratch),
+                "ours": str(cfg.data_dir),
+            },
+        }
     )
+    assert scratch.is_dir()  # Renoise saves into it, so it has to be there
     assert ("open", "-g", "-a", bridge.APP) in [call for call, _ in runner.calls]
     assert not tool.target.exists()  # the result is consumed
+
+
+@pytest.mark.req("REQ-REN-08")
+def test_run_job_remembers_songs_the_tool_saved_out_of_the_way(tmp_path: Path) -> None:
+    cfg = cfg_for(tmp_path)
+    home = renoise_home(tmp_path, "V3.5.4")
+    bridge.install(cfg, home)
+    runner = FakeRunner()  # Renoise is running: this session started it
+    session = bridge.Session(launched=True)
+    song = cfg.data_dir / "renders" / "BM-1" / "abc" / "BM-1.xrns"
+    copy = bridge.scratch_dir(cfg) / "20261113-081500 BM-1.xrns"
+    kept = [{"from": str(song), "to": str(copy)}]
+    for name, result in (("ok", {"ok": True, "kept": kept}), ("bad", {"ok": False, "kept": kept})):
+        tool = Tool({**result, "error": "could not load kick.wav", "files": []})
+        tool.target = bridge.jobs_dir(cfg) / f"{name}.result.json"
+        try:
+            bridge.run_job(
+                cfg, runner, home, name, {}, timeout_s=5, clock=tool.clock(), session=session
+            )
+        except bridge.BridgeError:
+            assert name == "bad"
+    assert session.kept == [bridge.Kept(song, copy)] * 2  # kept, whether the render worked or not
+    assert session.kept[0].note() == (
+        f"Renoise had BM-1.xrns open, so mph saved it, with any changes, as {copy} "
+        "before rendering. BM-1.xrns itself is unchanged."
+    )
+    assert bridge.kept_songs({"ok": True}) == []
+    assert bridge.kept_songs({"kept": {}}) == []  # Lua writes an empty list as {}
 
 
 def test_run_job_reports_renoise_errors_timeouts_and_a_missing_tool(tmp_path: Path) -> None:
@@ -201,18 +238,24 @@ def _job(tmp_path: Path, sample: Path) -> dict[str, luadata.Data]:
     }
 
 
-@pytest.mark.lua
-@pytest.mark.req("REQ-REN-03")
-def test_the_tool_runs_a_job_from_the_folder_to_a_result(tmp_path: Path) -> None:
+def _setup_tool(tmp_path: Path) -> tuple[config.Config, Path, Path]:
+    """mph's config, the installed tool, and a sample to build songs from."""
     cfg = cfg_for(tmp_path)
-    home = renoise_home(tmp_path, "V3.5.4")
-    installed = bridge.install(cfg, home)
+    installed = bridge.install(cfg, renoise_home(tmp_path, "V3.5.4"))
     (tmp_path / "out").mkdir()
     sample = tmp_path / "kick.wav"
     sample.write_bytes(b"x")
+    return cfg, installed, sample
+
+
+@pytest.mark.lua
+@pytest.mark.req("REQ-REN-03")
+@pytest.mark.req("REQ-REN-08")
+def test_the_tool_runs_a_job_from_the_folder_to_a_result(tmp_path: Path) -> None:
+    cfg, installed, sample = _setup_tool(tmp_path)
     result = bridge.submit(cfg, "BM-1", _job(tmp_path, sample))
 
-    seen = lua.run("job", str(installed), "12")
+    seen = lua.run("job", str(installed), "14")
 
     outcome = json.loads(result.read_text("utf-8"))
     assert outcome["ok"] is True
@@ -221,27 +264,105 @@ def test_the_tool_runs_a_job_from_the_folder_to_a_result(tmp_path: Path) -> None
         str(tmp_path / "out" / "mix.wav"),
         str(tmp_path / "out" / "kick.wav"),
     ]
+    assert outcome["kept"] == []
     assert seen["renders"][0]["rate"] == 48000
     assert [r["active"] for r in seen["renders"]] == [["kick"], ["kick"]]
     # Each song is saved after building, and again with nothing muted after rendering.
-    out = str(tmp_path / "out")
-    assert seen["saved"] == [f"{out}/a.xrns", f"{out}/a.xrns", f"{out}/b.xrns", f"{out}/b.xrns"]
+    # Then the song left open is saved as the scratch song, so nothing is left unsaved.
+    out, scratch = tmp_path / "out", str(bridge.scratch_dir(cfg) / "mph-scratch.xrns")
+    songs = [str(out / name) for name in ("a.xrns", "a.xrns", "b.xrns", "b.xrns")]
+    assert seen["saved"] == [*songs, scratch]
+    assert seen["prompts"] == [] and seen["unsaved"] is False and seen["open"] == scratch
     assert sorted(p.name for p in bridge.jobs_dir(cfg).iterdir()) == ["BM-1.result.json"]
 
 
 @pytest.mark.lua
+@pytest.mark.req("REQ-REN-08")
+def test_jobs_follow_each_other_without_renoise_asking_to_save(tmp_path: Path) -> None:
+    cfg, installed, sample = _setup_tool(tmp_path)
+    first = bridge.submit(cfg, "BM-1", _job(tmp_path, sample))
+    second = bridge.submit(cfg, "BM-2", _job(tmp_path, sample))
+
+    seen = lua.run("job", str(installed), "30")
+
+    assert json.loads(first.read_text("utf-8"))["ok"] is True
+    assert json.loads(second.read_text("utf-8"))["ok"] is True
+    assert seen["prompts"] == [] and seen["unsaved"] is False
+    scratch = str(bridge.scratch_dir(cfg) / "mph-scratch.xrns")
+    # The second job saves the scratch song again before starting its first song.
+    assert seen["saved"].count(scratch) == 3
+    assert seen["open"] == scratch
+
+
+@pytest.mark.lua
+@pytest.mark.req("REQ-REN-08")
+def test_a_job_waits_for_a_song_that_is_still_loading(tmp_path: Path) -> None:
+    cfg, installed, sample = _setup_tool(tmp_path)
+    result = bridge.submit(cfg, "BM-1", _job(tmp_path, sample))
+    seen = lua.run("job", str(installed), "17", "loading=4")
+    assert json.loads(result.read_text("utf-8"))["ok"] is True
+    assert seen["prompts"] == [] and seen["unsaved"] is False
+
+
+@pytest.mark.lua
+@pytest.mark.req("REQ-REN-08")
+def test_a_render_song_opened_by_hand_is_kept_before_a_job(tmp_path: Path) -> None:
+    cfg, installed, sample = _setup_tool(tmp_path)
+    song = cfg.data_dir / "renders" / "BM-1" / "abc" / "BM-1.xrns"
+    song.parent.mkdir(parents=True)
+    song.write_text("as measured", "utf-8")
+    result = bridge.submit(cfg, "BM-2", _job(tmp_path, sample))
+
+    seen = lua.run("job", str(installed), "14", f"open={song}", "changed")
+
+    outcome = json.loads(result.read_text("utf-8"))
+    copy = bridge.scratch_dir(cfg) / "19700101-003320 BM-1.xrns"  # the fake clock's tick 2
+    assert outcome["ok"] is True
+    assert outcome["kept"] == [{"from": str(song), "to": str(copy)}]
+    assert seen["saved"][0] == str(copy) and copy.is_file()
+    assert song.read_text("utf-8") == "as measured"  # the render's own song is untouched
+    assert seen["prompts"] == [] and seen["unsaved"] is False
+
+
+@pytest.mark.lua
+@pytest.mark.req("REQ-REN-08")
+def test_a_song_that_is_not_mphs_is_never_saved_by_the_tool(tmp_path: Path) -> None:
+    cfg, installed, sample = _setup_tool(tmp_path)
+    mine = tmp_path / "dj" / "groovy.xrns"
+    mine.parent.mkdir()
+    mine.write_text("Dean's", "utf-8")
+    changed = bridge.submit(cfg, "BM-1", _job(tmp_path, sample))
+    seen = lua.run("job", str(installed), "4", f"open={mine}", "changed")
+    assert "didn't start a new song" in json.loads(changed.read_text("utf-8"))["error"]
+    assert seen["prompts"] == [str(mine)]  # Renoise asks Dean, as it always has
+    assert seen["saved"] == []
+    assert mine.read_text("utf-8") == "Dean's"
+
+    shutil.rmtree(bridge.jobs_dir(cfg))
+    unchanged = bridge.submit(cfg, "BM-1", _job(tmp_path, sample))
+    seen = lua.run("job", str(installed), "14", f"open={mine}")
+    assert json.loads(unchanged.read_text("utf-8"))["ok"] is True
+    assert str(mine) not in seen["saved"]  # closed without a save, and without a question
+    assert seen["prompts"] == []
+
+
+@pytest.mark.lua
+@pytest.mark.req("REQ-REN-08")
 def test_the_tool_reports_failures_in_the_result(tmp_path: Path) -> None:
     cfg = cfg_for(tmp_path)
     home = renoise_home(tmp_path, "V3.5.4")
     installed = bridge.install(cfg, home)
     (tmp_path / "out").mkdir()
     missing = bridge.submit(cfg, "missing", _job(tmp_path, tmp_path / "nowhere.wav"))
-    lua.run("job", str(installed), "6")
+    seen = lua.run("job", str(installed), "6")
     assert "could not load" in json.loads(missing.read_text("utf-8"))["error"]
+    # The half-built song is saved as the scratch song, in a step of its own.
+    assert seen["open"] == str(bridge.scratch_dir(cfg) / "mph-scratch.xrns")
+    assert seen["prompts"] == [] and seen["unsaved"] is False
 
     shutil.rmtree(bridge.jobs_dir(cfg))
     busy = bridge.submit(cfg, "busy", _job(tmp_path, tmp_path / "nowhere.wav"))
-    lua.run("job", str(installed), "3", "refuse")
+    lua.run("job", str(installed), "4", "refuse")
     assert "didn't start a new song" in json.loads(busy.read_text("utf-8"))["error"]
 
     shutil.rmtree(bridge.jobs_dir(cfg))

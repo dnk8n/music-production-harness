@@ -328,6 +328,18 @@ def test_cli_renders_against_the_catalogue_when_there_is_one(
     assert "Kick.wav" in capsys.readouterr().out
 
 
+@pytest.mark.req("REQ-REN-08")
+def test_cli_render_says_where_a_song_open_in_renoise_was_kept(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    song = tmp_path / "data" / "renders" / "BM-DRUM-01" / "abc" / "BM-DRUM-01.xrns"
+    kept = bridge.Kept(song, tmp_path / "data" / "renoise" / "scratch" / "x BM-DRUM-01.xrns")
+    session = bridge.Session(kept=[kept])
+    monkeypatch.setattr(bridge, "Session", lambda: session)
+    run_cli(tmp_path, "render", "BM-DRUM-01")
+    assert f"\n{kept.note()}\n" in capsys.readouterr().out
+
+
 def test_main_wires_bench(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MPH_CONFIG", str(tmp_path / "none.toml"))
     assert cli.main(["bench", "list"]) == 0

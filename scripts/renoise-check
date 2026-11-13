@@ -1,0 +1,43 @@
+#!/bin/bash
+# The bridge tool in the real Renoise: it never leaves Renoise asking to save
+# (REQ-REN-08).
+#
+#   scripts/renoise-check        check this checkout's bridge tool
+#   scripts/renoise-check REF    check a branch, tag or commit (e.g. origin/main)
+#                                in a temporary worktree; this checkout is untouched
+#
+# Quit Renoise first. The check starts Renoise, runs two small jobs, opens
+# songs the way "Open in Renoise" does, then asks Renoise to quit, which it
+# must do without asking anything (scripts/renoise_check.py says more). The
+# bridge tool that was installed before is put back afterwards.
+#
+# Written for macOS's /bin/bash 3.2: no bash 4 features.
+set -u
+
+ref="${1:-}"
+if [ "$(uname -s)" != "Darwin" ]; then
+  echo "renoise-check runs on macOS only (this is $(uname -s))." >&2
+  exit 2
+fi
+command -v uv >/dev/null || { echo "uv isn't installed: brew install uv" >&2; exit 2; }
+
+repo="$(cd "$(dirname "$0")/.." && pwd)"
+workdir="$repo"
+worktree=""
+# shellcheck disable=SC2329 # called by the trap below
+cleanup() {
+  if [ -n "$worktree" ]; then
+    git -C "$repo" worktree remove --force "$worktree" >/dev/null 2>&1
+  fi
+}
+trap cleanup EXIT
+
+if [ -n "$ref" ]; then
+  git -C "$repo" fetch --quiet origin || { echo "git fetch failed" >&2; exit 2; }
+  worktree="$(mktemp -d "${TMPDIR:-/tmp}/mph-renoise-check.XXXXXX")"
+  rmdir "$worktree"
+  git -C "$repo" worktree add --quiet --detach "$worktree" "$ref" || exit 2
+  workdir="$worktree"
+fi
+echo "renoise-check: $(git -C "$workdir" log -1 --format='%h %s')"
+uv run --quiet --directory "$workdir" python scripts/renoise_check.py

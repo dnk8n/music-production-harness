@@ -8,10 +8,11 @@ when it is needed (ADR-0010). The record is the report, the score and the
 verdicts, which are small and always kept.
 Implementation: `src/mph/retention.py`, `src/mph/bench/jit.py`.
 
-What mph may delete is only what it can make again, and only under
-`data_dir`: render audio, render work files, cached derivatives and Renoise
-job files. It never deletes sources, stashes, downloads, the catalogue DB,
-compiled synthdefs, a render's `report.json`, or anything outside `data_dir`.
+What mph may delete is only what it can make again or what is throwaway,
+and only under `data_dir`: render audio, render work files, cached
+derivatives, Renoise job files and Renoise scratch songs (REQ-REN-08). It never deletes sources,
+stashes, downloads, the catalogue DB, compiled synthdefs, a render's
+`report.json`, or anything outside `data_dir`.
 
 ### REQ-RET-01: Fresh renders
 A render is fresh when it is one of the newest `retention.keep_renders`
@@ -59,7 +60,9 @@ total, and deletes nothing. `--list` names every item and why it can go.
 `--yes` deletes exactly what the list shows. `--keep N` overrides
 `retention.keep_renders` for this run; `--keep 0` prunes every render's audio
 and relies on REQ-RET-06. It also deletes renders that never finished (no
-`report.json`) and leftover Renoise job files. It leaves alone anything
+`report.json`), leftover Renoise job files, and Renoise scratch songs: copies
+of songs Renoise had open, saved so it could close them without asking
+(REQ-REN-08). A render keeps its own song in its folder. It leaves alone anything
 changed in the last hour, so a render in progress is safe. It never follows a
 link out of `data_dir`, and refuses to delete a path outside the folders it owns.
 - **Why:** deleting is the one step that can't be undone, so Dean sees the

@@ -47,7 +47,7 @@ class Query:
     bpm: float | None = None
     bpm_tolerance: float = DEFAULT_BPM_TOLERANCE
     key: str | None = None  # canonical "D:minor"
-    form: str | None = None  # oneshot | loop | phrase
+    form: str | None = None  # oneshot | loop | phrase | track
     min_lufs: float | None = None
     max_lufs: float | None = None
     min_seconds: float | None = None
@@ -212,6 +212,11 @@ def match_key(item: Candidate, target: str) -> Verdict:
 
 def _form(item: Candidate) -> str | None:
     measured = item.features.get("form")
+    named_track = any(
+        e.value == "track" and e.origin != "analysis" for e in item.tags.get("form", [])
+    )
+    if named_track and measured in (None, "phrase"):
+        return "track"  # analysis can't tell a finished track from a long recording
     if isinstance(measured, str):
         return measured
     hint = item.best("form")

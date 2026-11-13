@@ -283,3 +283,35 @@ def test_cli_errors_and_empty_results(
     assert commands.cmd_search(cfg, args("--role", "kick", "--bpm", "128")) == 1
     assert "widen --bpm-tolerance" in capsys.readouterr().out
     assert commands.cmd_search(cfg_for(tmp_path / "elsewhere"), args("x")) == 1
+
+
+@pytest.mark.req("REQ-CAT-10")
+def test_a_long_recording_labelled_a_track_is_a_track(conn: sqlite3.Connection) -> None:
+    add(
+        conn,
+        "song",
+        "full_tracks/soul_clap-love_train.flac",
+        [
+            ("form", "track", "folder", 0.9),
+            ("form", "phrase", "analysis", 0.7),
+            ("bpm", "120", "analysis", 0.9),
+        ],
+        features={"form": "phrase", "bpm": 120.0},
+        duration=337.5,
+    )
+    add(conn, "fresh", "full_tracks/not_analysed.flac", [("form", "track", "folder", 0.9)])
+    add(
+        conn,
+        "drone",
+        "Pack/Atmos/Long Drone.wav",
+        [("form", "phrase", "analysis", 0.7), ("role", "pad", "folder", 0.5)],
+        features={"form": "phrase"},
+        duration=90.0,
+    )
+    tracks = search.search(conn, Query(form="track")).hits
+    assert sorted(hit.digest for hit in tracks) == ["fresh", "song"]
+    assert {hit.facts.get("form") for hit in tracks} == {"track"}
+    assert [hit.digest for hit in search.search(conn, Query(form="phrase")).hits] == ["drone"]
+    best = search.search(conn, Query(form="track", bpm=120)).hits[0]
+    assert best.digest == "song"
+    assert cli.build_parser().parse_args(["catalogue", "search", "--form", "track"]).form == "track"

@@ -24,12 +24,13 @@ import pyloudnorm
 import soundfile
 from numpy.typing import NDArray
 
+from mph.catalogue import grid
 from mph.catalogue.names import SHARP_NAMES
 from mph.catalogue.probe import probe
 from mph.proc import Runner, SubprocessRunner
 
 ANALYSER = "core"
-VERSION = 2  # v2: Temperley key profiles
+VERSION = 3  # v2: Temperley key profiles; v3: tempo grids for phrases (REQ-CAT-10)
 FFMPEG_TIMEOUT_S = 300.0  # a full demo track decodes in seconds; this is a safety net
 ANALYSIS_SR = 22050
 MIN_LUFS_SECONDS = 0.4  # BS.1770 gating needs at least one 400 ms block
@@ -76,6 +77,8 @@ class Features:
     low_ratio: float  # share of energy below 150 Hz
     percussive_ratio: float  # share of energy in the percussive HPSS component
     form: str  # oneshot | loop | phrase
+    beat_s: float | None = None  # phrases: where the first beat of the tempo grid falls
+    drift_ms: float | None = None  # phrases: how far the beats stray from that grid
 
 
 def decode(path: Path, runner: Runner | None = None) -> tuple[Signal, int]:
@@ -195,11 +198,7 @@ def _spectral_features(
         form = "oneshot"
     else:
         form = "loop" if duration < PHRASE_MIN_SECONDS else "phrase"
-    bpm, bpm_conf = None, 0.0
-    if form == "loop" and len(onsets) >= MIN_ONSETS_FOR_TEMPO:
-        estimate = float(np.atleast_1d(librosa.beat.beat_track(y=mono, sr=sr)[0])[0])
-        if estimate > 0:
-            bpm, bpm_conf = refine_loop_bpm(estimate, duration)
+    tempo = _tempo(mono, form, len(onsets), duration)
     key, key_conf = None, 0.0
     if percussive_ratio < TONAL_MAX_PERCUSSIVE and duration >= MIN_KEY_SECONDS:
         chroma = librosa.feature.chroma_cqt(y=harmonic, sr=sr)
@@ -210,15 +209,40 @@ def _spectral_features(
         _db(rms),
         lufs,
         len(onsets),
-        bpm,
-        bpm_conf,
+        tempo.bpm,
+        tempo.confidence,
         key,
         key_conf,
         round(centroid, 1),
         low_ratio,
         percussive_ratio,
         form,
+        tempo.beat_s,
+        tempo.drift_ms,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class Tempo:
+    bpm: float | None = None
+    confidence: float = 0.0
+    beat_s: float | None = None
+    drift_ms: float | None = None
+
+
+def _tempo(mono: Signal, form: str, onsets: int, duration: float) -> Tempo:
+    """A loop's tempo comes from its length; a phrase's, from a fitted grid."""
+    if onsets < MIN_ONSETS_FOR_TEMPO:
+        return Tempo()
+    if form == "phrase":
+        fitted = grid.fit(mono, ANALYSIS_SR)
+        if fitted is None:
+            return Tempo()
+        return Tempo(fitted.bpm, fitted.confidence, fitted.beat_s, fitted.drift_ms)
+    if form != "loop":
+        return Tempo()
+    estimate = float(np.atleast_1d(librosa.beat.beat_track(y=mono, sr=ANALYSIS_SR)[0])[0])
+    return Tempo(*refine_loop_bpm(estimate, duration)) if estimate > 0 else Tempo()
 
 
 def tags_from(features: Features) -> list[tuple[str, str, float]]:

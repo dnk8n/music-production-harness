@@ -255,12 +255,32 @@ def _provenance_action(
     if args.action == "stash":
         print(f"stashed: {provenance.stash(conn, data_dir, digest, args.name)}")
         return 0
-    made = workshop.derive(
-        provenance.recipe(args.recipe, {"start": args.start, "end": args.end}), [digest]
+    return _derive(conn, data_dir, workshop, digest, args)
+
+
+def _derive(
+    conn: sqlite3.Connection,
+    data_dir: Path,
+    workshop: provenance.Workshop,
+    digest: str,
+    args: argparse.Namespace,
+) -> int:
+    if args.recipe == "trim" and args.end is None:
+        raise provenance.ProvenanceError("trim needs --end (seconds)")
+    params: dict[str, object] = (
+        {"start": args.start, "end": args.end} if args.recipe == "trim" else {"model": args.model}
     )
-    print(f"{'reused' if made.reused else 'made'} {made.digest[:12]}: {made.path}")
-    if args.stash:
-        print(f"stashed: {provenance.stash(conn, data_dir, made.digest, args.stash)}")
+    if args.recipe == "stems":
+        print(f"separating with Demucs {args.model}: this takes minutes the first time")
+    ran = False
+    for part in provenance.parts(args.recipe, params):  # the first part's run makes them all
+        made_by = provenance.recipe(args.recipe, {**params, "part": part} if part else params)
+        made = workshop.derive(made_by, [digest])
+        ran = ran or not made.reused
+        name = f"{part} " if part else ""
+        print(f"{'made' if ran else 'reused'} {name}{made.digest[:12]}: {made.path}")
+        if args.stash:
+            print(f"stashed: {provenance.stash(conn, data_dir, made.digest, args.stash)}")
     return 0
 
 

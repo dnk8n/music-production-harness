@@ -1,6 +1,7 @@
 # Catalogue
 
-**Status:** built (step 2: REQ-CAT-01 to 09)
+**Status:** built (step 2: REQ-CAT-01 to 09). Full tracks and stems (REQ-CAT-10,
+11) added for the remixes, 2026-11-13.
 
 A local search engine over every sound the harness can use, with full
 provenance. The first source is `/Users/dean/dj/samples` (about 4,000 files,
@@ -37,18 +38,23 @@ download(source_id, remote_id, asset_hash, rel_path, url, page_url, title, creat
 ```
 
 Derivatives live in `data_dir/cache/<hh>/<hash>.wav` (purgeable) and, when
-stashed, in `data_dir/stash/<name>/<hash>.wav` (kept). Recipes run ffmpeg with
-`-bitexact` and write 32-bit float WAV at the input's own rate. The first
-recipe is `trim`; stem separation and others join as the benchmarks need them.
-Commands: `derive`, `stash`, `purge-cache`, `refresh`, `lineage`.
+stashed, in `data_dir/stash/<name>/<hash>.wav` (kept). Every recipe writes
+32-bit float WAV at the input's own rate: `trim` cuts with ffmpeg and
+`-bitexact`, and `stems` separates with Demucs (REQ-CAT-11). One run of a
+recipe can make several sounds, like a track's four stems; each is recorded
+with its own recipe, which names the part it is. Others join as the remixes
+and benchmarks need them. Commands: `derive`, `stash`, `purge-cache`,
+`refresh`, `lineage`.
 
-Analysis features (analyser `core` v2): duration, peak/RMS dBFS, integrated
-LUFS (sounds of 0.4 s or more), onset count, BPM with confidence (loops, snapped
-to a whole number of beats in the loop length), key with confidence
-(Temperley key profiles on chroma of the harmonic part), spectral centroid, share
-of energy below 150 Hz, percussive share (HPSS), and form (one-shot, loop or
-phrase). Tags `bpm`, `key`, `form` and `character` are added with
-`origin=analysis`, next to the name priors.
+Analysis features (analyser `core` v3): duration, peak/RMS dBFS, integrated
+LUFS (sounds of 0.4 s or more), onset count, BPM with confidence (loops,
+snapped to a whole number of beats in the loop length; phrases, from a tempo
+grid, with where the first beat falls and how far the beat drifts:
+REQ-CAT-10), key with confidence (Temperley key profiles on chroma of the
+harmonic part), spectral centroid, share of energy below 150 Hz, percussive
+share (HPSS), and form (one-shot, loop, or phrase for a minute or more). Tags
+`bpm`, `key`, `form` and `character` are added with `origin=analysis`, next
+to the name priors.
 
 A single loop often doesn't spell out its pack's key: a riff in D minor may
 only play F, A and C. So an analysed key is a hint, and where a pack labels its
@@ -195,3 +201,52 @@ access goes through `mph.net.Http`, so tests never reach the internet.
 - **Why:** the scan found about 85 `.DS_Store` and 50 `.asd` files mixed in
   with the audio.
 - **Verify:** test
+
+### REQ-CAT-10: Full tracks
+A folder named "full tracks" (in any case, with a space, underscore or
+hyphen) holds finished tracks to remix or play, not samples. Everything under
+it is labelled a track (`form=track`), and no word in its path gives it a
+role or another form: a track's file and folder names are artists and
+titles, like "soul_clap" in
+`pillowtalk_x_soul_clap_ft_greg_paulus_and_crew_love-love_train.flac`. A
+tempo or key written in the name still counts.
+
+Analysis fits one fixed tempo grid to anything a minute or longer: its BPM,
+where its first beat falls, and how far its beats stray from the grid. A
+track made on a fixed grid, like most electronic music, strays a few
+milliseconds and gets a confident BPM. A played track that drifts gets its
+average tempo with less confidence, and a recording with no steady beat in
+its low end gets none. Analysis can't tell a finished track from any other
+long recording, so a measured phrase labelled a track is a track, in search
+and in `mph catalogue sound`. Kits never pick one: they take one-shots and
+loops.
+- **Why:** Dean added the first full track to remix, Love Train
+  (2026-11-13). The sample-pack rules called it a clap (from "Soul Clap") and
+  a phrase with no tempo, since only loops got a tempo, from their length. A
+  remix needs the source's exact tempo and beat: Love Train is 120 BPM on a
+  fixed grid with its first beat at 0:00. librosa's beat tracker put it at
+  117.4 BPM; a grid fitted to the whole track finds 120.00.
+- **Verify:** test
+
+### REQ-CAT-11: Stems
+`mph catalogue derive SOUND stems [--model NAME]` separates a sound, usually
+a full track, into stems with Demucs: drums, bass, other and vocals, plus
+guitar and piano with `htdemucs_6s`. The default model, `htdemucs_ft`, is the
+best of them; `htdemucs` is about four times faster. One run makes every
+stem. Each is a derivative whose recipe names the model and the part, so
+`mph catalogue lineage` shows which stem of which track a sound is, and
+`mph catalogue refresh` rebuilds a purged stem by separating the track again.
+
+Separation runs on the CPU without Demucs' random time shifts
+(`--shifts 0`), and writes 32-bit float WAV without rescaling
+(`--float32 --clip-mode none`). So the stems add back up to the track, and
+the same track gives the same bytes on the same machine. Demucs works at
+44.1 kHz and would resample anything else, so a sound at another rate is
+refused rather than converted (REQ-AUD-01). The four stems of a 6-minute
+track take about 500 MB, so stash only the ones a remix uses.
+- **Why:** a remix starts from stems (2026-11-13), and Demucs is installed
+  on Dean's Mac. By default its time shifts are random, and it writes 16-bit
+  stems, each scaled down on its own when it peaks too high, so they no
+  longer add up to the track. A separation takes minutes, so it should run
+  once per track and model, then be reused.
+- **Verify:** test; inspect on the Mac: separating Love Train twice gives the same hashes

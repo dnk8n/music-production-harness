@@ -281,3 +281,170 @@ def test_cli_refresh_failures_and_missing_catalogue(
     assert commands.cmd_provenance(cfg, runner, args("refresh")) == 1
     assert "! " in capsys.readouterr().out
     assert commands.cmd_provenance(cfg_for(tmp_path / "x"), runner, args("refresh")) == 1
+
+
+class FakeDemucs:
+    """Writes every stem the model makes, as bytes made from the input and its name."""
+
+    def __init__(self) -> None:
+        self.version = "4.1.0"
+        self.runs = 0
+        self.argv: list[str] = []
+
+    def __call__(self, argv: Sequence[str]) -> Result:
+        self.runs += 1
+        self.argv = list(argv)
+        model = argv[argv.index("-n") + 1]
+        out = Path(argv[argv.index("-o") + 1]) / model
+        out.mkdir(parents=True)
+        source = Path(argv[-1]).read_bytes()
+        for stem in provenance.DEMUCS_MODELS[model]:
+            made = hashlib.sha256(source + f"{model}/{stem}/{self.version}".encode()).digest()
+            (out / f"{stem}.wav").write_bytes(made)
+        return Result(0, stderr="100%|##########| 337.5/337.5 seconds")
+
+
+@pytest.fixture
+def demucs() -> FakeDemucs:
+    return FakeDemucs()
+
+
+@pytest.fixture
+def separating(
+    setup: tuple[sqlite3.Connection, Workshop],
+    demucs: FakeDemucs,
+    ffmpeg: FakeFfmpeg,
+    tmp_path: Path,
+) -> Workshop:
+    responses = {"demucs": demucs, "ffmpeg": ffmpeg, "ffprobe": Result(0, PROBE)}
+    runner = FakeRunner(responses=responses)  # type: ignore[arg-type]
+    return Workshop(setup[0], runner, tmp_path / "data", clock=lambda: "t")
+
+
+def stem(part: str, model: str = "htdemucs_ft") -> provenance.Recipe:
+    return provenance.recipe("stems", {"model": model, "part": part})
+
+
+@pytest.mark.req("REQ-CAT-11")
+def test_one_separation_makes_every_stem_each_with_its_own_recipe(
+    setup: tuple[sqlite3.Connection, Workshop], separating: Workshop, demucs: FakeDemucs
+) -> None:
+    conn = setup[0]
+    vocals = separating.derive(stem("vocals"), ["src1aaaaaa"])
+    assert not vocals.reused
+    flags = " ".join(demucs.argv)
+    for flag in ("-n htdemucs_ft", "-d cpu", "--shifts 0", "--float32", "--clip-mode none"):
+        assert flag in flags  # deterministic, unscaled float stems at the track's rate
+    recorded = {
+        json.loads(row["params_json"])["part"]
+        for row in conn.execute("SELECT params_json FROM recipe WHERE kind = 'stems'")
+    }
+    assert recorded == {"drums", "bass", "other", "vocals"}
+    drums = separating.derive(stem("drums"), ["src1aaaaaa"])
+    assert (drums.reused, demucs.runs) == (True, 1)  # made by the same run
+    assert drums.digest != vocals.digest
+    assert provenance.lineage(conn, vocals.digest) == [
+        f"{vocals.digest[:12]} stems(model=htdemucs_ft, part=vocals)",
+        "  src1aaaaaa source dj:vox.wav",
+    ]
+    trimmed = separating.derive(trim(0, 1), [vocals.digest])  # a phrase cut from the stem
+    assert provenance.lineage(conn, trimmed.digest)[1].endswith("part=vocals)")
+
+
+@pytest.mark.req("REQ-CAT-11")
+@pytest.mark.req("REQ-CAT-06")
+def test_one_separation_rebuilds_every_purged_stem(
+    setup: tuple[sqlite3.Connection, Workshop],
+    separating: Workshop,
+    demucs: FakeDemucs,
+    tmp_path: Path,
+) -> None:
+    conn, data = setup[0], tmp_path / "data"
+    made = {part: separating.derive(stem(part), ["src1aaaaaa"]) for part in ("vocals", "bass")}
+    assert provenance.purge_cache(data) == 4
+    report = provenance.refresh(separating, conn, data)
+    assert (len(report.rebuilt), report.present, report.failed, demucs.runs) == (1, 3, [], 2)
+    assert all(provenance.locate(conn, data, m.digest) == m.path for m in made.values())
+
+
+@pytest.mark.req("REQ-CAT-11")
+@pytest.mark.req("REQ-CAT-06")
+def test_a_new_demucs_that_changes_the_stems_is_reported_not_swapped_in(
+    setup: tuple[sqlite3.Connection, Workshop],
+    separating: Workshop,
+    demucs: FakeDemucs,
+    tmp_path: Path,
+) -> None:
+    conn, data = setup[0], tmp_path / "data"
+    separating.derive(stem("vocals"), ["src1aaaaaa"])
+    provenance.purge_cache(data)
+    demucs.version = "4.2.0"
+    report = provenance.refresh(separating, conn, data)
+    assert len(report.failed) == 4
+    assert "a new stems tool?" in report.failed[0]
+    assert not list((data / "cache").rglob("*.wav"))
+
+
+@pytest.mark.req("REQ-CAT-11")
+@pytest.mark.req("REQ-AUD-01")
+def test_a_track_demucs_would_resample_is_refused(
+    setup: tuple[sqlite3.Connection, Workshop], separating: Workshop, demucs: FakeDemucs
+) -> None:
+    with setup[0] as conn:
+        conn.execute("UPDATE asset SET sample_rate = 48000 WHERE hash = 'src1aaaaaa'")
+    with pytest.raises(ProvenanceError, match="works at 44100 Hz and src1aaaaaa is 48000 Hz"):
+        separating.derive(stem("vocals"), ["src1aaaaaa"])
+    assert demucs.runs == 0
+
+
+@pytest.mark.parametrize(
+    ("params", "message"),
+    [
+        ({"model": "mdx_extra", "part": "vocals"}, "unknown Demucs model 'mdx_extra'"),
+        ({"model": "htdemucs", "part": "piano"}, "htdemucs makes drums, bass, other, vocals"),
+        ({"model": "htdemucs"}, "stems takes model, part"),
+    ],
+)
+def test_bad_stem_recipes(params: dict[str, str], message: str) -> None:
+    with pytest.raises(ProvenanceError, match=message):
+        provenance.recipe("stems", params)
+    assert provenance.parts("stems", {"model": "htdemucs_6s"})[-2:] == ("guitar", "piano")
+
+
+def test_a_separation_that_makes_no_stems_fails_cleanly(
+    setup: tuple[sqlite3.Connection, Workshop], tmp_path: Path
+) -> None:
+    runner = FakeRunner(responses={"demucs": Result(0), "ffprobe": Result(0, PROBE)})
+    workshop = Workshop(setup[0], runner, tmp_path / "data")
+    with pytest.raises(ProvenanceError, match="stems failed: made no drums, bass, other, vocals"):
+        workshop.derive(stem("vocals"), ["src1aaaaaa"])
+    assert not list((tmp_path / "data" / "cache").iterdir())
+
+
+@pytest.mark.req("REQ-CAT-11")
+def test_cli_derives_every_stem_in_one_run(
+    setup: tuple[sqlite3.Connection, Workshop],
+    demucs: FakeDemucs,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cfg = cfg_for(tmp_path)
+    runner = FakeRunner(responses={"demucs": demucs, "ffprobe": Result(0, PROBE)})
+    run = commands.cmd_provenance
+    assert run(cfg, runner, args("derive", "vox.wav", "stems", "--model", "htdemucs")) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0].startswith("separating with Demucs htdemucs")
+    assert [line.split()[:2] for line in lines[1:]] == [
+        ["made", part] for part in ("drums", "bass", "other", "vocals")
+    ]
+    assert run(cfg, runner, args("derive", "vox.wav", "stems", "--model", "htdemucs")) == 0
+    assert capsys.readouterr().out.count("reused ") == 4
+    assert demucs.runs == 1
+    assert run(cfg, runner, args("derive", "vox.wav", "trim")) == 2
+    assert "trim needs --end" in capsys.readouterr().err
+
+
+def test_separating_and_rebuilding_may_take_an_hour() -> None:
+    assert cli._timeout_s(args("derive", "vox.wav", "stems")) == cli.RECIPE_TIMEOUT_S
+    assert cli._timeout_s(args("refresh")) == cli.RECIPE_TIMEOUT_S
+    assert cli._timeout_s(args("stats")) == 30.0

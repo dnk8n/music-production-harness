@@ -10,8 +10,9 @@
 | **Cache** | Derivatives that can be regenerated at any time. Safe to delete. |
 | **Stash** | Derivatives Dean chose to keep (e.g. a favourite vocal chop). Not auto-deleted, but still regenerable from its recipe. |
 | **Recipe** | The exact tool, version and parameters that turned inputs into a derivative. Hash of the recipe plus input hashes = derivative identity. |
-| **Stem** | A rendered audio track for one musical part (drums, bass, vocal), 32-bit float at the production rate. |
-| **Production rate** | Sample rate for synthesis and stems (default 96 kHz). |
+| **Stem** | One musical part (drums, bass, vocals) as audio of its own, 32-bit float: rendered by mph at the production rate, or separated from a full track at the track's own rate (REQ-CAT-11). |
+| **Full track** | A finished piece of music, kept to remix or play rather than as a sample (REQ-CAT-10). |
+| **Production rate** | Sample rate for synthesis and rendered stems (default 96 kHz). |
 | **Delivery** | The final 48 kHz / 24-bit AIFF. The only point where sample rate conversion (SRC) and dither happen. |
 | **Benchmark** | A short render with a written description of what Dean should hear, automated measurements, and Dean's rating. ID `BM-...`. |
 | **Rating** | Dean's 0 to 5 stars on a take (3 or more is a pass), whether it is resolved, and his feedback, given on the feedback page (REQ-FBK-02). |

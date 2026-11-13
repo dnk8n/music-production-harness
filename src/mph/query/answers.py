@@ -458,7 +458,8 @@ SCHEMA_NOTES = (
     "tag holds labels with origin (folder, filename, analysis, human) and confidence.",
     "analysis.result_json holds measured features as JSON, read with json_extract(result_json, "
     "'$.lufs'): duration_s, peak_dbfs, rms_dbfs, lufs, onsets, bpm, bpm_confidence, key, "
-    "key_confidence, centroid_hz, low_ratio (energy share below 150 Hz), percussive_ratio, form.",
+    "key_confidence, centroid_hz, low_ratio (energy share below 150 Hz), percussive_ratio, form, "
+    "and for phrases beat_s (where the first beat falls) and drift_ms (how far beats stray).",
     "Renders are folders, not rows: rating.score_hash names renders/<benchmark>/<score_hash>/"
     "report.json. Use the benchmark and report tools for them.",
     "rating holds Dean's ratings, one row per save (a whole-benchmark one once per take): 0 to 5 "

@@ -37,8 +37,8 @@ def test_only_proc_spawns_processes() -> None:
 # only modules allowed to use them, so heavy dependencies stay contained.
 AUDIO_IO = {"catalogue/analysis.py", "bench/audio.py", "deliver.py"}
 JUSTIFIED = {
-    "librosa": {"catalogue/analysis.py"},  # ADR-0008
-    "numpy": AUDIO_IO | {"bench/render.py", "bench/levels.py"},  # ADR-0008
+    "librosa": {"catalogue/analysis.py", "catalogue/grid.py"},  # ADR-0008
+    "numpy": AUDIO_IO | {"bench/render.py", "bench/levels.py", "catalogue/grid.py"},  # ADR-0008
     "pyloudnorm": {"catalogue/analysis.py", "bench/audio.py", "bench/levels.py"},  # ADR-0008
     "soundfile": AUDIO_IO,  # ADR-0008
     "soxr": {"bench/audio.py", "deliver.py"},  # ADR-0003: libsoxr does the one SRC

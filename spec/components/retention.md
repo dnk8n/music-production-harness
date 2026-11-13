@@ -5,7 +5,7 @@
 Renders are deterministic (REQ-AUD-05, BM-MST-02), so a render on disk is a
 convenience, not a record. mph keeps what is fresh and makes the rest again
 when it is needed (ADR-0010). The record is the report, the score and the
-verdicts, which are small and always kept.
+ratings, which are small and always kept.
 Implementation: `src/mph/retention.py`, `src/mph/bench/jit.py`.
 
 What mph may delete is only what it can make again or what is throwaway,
@@ -30,9 +30,9 @@ is superseded too, because no take plays it.
 
 ### REQ-RET-02: A pruned render keeps its report
 Pruning a render deletes everything in its folder except `report.json`. The
-report keeps its measurements, kit, levels and verdict link, and the page
+report keeps its measurements, kit, levels and rating link, and the page
 marks it as "audio pruned" (`on_disk` false).
-- **Why:** verdicts point at a score hash (REQ-FBK-02), and what was measured
+- **Why:** ratings point at a score hash (REQ-FBK-02), and what was measured
   and heard stays readable. The report is a few kilobytes.
 - **Verify:** test
 

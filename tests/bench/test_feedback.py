@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+from contextlib import closing
 from http import HTTPStatus
 from pathlib import Path
+from typing import Any
 
 import pytest
 
-from mph.bench import commands, feedback, score
+from mph.bench import commands, feedback, ratings, score
 from mph.catalogue import browse, db
 from mph.catalogue import commands as catalogue_commands
 from mph.proc import Result
@@ -28,6 +30,7 @@ def fake_render(
     variant: str = "renoise",
     render_hash: str = HASH,
     at: str = "2026-11-08T21:00:00Z",
+    inputs: str | None = None,
 ) -> Path:
     folder = data / "renders" / benchmark_id / render_hash
     (folder / "variants").mkdir(parents=True)
@@ -46,6 +49,8 @@ def fake_render(
     }
     if variant:  # "" writes a render from before variants existed
         report["variant"] = variant
+    if inputs is not None:  # what shaped it (REQ-BEN-14); renders before that have none
+        report["inputs"] = inputs
     (folder / "report.json").write_text(json.dumps(report))
     return folder
 
@@ -58,8 +63,10 @@ def app(tmp_path: Path) -> browse.App:
     return browse.App(data / db.FILENAME, data, runner, PORT)
 
 
-def post(app: browse.App, payload: object, headers: dict[str, str] = POST) -> browse.Response:
-    return app.handle_post("/api/verdict", headers, json.dumps(payload).encode())
+def post(
+    app: browse.App, payload: object, headers: dict[str, str] = POST, path: str = "/api/rating"
+) -> browse.Response:
+    return app.handle_post(path, headers, json.dumps(payload).encode())
 
 
 @pytest.mark.req("REQ-FBK-01")
@@ -120,24 +127,22 @@ def test_undecodable_render_is_explained(tmp_path: Path) -> None:
 
 
 @pytest.mark.req("REQ-FBK-02")
-def test_verdicts_are_stored_against_the_render(app: browse.App, tmp_path: Path) -> None:
+def test_ratings_are_stored_against_the_render(app: browse.App, tmp_path: Path) -> None:
     saved = post(
         app,
-        {
-            "id": "BM-DRUM-02",
-            "score_hash": HASH,
-            "verdict": "close",
-            "notes": " 0:42 hats too loud ",
-        },
-    )  # fmt: skip (scope "take" is the default)
+        {"id": "BM-DRUM-02", "score_hash": HASH, "stars": 2, "notes": " 0:42 hats too loud "},
+    )  # scope "take" is the default
     assert saved.status == HTTPStatus.OK
-    assert json.loads(saved.body)["notes"] == "0:42 hats too loud"
+    body = json.loads(saved.body)
+    assert (body["notes"], body["stars"], body["state"]) == ("0:42 hats too loud", 2, "unresolved")
     listed = json.loads(app.handle("/api/bench", LOCAL).body)
     shuffle = next(b for b in listed if b["id"] == "BM-DRUM-02")
-    assert shuffle["verdicts"][0]["verdict"] == "close"
-    assert shuffle["verdicts"][0]["score_hash"] == HASH
+    given = shuffle["ratings"][0]
+    assert (given["stars"], given["status"], given["score_hash"]) == (2, None, HASH)
+    assert (given["take"], given["via"], given["passed"]) == ("renoise", "page", False)
     conn = db.connect(tmp_path / "data" / db.FILENAME)
-    assert conn.execute("SELECT count(*) FROM verdict").fetchone()[0] == 1
+    assert conn.execute("SELECT count(*) FROM rating").fetchone()[0] == 1
+    assert conn.execute("SELECT count(*) FROM verdict").fetchone()[0] == 0  # never written
     conn.close()
 
 
@@ -145,30 +150,41 @@ def test_verdicts_are_stored_against_the_render(app: browse.App, tmp_path: Path)
 @pytest.mark.parametrize(
     ("payload", "message"),
     [
-        ({"id": "BM-DRUM-02", "score_hash": HASH, "verdict": "great"}, "one of pass"),
-        ({"id": "BM-DRUM-02", "score_hash": "ffffffffffffffff", "verdict": "pass"}, "no such"),
-        ({"id": "BM-DRUM-02", "score_hash": HASH, "verdict": "pass", "notes": "x" * 5000},
-         "limited"),
-        ({"id": "BM-DRUM-02", "scope": "some", "verdict": "pass"}, "scope must be"),
-        ({"id": "BM-NOPE", "scope": "all", "verdict": "pass"}, "no benchmark"),
-        ({"id": "BM-DRUM-01", "scope": "all", "verdict": "pass"}, "no take has been rendered"),
+        ({"id": "BM-DRUM-02", "score_hash": HASH, "stars": "great"}, "stars must be a whole"),
+        ({"id": "BM-DRUM-02", "score_hash": HASH, "stars": 6}, "from 0 to 5"),
+        ({"id": "BM-DRUM-02", "score_hash": HASH, "stars": True}, "stars must be"),
+        ({"id": "BM-DRUM-02", "score_hash": HASH}, "stars must be"),
+        ({"id": "BM-DRUM-02", "score_hash": HASH, "stars": 3, "status": "maybe"},
+         "status must be resolved, unresolved"),
+        ({"id": "BM-DRUM-02", "score_hash": "ffffffffffffffff", "stars": 4}, "no such render"),
+        ({"id": "BM-DRUM-02", "score_hash": HASH, "stars": 4, "notes": "x" * 5000}, "limited"),
+        ({"id": "BM-DRUM-02", "scope": "some", "stars": 4}, "scope must be"),
+        ({"id": "BM-NOPE", "scope": "all", "stars": 4}, "no benchmark"),
+        ({"id": "BM-DRUM-01", "scope": "all", "stars": 4}, "no take has been rendered"),
+        ({"id": "BM-DRUM-02", "score_hash": HASH, "stars": 0}, "0 stars with neither"),
+        ({"id": "BM-DRUM-02", "scope": "all", "stars": 0, "status": None}, "is no rating"),
     ],
 )  # fmt: skip
-def test_bad_verdicts_are_refused(app: browse.App, payload: dict[str, str], message: str) -> None:
+def test_bad_ratings_are_refused(app: browse.App, payload: dict[str, str], message: str) -> None:
     response = post(app, payload)
     assert response.status == HTTPStatus.BAD_REQUEST and message in response.body.decode()
 
 
 @pytest.mark.req("REQ-FBK-05")
 def test_only_this_page_can_post(app: browse.App) -> None:
-    ok = {"id": "BM-DRUM-02", "score_hash": HASH, "verdict": "pass"}
-    assert post(app, ok, {**POST, "Host": "evil.example"}).status == HTTPStatus.FORBIDDEN
-    assert post(app, ok, {**POST, "Origin": "https://evil.example"}).status == HTTPStatus.FORBIDDEN
-    plain = {**POST, "Content-Type": "text/plain"}
-    assert post(app, ok, plain).status == HTTPStatus.UNSUPPORTED_MEDIA_TYPE
+    ok = {"id": "BM-DRUM-02", "score_hash": HASH, "stars": 4}
+    idea = {"kind": "project", "title": "Tribal percussion"}
+    for path, payload in (("/api/rating", ok), ("/api/idea", idea), ("/api/idea-drop", {})):
+        evil_host = {**POST, "Host": "evil.example"}
+        assert post(app, payload, evil_host, path).status == HTTPStatus.FORBIDDEN
+        evil_origin = {**POST, "Origin": "https://evil.example"}
+        assert post(app, payload, evil_origin, path).status == HTTPStatus.FORBIDDEN
+        plain = {**POST, "Content-Type": "text/plain"}
+        assert post(app, payload, plain, path).status == HTTPStatus.UNSUPPORTED_MEDIA_TYPE
+        assert app.handle_post(path, POST, b"{not json").status == HTTPStatus.BAD_REQUEST
+        assert app.handle_post(path, POST, b"[1]").status == HTTPStatus.BAD_REQUEST
     assert app.handle_post("/api/other", POST, b"{}").status == HTTPStatus.NOT_FOUND
-    assert app.handle_post("/api/verdict", POST, b"{not json").status == HTTPStatus.BAD_REQUEST
-    assert app.handle_post("/api/verdict", POST, b"[1]").status == HTTPStatus.BAD_REQUEST
+    assert post(app, ok, path="/api/verdict").status == HTTPStatus.NOT_FOUND  # retired
 
 
 def test_listing_without_a_catalogue_and_with_broken_reports(tmp_path: Path) -> None:
@@ -176,7 +192,7 @@ def test_listing_without_a_catalogue_and_with_broken_reports(tmp_path: Path) -> 
     (folder.parent / "broken").mkdir()
     (folder.parent / "broken" / "report.json").write_text("{nope")
     assert feedback.reports(tmp_path / "renders", "BM-DRUM-02")[0]["score_hash"] == HASH
-    assert feedback.verdicts(None, "BM-DRUM-02") == []
+    assert ratings.history(None, "BM-DRUM-02") == []
     (folder / "report.json").write_text("{nope")
     assert feedback.playable(tmp_path / "renders", "BM-DRUM-02", HASH, "BM-DRUM-02.aiff") is None
 
@@ -274,54 +290,157 @@ def test_the_page_matches_loudness_and_starts_takes_from_the_top() -> None:
     assert "matchedVolume(r) * 10 ** (trimOf(r) / 20)" in page
 
 
-def takes_of(app: browse.App, benchmark_id: str = "BM-DRUM-02") -> dict[str, dict[str, object]]:
+def takes_of(app: browse.App, benchmark_id: str = "BM-DRUM-02") -> dict[str, dict[str, Any]]:
     listed = json.loads(app.handle("/api/bench", LOCAL).body)
     found = next(b for b in listed if b["id"] == benchmark_id)
     return {t["name"]: t for t in found["takes"]}
 
 
-def said(take: dict[str, object]) -> str | None:
-    verdict = take["verdict"]
-    return None if verdict is None else str(verdict["verdict"])  # type: ignore[index]
+def stars(take: dict[str, Any]) -> int | None:
+    return None if take["rating"] is None else int(take["rating"]["stars"])
 
 
-@pytest.mark.req("REQ-FBK-02")
-def test_a_verdict_on_the_whole_benchmark_covers_every_take_but_one_judged_alone(
-    tmp_path: Path,
-) -> None:
+def three_takes(tmp_path: Path) -> browse.App:
     data = tmp_path / "data"
     fake_render(data)  # renoise
     fake_render(data, variant="supercollider", render_hash="1" * 16)
     fake_render(data, variant="synth-kit", render_hash="2" * 16)
-    app = browse.App(data / db.FILENAME, data, FakeRunner(), PORT)
-    alone = {"id": "BM-DRUM-02", "scope": "take", "score_hash": "2" * 16, "verdict": "fail"}
-    assert post(app, alone).status == HTTPStatus.OK
-    whole = post(app, {"id": "BM-DRUM-02", "scope": "all", "verdict": "pass", "notes": "lovely"})
-    assert whole.status == HTTPStatus.OK
-    assert sorted(json.loads(whole.body)["score_hashes"]) == [HASH, "1" * 16, "2" * 16]
-    takes = takes_of(app)
-    assert said(takes["renoise"]) == "pass" and said(takes["supercollider"]) == "pass"
-    assert said(takes["synth-kit"]) == "fail"  # judged on its own before: that verdict stands
-    assert post(app, {**alone, "score_hash": HASH, "verdict": "close"}).status == HTTPStatus.OK
-    assert said(takes_of(app)["renoise"]) == "close"  # and after, too
-    fake_render(data, variant="supercollider", render_hash="3" * 16, at="2026-11-09T09:00:00Z")
-    assert takes_of(app)["supercollider"]["verdict"] is None  # a new render is heard afresh
+    return browse.App(data / db.FILENAME, data, FakeRunner(), PORT)
 
 
 @pytest.mark.req("REQ-FBK-02")
-def test_a_verdict_on_an_old_main_render_counts_for_the_takes_rendered_by_then(
+def test_a_rating_on_the_whole_benchmark_covers_every_take_but_one_rated_alone(
+    tmp_path: Path,
+) -> None:
+    app = three_takes(tmp_path)
+    alone = {"id": "BM-DRUM-02", "scope": "take", "score_hash": "2" * 16, "stars": 1}
+    assert post(app, alone).status == HTTPStatus.OK
+    whole = post(app, {"id": "BM-DRUM-02", "scope": "all", "stars": 4, "notes": "lovely"})
+    assert whole.status == HTTPStatus.OK
+    assert sorted(json.loads(whole.body)["score_hashes"]) == [HASH, "1" * 16, "2" * 16]
+    takes = takes_of(app)
+    assert stars(takes["renoise"]) == 4 and stars(takes["supercollider"]) == 4
+    assert takes["renoise"]["rating"]["scope"] == "all"
+    assert stars(takes["synth-kit"]) == 1  # rated on its own before: that rating stands
+    assert post(app, {**alone, "score_hash": HASH, "stars": 5}).status == HTTPStatus.OK
+    assert stars(takes_of(app)["renoise"]) == 5  # and after, too
+    fake_render(
+        tmp_path / "data", variant="supercollider", render_hash="3" * 16, at="2026-11-09T09:00Z"
+    )
+    new = takes_of(app)["supercollider"]
+    assert new["rating"] is None and new["state"] == "unrated"  # a new render is heard afresh
+
+
+@pytest.mark.req("REQ-FBK-02")
+def test_a_rating_on_an_old_main_render_counts_for_the_takes_rendered_by_then(
     tmp_path: Path,
 ) -> None:
     data = tmp_path / "data"
     fake_render(data, variant="", render_hash="9" * 16, at="2026-11-08T20:00:00Z")
     fake_render(data)  # renoise, rendered 21:00
     app = browse.App(data / db.FILENAME, data, FakeRunner(), PORT)
-    main = {"id": "BM-DRUM-02", "score_hash": "9" * 16, "verdict": "pass"}
+    main = {"id": "BM-DRUM-02", "score_hash": "9" * 16, "stars": 3}
     assert post(app, main).status == HTTPStatus.OK  # given now, after both renders
-    assert said(takes_of(app)["renoise"]) == "pass"
+    assert stars(takes_of(app)["renoise"]) == 3
     assert "main" not in takes_of(app)  # an old main render isn't a take
     listed = json.loads(app.handle("/api/bench", LOCAL).body)
     shuffle = next(b for b in listed if b["id"] == "BM-DRUM-02")
-    assert shuffle["verdicts"][0]["legacy"] is True
+    assert shuffle["ratings"][0]["legacy"] is True
+    assert shuffle["ratings"][0]["take"] == "main"
     fake_render(data, variant="supercollider", render_hash="1" * 16, at="2099-01-01T00:00:00Z")
-    assert takes_of(app)["supercollider"]["verdict"] is None  # rendered after the verdict
+    assert takes_of(app)["supercollider"]["rating"] is None  # rendered after the rating
+
+
+@pytest.mark.req("REQ-FBK-02")
+def test_zero_stars_with_neither_status_clears_a_takes_own_rating(tmp_path: Path) -> None:
+    app = three_takes(tmp_path)
+    assert post(app, {"id": "BM-DRUM-02", "scope": "all", "stars": 2}).status == HTTPStatus.OK
+    own = {"id": "BM-DRUM-02", "score_hash": HASH, "stars": 5}
+    assert post(app, own).status == HTTPStatus.OK
+    assert stars(takes_of(app)["renoise"]) == 5
+    cleared = post(app, {**own, "stars": 0})
+    assert cleared.status == HTTPStatus.OK and json.loads(cleared.body)["state"] == "unrated"
+    back = takes_of(app)["renoise"]
+    assert (stars(back), back["rating"]["scope"]) == (2, "all")  # the whole one again
+    refused = post(app, {**own, "stars": 0})  # nothing of its own left to clear
+    assert refused.status == HTTPStatus.BAD_REQUEST and "no rating" in refused.body.decode()
+    alone = {"id": "BM-DRUM-01", "score_hash": "4" * 16, "stars": 0}
+    fake_render(tmp_path / "data", "BM-DRUM-01", variant="supercollider", render_hash="4" * 16)
+    assert post(app, alone).status == HTTPStatus.BAD_REQUEST  # unrated: nothing to clear
+    assert post(app, {**alone, "status": "resolved"}).status == HTTPStatus.OK  # sucks, but fine
+    resolved = takes_of(app, "BM-DRUM-01")["supercollider"]
+    assert (stars(resolved), resolved["state"]) == (0, "resolved")
+
+
+@pytest.mark.req("REQ-FBK-06")
+@pytest.mark.parametrize(
+    ("asked", "state", "status_from"),
+    [
+        ({"stars": 4}, "resolved", "stars"),  # a pass, resolved by its stars
+        ({"stars": 3}, "resolved", "stars"),
+        ({"stars": 2}, "unresolved", "stars"),  # a fail needs work
+        ({"stars": 1}, "unresolved", "stars"),
+        ({"stars": 5, "status": "unresolved"}, "unresolved", "you"),  # good, still wanted more
+        ({"stars": 1, "status": "resolved"}, "resolved", "you"),  # meets the spec, lower rated
+        ({"stars": 0, "status": "unresolved"}, "unresolved", "you"),  # sucks: fix it
+        ({"stars": 0, "status": "resolved"}, "resolved", "you"),  # sucks, not a priority
+    ],
+)
+def test_resolved_or_unresolved_is_clicked_or_follows_the_stars(
+    app: browse.App, asked: dict[str, object], state: str, status_from: str
+) -> None:
+    saved = post(app, {"id": "BM-DRUM-02", "score_hash": HASH, **asked})
+    assert saved.status == HTTPStatus.OK and json.loads(saved.body)["state"] == state
+    take = takes_of(app)["renoise"]
+    assert take["state"] == state
+    assert (take["rating"]["state"], take["rating"]["status_from"]) == (state, status_from)
+    assert take["rating"]["passed"] is (int(asked["stars"]) >= 3)  # type: ignore[call-overload]
+
+
+@pytest.mark.req("REQ-FBK-06")
+def test_a_take_rendered_again_since_it_was_rated_says_so(tmp_path: Path) -> None:
+    data = tmp_path / "data"
+    fake_render(data, inputs="a" * 16)
+    app = browse.App(data / db.FILENAME, data, FakeRunner(), PORT)
+    assert post(app, {"id": "BM-DRUM-02", "score_hash": HASH, "stars": 2}).status == HTTPStatus.OK
+    assert takes_of(app)["renoise"]["rating"]["rendered_again"] is False
+    report = json.loads((data / "renders" / "BM-DRUM-02" / HASH / "report.json").read_text())
+    report.update(inputs="b" * 16, rendered_at="2026-11-13T10:00:00Z")  # new code, same render
+    (data / "renders" / "BM-DRUM-02" / HASH / "report.json").write_text(json.dumps(report))
+    again = takes_of(app)["renoise"]
+    assert (again["rating"]["rendered_again"], again["state"]) == (True, "unresolved")
+    with closing(db.connect(data / db.FILENAME)) as conn:
+        given = ratings.history(conn, "BM-DRUM-02")[0]
+    assert given.inputs == "a" * 16  # what was rated, kept with the rating
+    carried = ratings.Rating(1, "BM-DRUM-02", HASH, "take", 1, None, "", "2026-11-10T00:00:00Z")
+    assert ratings.rendered_again(carried, report)  # no inputs: rendered after it, so yes
+    assert not ratings.rendered_again(carried, {**report, "rendered_at": "2026-11-09T00:00:00Z"})
+
+
+@pytest.mark.req("REQ-FBK-07")
+def test_every_rating_is_kept_and_the_newest_stands(tmp_path: Path) -> None:
+    app = three_takes(tmp_path)
+    take = {"id": "BM-DRUM-02", "score_hash": HASH}
+    for given in ({"stars": 1, "notes": "kick too soft"}, {"stars": 3}, {"stars": 4}):
+        assert post(app, {**take, **given}).status == HTTPStatus.OK
+    listed = json.loads(app.handle("/api/bench", LOCAL).body)
+    shuffle = next(b for b in listed if b["id"] == "BM-DRUM-02")
+    assert [r["stars"] for r in shuffle["ratings"]] == [4, 3, 1]  # newest first, none lost
+    assert shuffle["ratings"][2]["notes"] == "kick too soft"
+    assert stars(takes_of(app)["renoise"]) == 4
+
+
+@pytest.mark.req("REQ-FBK-01")
+@pytest.mark.req("REQ-FBK-06")
+@pytest.mark.req("REQ-FBK-08")
+def test_the_page_rates_with_stars_and_status_and_takes_ideas() -> None:
+    # The forms run in the browser; this pins what they send and say.
+    page = (Path(browse.__file__).parent / "browse.html").read_text("utf-8")
+    assert 'post("/api/rating"' in page and 'post("/api/idea"' in page
+    assert 'post("/api/idea-drop", { idea: idea.id, undo: true })' in page
+    assert '["resolved", "nothing more wanted' in page and '["unresolved", "needs work' in page
+    assert "Click again to let the stars decide." in page  # a status is clicked, not assumed
+    assert "rendered again since you rated it" in page
+    assert "saving clears this take's own rating" in page
+    assert 'fetch("/api/ideas")' in page
+    assert "/api/verdict" not in page

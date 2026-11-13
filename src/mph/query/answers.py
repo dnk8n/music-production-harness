@@ -2,8 +2,9 @@
 
 Every answer is plain JSON-ready data built from the same functions as the
 command or page that shows the same thing: ``search.search`` for sounds,
-``feedback.listing`` for takes and the verdicts that stand, ``doctor.run`` for
-health. The listing here also has what other branches rendered (REQ-QRY-09).
+``feedback.listing`` for takes and the ratings that stand (``bench`` has the
+benchmark tools), ``doctor.run`` for health. The listing here also has what
+other branches rendered (REQ-QRY-09).
 The catalogue is only opened through ``readonly`` (REQ-QRY-02), and nothing
 here opens audio.
 """
@@ -21,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from mph import __version__, doctor, retention
-from mph.bench import feedback, score
+from mph.bench import feedback, ideas, ratings
 from mph.catalogue import db, provenance, search, stats
 from mph.components import Context, Stage
 from mph.config import Config
@@ -30,8 +31,7 @@ from mph.secrets import SecretStore
 
 Answer = dict[str, Any]
 SQL_TIMEOUT_S = 5.0
-RECENT = 20  # renders and verdicts listed per benchmark; `verdicts` pages through the rest
-NOTES_PREVIEW = 300  # characters of a verdict's notes in summaries; `verdicts` has them all
+RECENT = 20  # renders and ratings listed per benchmark; `ratings` pages through the rest
 HEX = re.compile(r"^[0-9a-fA-F]{6,64}$")
 ROLE_COUNTS = (
     "strongest counts each sound once, under its most confident role, as `mph catalogue stats` "
@@ -92,7 +92,8 @@ def overview(lib: Library) -> Answer:
     with lib.reading_if_any() as conn:
         catalogue = _catalogue(conn) if conn else {"scanned": False, "next": "mph catalogue scan"}
         sources = _sources(cfg, conn)
-        listing = _listing(lib, conn)
+        listing = feedback.listing(lib.renders, conn, elsewhere=True)
+        board = _ideas(listing, conn)
     tidy = retention.plan(cfg.data_dir, cfg.retention)
     return {
         "mph": __version__,
@@ -103,6 +104,7 @@ def overview(lib: Library) -> Answer:
         "master": asdict(cfg.master),
         "catalogue": catalogue,
         "benchmarks": _projects(listing),
+        "ideas": board,
         "renders": {
             "disk_used": retention.human(tidy.renders_size),
             "prune_would_free": retention.human(tidy.size),
@@ -127,7 +129,7 @@ def _catalogue(conn: sqlite3.Connection) -> Answer:
         "downloads": _count(conn, "SELECT COUNT(*) FROM download"),
         "derivatives": _count(conn, "SELECT COUNT(*) FROM derivation"),
         "stashed": _count(conn, "SELECT COUNT(*) FROM stash"),
-        "verdicts": _count(conn, "SELECT COUNT(*) FROM verdict"),
+        "ratings": _count(conn, "SELECT COUNT(*) FROM rating"),
         "top_packs": dict(summary.by_pack[:15]),
         "roles": _roles(conn, summary.by_role),
         "roles_counted": ROLE_COUNTS,
@@ -200,6 +202,7 @@ def _store(row: Answer) -> Answer:
 
 
 def _projects(listing: list[dict[str, Any]]) -> Answer:
+    """Benchmarks per project, and how their rendered takes are rated (REQ-FBK-06)."""
     projects: dict[str, Answer] = {}
     for bench in listing:
         entry = projects.setdefault(
@@ -207,13 +210,26 @@ def _projects(listing: list[dict[str, Any]]) -> Answer:
             {"benchmarks": [], "takes": 0, "rendered": 0, "measurements_pass": 0},
         )
         entry["benchmarks"].append(bench["id"])
-        standing = Counter(t["verdict"]["verdict"] for t in bench["takes"] if t["verdict"])
-        entry["verdicts"] = dict(Counter(entry.get("verdicts", {})) + standing)
-        made = [t["report"] for t in bench["takes"] if t["report"]]
+        made = [t for t in bench["takes"] if t["report"]]
+        states = Counter(t["state"] for t in made)
+        entry["rated"] = dict(Counter(entry.get("rated", {})) + states)
         entry["takes"] += len(bench["takes"])
         entry["rendered"] += len(made)
-        entry["measurements_pass"] += sum(bool(r.get("passed")) for r in made)
-    return {"count": len(listing), "projects": projects}
+        entry["measurements_pass"] += sum(bool(t["report"].get("passed")) for t in made)
+    takes = [t for bench in listing for t in bench["takes"] if t["report"]]
+    return {
+        "count": len(listing),
+        "projects": projects,
+        "unresolved_takes": sum(t["state"] == ratings.UNRESOLVED for t in takes),
+        "to_rate": sum(t["state"] == ratings.UNRATED for t in takes),
+        "next": "feedback lists the unresolved takes, with Dean's feedback, and his open ideas",
+    }
+
+
+def _ideas(listing: list[dict[str, Any]], conn: sqlite3.Connection | None) -> Answer:
+    """How many of Dean's ideas are open, built and dropped (REQ-FBK-08)."""
+    known = ideas.known(listing, ideas.specced())
+    return dict(Counter(i.status(known) for i in ideas.every(conn)))
 
 
 # --- sounds --------------------------------------------------------------------------
@@ -433,291 +449,6 @@ def _renders_using(renders: Path, digest: str) -> Answer:
     return {"count": len(found), "newest": found[:RECENT]}
 
 
-# --- benchmarks ----------------------------------------------------------------------
-
-
-GIVEN = """
-    SELECT benchmark, verdict, scope, created_at, notes, group_concat(score_hash) AS hashes,
-           MAX(id) AS last
-    FROM verdict
-    WHERE (?1 IS NULL OR benchmark = ?1) AND (?2 IS NULL OR verdict = ?2)
-      AND (?3 IS NULL OR created_at >= ?3)
-    GROUP BY benchmark, scope, created_at, verdict, notes, CASE scope WHEN 'all' THEN 0 ELSE id END
-"""  # a whole-benchmark verdict is stored once per take, and given once (REQ-QRY-10)
-
-
-def _listing(lib: Library, conn: sqlite3.Connection | None) -> list[dict[str, Any]]:
-    """The listening page's benchmarks, plus what other branches rendered (REQ-QRY-09)."""
-    return feedback.listing(lib.renders, conn, elsewhere=True)
-
-
-def _entry(listing: list[dict[str, Any]], benchmark_id: str) -> dict[str, Any]:
-    found = next((b for b in listing if b["id"] == benchmark_id), None)
-    if found is None:
-        known = ", ".join(sorted(b["id"] for b in listing))
-        raise Unanswerable(f"no benchmark {benchmark_id!r}; there are {known}")
-    return found
-
-
-def benchmarks(lib: Library, project: str | None) -> Answer:
-    with lib.reading_if_any() as conn:
-        listing = _listing(lib, conn)
-    projects = sorted({b["project"] for b in listing})
-    if project:
-        listing = [b for b in listing if b["project"].lower() == project.lower()]
-        if not listing:
-            raise Unanswerable(f"no project {project!r}; projects: {', '.join(projects)}")
-    return {"projects": projects, "benchmarks": [_brief(b) for b in listing]}
-
-
-def _brief(bench: dict[str, Any]) -> Answer:
-    return {
-        "id": bench["id"],
-        "title": bench["title"],
-        "project": bench["project"],
-        "bpm": bench["bpm"],
-        "in_checkout": bench["in_checkout"],
-        "verdicts_for_every_take": _wholes(bench["takes"]),
-        "takes": [_take_brief(take) for take in bench["takes"]],
-    }
-
-
-def _take_brief(take: dict[str, Any]) -> Answer:
-    made = take["report"] or {}
-    return {
-        "take": take["name"],
-        "title": take["title"],
-        "in_checkout": take["in_checkout"],
-        "rendered": bool(made),
-        "score_hash": made.get("score_hash"),
-        "rendered_at": made.get("rendered_at"),
-        "engine": made.get("engine"),
-        "measurements_pass": made.get("passed"),
-        "failed_measurements": _failed(made) if made else None,
-        "audio_on_disk": made.get("on_disk"),
-        "verdict": _standing(take),
-    }
-
-
-def _failed(made: dict[str, Any]) -> list[Answer]:
-    return [
-        {key: m.get(key) for key in ("name", "value", "limit", "note")}
-        for m in made.get("measurements", [])
-        if not m.get("passed")
-    ]
-
-
-def _for_every_take(verdict: dict[str, str], made: dict[str, Any]) -> bool:
-    """A whole-benchmark verdict, or one given on a `main` render, which counts the
-    same (REQ-FBK-02), rather than the take's own."""
-    return verdict["scope"] == "all" or verdict["score_hash"] != made["score_hash"]
-
-
-def _standing(take: dict[str, Any]) -> Answer | None:
-    """The verdict that stands for a take. A whole-benchmark one leaves its notes to
-    the benchmark, so they're shown once (REQ-QRY-10)."""
-    verdict = take["verdict"]
-    if not verdict:
-        return None
-    if _for_every_take(verdict, take["report"]):
-        return {"verdict": verdict["verdict"], "scope": "all", "at": verdict["created_at"]}
-    return _clip_notes(
-        {
-            "verdict": verdict["verdict"],
-            "scope": "take",
-            "at": verdict["created_at"],
-            "notes": verdict["notes"],
-        }
-    )
-
-
-def _wholes(takes: list[dict[str, Any]]) -> list[Answer]:
-    """Each whole-benchmark verdict that stands for some take, once, with those takes."""
-    found: dict[tuple[str, str, str], Answer] = {}
-    for take in takes:
-        verdict = take["verdict"]
-        if not verdict or not _for_every_take(verdict, take["report"]):
-            continue
-        key = (verdict["created_at"], verdict["verdict"], verdict["notes"])
-        if key not in found:
-            found[key] = _clip_notes(
-                {
-                    "verdict": verdict["verdict"],
-                    "at": verdict["created_at"],
-                    "notes": verdict["notes"],
-                    "takes": [],
-                }
-            )
-        found[key]["takes"].append(take["name"])
-    return list(found.values())
-
-
-def benchmark(lib: Library, benchmark_id: str) -> Answer:
-    with lib.reading_if_any() as conn:
-        entry = _entry(_listing(lib, conn), benchmark_id)
-        total, given = _given(conn, lib.renders, benchmark_id, limit=RECENT)
-    history = [_history(r) for r in feedback.reports(lib.renders, benchmark_id)]
-    answer: Answer = {
-        "id": benchmark_id,
-        "title": entry["title"],
-        "project": entry["project"],
-        "bpm": entry["bpm"],
-        "in_checkout": entry["in_checkout"],
-        "hear": entry["hear"],
-        "score_file": score.source(benchmark_id) if entry["in_checkout"] else None,
-        "takes": [_take(take) for take in entry["takes"]],
-        "renders": {"count": len(history), "newest": history[:RECENT]},
-        "verdicts": {"count": total, "newest": [_clip_notes(v) for v in given]},
-        "next": "report has a render's whole report.json; verdicts has notes in full",
-    }
-    if not entry["in_checkout"]:
-        answer["note"] = (
-            f"another branch defines {benchmark_id}: this checkout has no score for it, so its "
-            "takes come from its renders, and there is no score file or hear text"
-        )
-    return answer
-
-
-def _take(take: dict[str, Any]) -> Answer:
-    """A take and its newest render in brief: what it used and what failed."""
-    made = take["report"]
-    newest = made and {
-        **_history(made),
-        "kit": [
-            {key: entry.get(key) for key in ("voice", "sound", "hash", "gain_db")}
-            for entry in made.get("kit", [])
-        ],
-        "failed_measurements": _failed(made),
-        "levels": made.get("levels"),
-    }
-    return {
-        "take": take["name"],
-        "title": take["title"],
-        "in_checkout": take["in_checkout"],
-        "verdict": _standing(take),
-        "newest": newest,
-    }
-
-
-def _clip_notes(verdict: Answer) -> Answer:
-    notes = str(verdict.get("notes") or "")
-    if len(notes) <= NOTES_PREVIEW:
-        return verdict
-    return {**verdict, "notes": notes[:NOTES_PREVIEW] + "…", "notes_clipped": True}
-
-
-def _history(made: dict[str, Any]) -> Answer:
-    return {
-        "score_hash": made.get("score_hash"),
-        "take": feedback.variant_of_report(made),
-        "rendered_at": made.get("rendered_at"),
-        "engine": made.get("engine"),
-        "measurements_pass": made.get("passed"),
-        "audio_on_disk": made.get("on_disk"),
-    }
-
-
-def report(lib: Library, benchmark_id: str, take: str | None, score_hash: str | None) -> Answer:
-    with lib.reading_if_any() as conn:
-        entry = _entry(_listing(lib, conn), benchmark_id)
-        given = feedback.verdicts(conn, benchmark_id)
-    chosen = _pick(lib.renders, entry, take, score_hash)
-    return {
-        "report": chosen,
-        "verdicts_on_this_render": [v for v in given if v["score_hash"] == chosen["score_hash"]],
-    }
-
-
-def _pick(
-    renders: Path, entry: dict[str, Any], take: str | None, score_hash: str | None
-) -> dict[str, Any]:
-    benchmark_id = entry["id"]
-    found = feedback.reports(renders, benchmark_id)
-    if score_hash:
-        wanted = [r for r in found if r.get("score_hash") == score_hash]
-        missing = f"{benchmark_id} has no render {score_hash}; `benchmark` lists them"
-    elif take:
-        takes = [t["name"] for t in entry["takes"]]
-        if take not in takes:
-            raise Unanswerable(f"{benchmark_id} has no take {take!r}; takes: {', '.join(takes)}")
-        wanted = [r for r in found if feedback.variant_of_report(r) == take]
-        missing = f"{benchmark_id} [{take}] isn't rendered: `mph bench render {benchmark_id}`"
-    else:
-        raise Unanswerable("name a take (such as renoise) or a score_hash")
-    if not wanted:
-        raise Unanswerable(missing)
-    return wanted[0]  # reports come newest first
-
-
-def verdicts(
-    lib: Library, benchmark_id: str | None, verdict: str | None, since: str | None, limit: int
-) -> Answer:
-    with lib.reading_if_any() as conn:
-        if benchmark_id:
-            _known_for_verdicts(lib, conn, benchmark_id)
-        if conn is None:
-            return {"total": 0, "shown": 0, "verdicts": [], "note": "no catalogue, no verdicts"}
-        total, found = _given(
-            conn, lib.renders, benchmark_id, limit=limit, verdict=verdict, since=since
-        )
-    return {"total": total, "shown": len(found), "verdicts": found}
-
-
-def _known_for_verdicts(lib: Library, conn: sqlite3.Connection | None, benchmark_id: str) -> None:
-    """Any benchmark with a score, a render or a verdict here."""
-    judged = [r[0] for r in conn.execute("SELECT DISTINCT benchmark FROM verdict")] if conn else []
-    known = {b["id"] for b in _listing(lib, conn)} | set(judged)
-    if benchmark_id not in known:
-        raise Unanswerable(f"no benchmark {benchmark_id!r}; there are {', '.join(sorted(known))}")
-
-
-def _given(
-    conn: sqlite3.Connection | None,
-    renders: Path,
-    benchmark_id: str | None,
-    *,
-    limit: int,
-    verdict: str | None = None,
-    since: str | None = None,
-) -> tuple[int, list[Answer]]:
-    """How many verdicts Dean gave, and the newest ``limit``, each as given: one for
-    a take, or one for the whole benchmark with every take it covered."""
-    if conn is None:
-        return 0, []
-    where = (benchmark_id, verdict, since)
-    total = conn.execute(f"SELECT COUNT(*) FROM ({GIVEN})", where).fetchone()[0]  # noqa: S608
-    newest = f"{GIVEN} ORDER BY created_at DESC, last DESC LIMIT ?4"
-    rows = conn.execute(newest, (*where, limit)).fetchall()
-    takes = _takes_by_render(renders, {r["benchmark"] for r in rows})
-    return total, [_as_given(row, takes) for row in rows]
-
-
-def _as_given(row: sqlite3.Row, takes: Mapping[tuple[str, str], str]) -> Answer:
-    benchmark_id = row["benchmark"]
-    judged = sorted(
-        (takes.get((benchmark_id, h)), h) for h in str(row["hashes"]).split(",")
-    )  # a take is None when its render is gone
-    found: Answer = {
-        "benchmark": benchmark_id,
-        "verdict": row["verdict"],
-        "scope": row["scope"],
-        "created_at": row["created_at"],
-        "notes": row["notes"],
-    }
-    if row["scope"] == "all":
-        return {**found, "takes": [t for t, _ in judged], "score_hashes": [h for _, h in judged]}
-    (take, render_hash), *_ = judged
-    return {**found, "take": take, "score_hash": render_hash}
-
-
-def _takes_by_render(renders: Path, benchmark_ids: set[str]) -> dict[tuple[str, str], str]:
-    return {
-        (benchmark_id, str(made.get("score_hash"))): feedback.variant_of_report(made)
-        for benchmark_id in sorted(benchmark_ids)
-        for made in feedback.reports(renders, benchmark_id)
-    }
-
-
 # --- the database and health ---------------------------------------------------------
 
 
@@ -728,8 +459,15 @@ SCHEMA_NOTES = (
     "analysis.result_json holds measured features as JSON, read with json_extract(result_json, "
     "'$.lufs'): duration_s, peak_dbfs, rms_dbfs, lufs, onsets, bpm, bpm_confidence, key, "
     "key_confidence, centroid_hz, low_ratio (energy share below 150 Hz), percussive_ratio, form.",
-    "Renders are folders, not rows: verdict.score_hash names renders/<benchmark>/<score_hash>/"
+    "Renders are folders, not rows: rating.score_hash names renders/<benchmark>/<score_hash>/"
     "report.json. Use the benchmark and report tools for them.",
+    "rating holds Dean's ratings, one row per save (a whole-benchmark one once per take): 0 to 5 "
+    "stars, 3 or more a pass; status is what he clicked, NULL when the stars decide (a pass is "
+    "resolved, a fail unresolved); 0 stars with no status clears a take's own rating. The "
+    "newest stands. via = 'verdict' marks one carried over from the retired verdict table, "
+    "which nothing writes any more.",
+    "idea holds Dean's ideas for projects, benchmarks and variants: ref is the id, parent "
+    "where it goes, dropped_at when he dropped it. The ideas tool says which are built.",
 )
 
 

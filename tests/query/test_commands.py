@@ -373,7 +373,7 @@ def test_the_real_server_over_pipes(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert sorted(answers_by_id) == [1, 2, 3, 4]
     assert answers_by_id[1]["supportedVersions"][0] == "2026-07-28"
     assert answers_by_id[2]["protocolVersion"] == "2025-11-25"
-    assert len(answers_by_id[3]["tools"]) == 11
+    assert len(answers_by_id[3]["tools"]) == 13
     assert answers_by_id[4]["isError"] is False
     assert not (tmp_path / "data").exists()
 

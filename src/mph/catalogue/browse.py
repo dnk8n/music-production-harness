@@ -4,10 +4,11 @@
 layer, and walk a sound's lineage. Its Benchmarks tab is the listening page
 for renders (spec/components/feedback.md, ``mph bench serve``).
 
-It is read-only (REQ-BRW-01), apart from saving verdicts to the catalogue
-DB. Audio is streamed from wherever the catalogue says it lives, and only
-sounds the catalogue knows by hash, or files a render's report lists, can be
-requested, so no path from the browser ever reaches the filesystem.
+It is read-only (REQ-BRW-01), apart from saving Dean's ratings and ideas to
+the catalogue DB (REQ-FBK-02, REQ-FBK-08). Audio is streamed from wherever
+the catalogue says it lives, and only sounds the catalogue knows by hash, or
+files a render's report lists, can be requested, so no path from the browser
+ever reaches the filesystem.
 Formats a browser can't play (AIFF) are decoded by
 ffmpeg into memory, never to disk (REQ-BRW-03, REQ-AUD-01).
 
@@ -48,7 +49,9 @@ NATIVE = {
 DECODED_CACHE_ITEMS = 8  # recent AIFF decodes kept in memory, for seeking
 MAX_LIMIT = 200
 MAX_BODY = 64 * 1024
-POST_PATHS = frozenset({"/api/verdict", "/api/open-project", "/api/render"})
+POST_PATHS = frozenset(
+    {"/api/rating", "/api/idea", "/api/idea-drop", "/api/open-project", "/api/render"}
+)
 DECODE_TO_WAV = ("-c:a", "pcm_f32le", "-f", "wav", "-")  # float, native rate, to a pipe
 
 
@@ -150,9 +153,9 @@ class App:
             return self._route(conn, url.path, parse_qs(url.query), headers)
 
     def handle_post(self, target: str, headers: Mapping[str, str], body: bytes) -> Response:
-        """Saving a verdict, or opening a render's song in Renoise. Besides the
-        Host check, the request must come from this page (Origin) as JSON, so
-        another site can't post one for Dean."""
+        """Saving a rating or an idea, starting a render, or opening a render's
+        song in Renoise. Besides the Host check, the request must come from this
+        page (Origin) as JSON, so another site can't post one for Dean (REQ-FBK-05)."""
         refused = self._refuse_post(target, headers)
         if refused:
             return refused
@@ -162,13 +165,19 @@ class App:
             payload = None
         if not isinstance(payload, dict):
             return text(HTTPStatus.BAD_REQUEST, "send a JSON object")
-        if urlsplit(target).path == "/api/open-project":
+        path = urlsplit(target).path
+        if path == "/api/open-project":
             return self._open_project(payload)
-        if urlsplit(target).path == "/api/render":
+        if path == "/api/render":
             return self._render(payload)
+        saves: dict[str, Callable[[sqlite3.Connection], object]] = {
+            "/api/rating": lambda conn: feedback.rate(conn, self._renders, payload),
+            "/api/idea": lambda conn: feedback.add_idea(conn, self._renders, payload),
+            "/api/idea-drop": lambda conn: feedback.drop_idea(conn, payload),
+        }
         with closing(db.connect(self._db_file)) as conn:
             try:
-                return as_json(feedback.record(conn, self._renders, payload))
+                return as_json(saves[path](conn))
             except feedback.FeedbackError as exc:
                 return text(HTTPStatus.BAD_REQUEST, str(exc))
 
@@ -239,6 +248,7 @@ class App:
             "/api/search": lambda: self._search(conn, params),
             "/api/derivatives": lambda: as_json(derivatives(conn)),
             "/api/bench": lambda: as_json(feedback.listing(self._renders, conn)),
+            "/api/ideas": lambda: as_json(feedback.idea_board(self._renders, conn)),
             "/api/render-status": self._render_status,
         }
         if path in exact:

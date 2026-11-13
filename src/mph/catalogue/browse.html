@@ -83,9 +83,10 @@
   .badge { border-radius: 4px; padding: 0 6px; font-size: 12px; font-weight: 500; }
   .badge.ok { background: #dcfce7; color: #166534; } .badge.bad { background: #fee2e2; color: #991b1b; }
   .badge.mid { background: #fef3c7; color: #92400e; } .badge.none { background: var(--chip); color: var(--dim); }
+  .badge.idea { background: #e0e7ff; color: #3730a3; }
   @media (prefers-color-scheme: dark) {
     .badge.ok { background: #14532d; color: #bbf7d0; } .badge.bad { background: #7f1d1d; color: #fecaca; }
-    .badge.mid { background: #78350f; color: #fde68a; }
+    .badge.mid { background: #78350f; color: #fde68a; } .badge.idea { background: #312e81; color: #c7d2fe; }
   }
   .takes { display: flex; flex-wrap: wrap; gap: 6px; }
   .listening { display: flex; flex-wrap: wrap; gap: 16px; list-style: none; padding: 8px 12px; }
@@ -98,10 +99,26 @@
   .variant h4 .id { color: var(--dim); font-weight: 400; }
   .checks { margin: 4px 0 0; padding: 0; list-style: none; }
   .checks li { padding: 1px 0; } .checks .want { color: var(--dim); }
-  .verdict { display: flex; flex-wrap: wrap; gap: 6px; align-items: start; }
-  .verdict textarea { flex: 1 1 260px; min-height: 52px; font: inherit; padding: 6px 8px; border-radius: 6px;
-                      border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
-  .verdict button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  [hidden] { display: none !important; }
+  .line { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .rating { display: flex; flex-direction: column; gap: 6px; }
+  .rating textarea, .idea-form textarea { min-height: 52px; font: inherit; padding: 6px 8px;
+                      border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+  .rating textarea { flex: 1 1 260px; }
+  .rating button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .stars { display: inline-flex; gap: 2px; align-items: center; margin-right: 6px; }
+  .stars button.star { border: none; background: none; font-size: 20px; line-height: 1; padding: 0 2px; color: var(--line); }
+  .stars button.star:hover { color: var(--dim); }
+  .stars button.star.on { background: none; color: var(--accent); }
+  .stars button.zero { font-size: 12px; padding: 2px 7px; margin-right: 4px; }
+  .rating .stars button.zero.on { background: var(--chip); color: var(--ink); border-color: var(--dim); }
+  .ideas-bar { display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; border-top: 1px solid var(--line); }
+  .idea-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; padding: 6px 0; }
+  .idea-form .grow { flex: 1 1 260px; }
+  .idea-form textarea { width: 100%; }
+  input.idref { width: 190px; }
+  button.add { border-style: dashed; color: var(--dim); }
+  .project-body { padding: 0 12px 12px; display: flex; flex-direction: column; gap: 6px; }
   .sound { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
   .mini { width: 22px; height: 22px; padding: 0; border-radius: 50%; font-size: 10px; line-height: 1; }
   .history { color: var(--dim); font-size: 12px; margin: 0; padding-left: 16px; }
@@ -276,11 +293,13 @@ function render() {
   list.querySelector(".sel")?.scrollIntoView({ block: "nearest" });
 }
 
-// --- benchmarks: listen, compare, give a verdict --------------------------------
+// --- benchmarks: listen, compare, rate ------------------------------------------
 let playingTake = null;    // {id, key} of the benchmark take in the player
 let quietest = null;       // LUFS of the quietest rendered take on the page
 let benchData = [];        // the last /api/bench answer
+let ideaData = { ideas: [], projects: [] };  // the last /api/ideas answer
 let renderWatch = null;    // polls a render started from this page
+const drafts = {};         // half-filled rating and idea forms, kept across redraws
 const listening = load("mph.listening", { match: true, keep: false });
 // The trim a render's delivered file got to stay under the ceiling (dB, REQ-BEN-06).
 function trimOf(r) {
@@ -319,8 +338,15 @@ function fold(key, openByDefault, attrs, summary, ...children) {
   return details;
 }
 function takesOf(b) { return b.takes.filter((t) => t.report); }
+function plural(n, word) { return `${n} ${word}${n === 1 ? "" : "s"}`; }
+function when(stamp) { return (stamp || "").slice(0, 16).replace("T", " "); }
+function post(path, body) {
+  return fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+}
 async function showBench() {
-  const data = await (await fetch("/api/bench")).json();
+  const [bench, board] = await Promise.all([fetch("/api/bench"), fetch("/api/ideas")]);
+  const data = await bench.json();
+  ideaData = board.ok ? await board.json() : { ideas: [], projects: [] };
   benchData = data;
   rows = []; showView("bench");
   const rendered = data.filter((b) => takesOf(b).length).length;
@@ -332,11 +358,16 @@ async function showBench() {
   const projects = [];
   for (const b of data) {  // the API sorts by project, then id (REQ-BEN-11)
     const name = b.project || "Other";
-    if (projects.at(-1)?.name !== name) projects.push({ name, benchmarks: [] });
+    if (projects.at(-1)?.name !== name) projects.push({ name, id: b.project_id, benchmarks: [] });
     projects.at(-1).benchmarks.push(b);
   }
+  // Projects only the spec has so far, and Dean's project ideas, go among them (REQ-FBK-08).
+  for (const row of ideaData.projects) {
+    if (!projects.some((p) => p.id === row.id)) projects.push({ name: row.name, id: row.id, benchmarks: [] });
+  }
+  projects.sort((a, b) => a.name.localeCompare(b.name));
   const at = window.scrollY;  // redrawing after a save or render keeps the page where it was
-  $("list").replaceChildren(listeningControls(), ...projects.map(projectGroup));
+  $("list").replaceChildren(listeningControls(), ideaBar(), ...projects.map(projectGroup), droppedIdeas());
   window.scrollTo(0, at);
   history.replaceState(null, "", "#bench");
   if (!renderWatch) {  // a render may still be running from before a reload
@@ -344,32 +375,45 @@ async function showBench() {
     if (now.state === "rendering") { $("status").textContent = `Rendering ${now.id} ${now.variant}…`; watchRender(null); }
   }
 }
+// How the rendered takes stand: resolved, unresolved, to rate, and to hear again (REQ-FBK-06).
+function standing(benchmarks) {
+  const takes = benchmarks.flatMap(takesOf);
+  const count = (state) => takes.filter((t) => t.state === state).length;
+  const again = takes.filter((t) => t.rating?.rendered_again).length;
+  return { takes: takes.length, resolved: count("resolved"), unresolved: count("unresolved"), unrated: count("unrated"), again };
+}
+function standingWords(s) {
+  const parts = [];
+  if (s.resolved) parts.push(`${s.resolved} resolved`);
+  if (s.unresolved) parts.push(`${s.unresolved} unresolved`);
+  if (s.unrated) parts.push(`${s.unrated} to rate`);
+  if (s.again) parts.push(`${s.again} rendered again since rated`);
+  return parts;
+}
 // One project's benchmarks, foldable to a heading that still says how they stand.
 function projectGroup(p) {
-  const passed = p.benchmarks.filter((b) => judged(b).state === "pass").length;
-  const details = fold(`project:${p.name}`, true, {},
-    el("summary", {}, p.name, el("span", { class: "why" },
-      `${p.benchmarks.length} benchmark${p.benchmarks.length === 1 ? "" : "s"} · you passed ${passed}`)),
-    el("ol", {}, ...p.benchmarks.map(benchCard)));
+  const row = ideaData.projects.find((r) => r.id === p.id) || {};
+  const idea = row.from === "idea" ? ideaData.ideas.find((i) => i.id === row.idea) : null;
+  const ideas = openIdeas("benchmark", p.id);
+  const words = p.benchmarks.length ? [plural(p.benchmarks.length, "benchmark"), ...standingWords(standing(p.benchmarks))] : [];
+  if (row.from === "spec") words.push("in the spec, no scores yet");
+  if (idea) words.push("your project idea");
+  if (ideas.length) words.push(plural(ideas.length, "benchmark idea"));
+  const intro = idea ? [el("div", { class: "project-body" }, ideaNotes(idea), el("div", { class: "takes" }, dropButton(idea)))] : [];
+  const extras = el("div", { class: "project-body" });
+  if (row.specced?.length) {
+    extras.append(el("div", { class: "why" }, "In the spec, no score yet: ",
+      row.specced.map((s) => `${s.id} ${s.title}`).join(" · ")));
+  }
+  extras.append(ideaForm("benchmark", p.id, row.next_benchmark ? `${row.next_benchmark} if left empty` : "BM-AREA-NN", p.name));
+  const details = fold(`project:${p.name}`, row.from !== "spec", {},
+    el("summary", {}, p.name, el("span", { class: "why" }, words.join(" · "))), ...intro,
+    el("ol", {}, ...p.benchmarks.map(benchCard), ...ideas.map(benchmarkIdeaCard)), extras);
   return el("li", { class: "project" }, details);
-}
-// How Dean has judged a benchmark: every rendered take, by the verdict that stands for it.
-function judged(b) {
-  const takes = takesOf(b);
-  const said = takes.map((t) => t.verdict && t.verdict.verdict);
-  const count = (v) => said.filter((s) => s === v).length;
-  if (!takes.length) return { state: "none", label: "not rendered" };
-  if (count("pass") === takes.length) return { state: "pass", label: takes.length === 1 ? "you passed it" : `you passed all ${takes.length} takes` };
-  const parts = [["pass", "passed"], ["close", "close"], ["fail", "failed"]]
-    .filter(([v]) => count(v)).map(([v, word]) => `${count(v)} ${word}`);
-  const open = said.filter((s) => !s).length;
-  if (open) parts.push(`${open} to judge`);
-  return { state: count("fail") ? "fail" : open ? "open" : "close", label: parts.join(", ") };
 }
 // --- rendering on demand (REQ-RET-06): pruned or never-rendered takes -------------
 async function renderNow(b, variant, then) {
-  const response = await fetch("/api/render", { method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id: b.id, variant }) });
+  const response = await post("/api/render", { id: b.id, variant });
   if (!response.ok) { $("status").textContent = await response.text(); return; }
   $("status").textContent = `Rendering ${b.id} ${variant}… this takes a minute or two.`;
   watchRender(then);
@@ -399,7 +443,7 @@ function playLatest(id, variant) {
   if (!r || !r.on_disk) return;
   playTake(b, { key: variant, label: variant, hash: r.score_hash, file: r.files.delivery, report: r }, []);
 }
-function badge(kind, label) { return el("span", { class: `badge ${kind}` }, label); }
+function badge(kind, label, title) { return el("span", { class: `badge ${kind}`, ...(title ? { title } : {}) }, label); }
 function clock(t) { return `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`; }
 function playTake(b, take, buttons) {
   if (take.report && take.report.on_disk === false) { renderNow(b, take.key, () => playLatest(b.id, take.key)); return; }
@@ -432,13 +476,24 @@ function prunedBadge(b, r, variant) {
   if (r.on_disk !== false) return [];
   return [badge("none", "audio pruned"), renderButton(b, variant, "Render again")];
 }
-function verdictKind(v) { return v === "pass" ? "ok" : v === "fail" ? "bad" : "mid"; }
-// The verdict that stands for a take: its own, or one given to the whole benchmark.
-function verdictBadge(t) {
-  const v = t.verdict;
-  if (!v) return badge("none", "not judged");
-  const how = v.score_hash !== t.report.score_hash ? " (earlier, for every take)" : v.scope === "all" ? " (for every take)" : "";
-  return badge(verdictKind(v.verdict), `you said: ${v.verdict}${how}`);
+// --- ratings (REQ-FBK-02, REQ-FBK-06) ------------------------------------------------
+function starText(n) { return "★".repeat(n) + "☆".repeat(5 - n); }
+function stateWords(v) {
+  if (v.state === "unrated") return "cleared";
+  return v.status_from === "you" ? v.state : `${v.state} by its stars`;
+}
+// The rating that stands for a take: its own, or one given to the whole benchmark.
+function ratingBadges(t) {
+  const v = t.rating;
+  if (!v) return [badge("none", "not rated")];
+  const scope = v.score_hash !== t.report.score_hash ? " · earlier, for every take" : v.scope === "all" ? " · for every take" : "";
+  const out = [
+    badge(v.passed ? "ok" : "bad", `${starText(v.stars)}${scope}`, `${plural(v.stars, "star")}: ${v.passed ? "a pass" : "a fail"}`),
+    badge(v.state === "resolved" ? "ok" : "mid", stateWords(v),
+      v.state === "resolved" ? "renders again only when forced" : "agents work on it; it renders again when something that shapes it changes"),
+  ];
+  if (v.rendered_again) out.push(badge("mid", "rendered again since you rated it", "listen again and rate this render"));
+  return out;
 }
 function measuredBadge(r) {
   return badge(r.passed ? "ok" : "bad", r.passed ? "measurements pass" : "measurements fail");
@@ -447,10 +502,15 @@ function openButton(b, r) {
   if (!r.files.project || r.on_disk === false) return [];
   const opened = el("span", { class: "why" });
   return [el("button", { title: `open ${r.files.project} in Renoise, to change it by hand`, onclick: async () => {
-    const response = await fetch("/api/open-project", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: b.id, score_hash: r.score_hash }) });
+    const response = await post("/api/open-project", { id: b.id, score_hash: r.score_hash });
     opened.textContent = response.ok ? "Opening in Renoise…" : await response.text();
   } }, `Open ${r.variant} in Renoise`), opened];
+}
+// Where a render came from: when, and the commit of the checkout (REQ-BEN-03).
+function madeFrom(r) {
+  const c = r.checkout;
+  const code = c ? ` from ${c.commit.slice(0, 7)}${c.branch ? ` on ${c.branch}` : ""}${c.uncommitted ? ", with uncommitted changes" : ""}` : "";
+  return el("div", { class: "why" }, `Rendered ${when(r.rendered_at)}${code}`);
 }
 // One take's measurements and the sounds it used.
 function renderDetails(b, r) {
@@ -469,40 +529,47 @@ function renderDetails(b, r) {
                      onclick: () => playStem(b, r, k.voice) }, "♪"),
       ` ${k.voice}: ${k.sound} `, el("span", { class: "want" },
         `(${k.why}${k.gain_db === undefined ? "" : `, level ${k.gain_db > 0 ? "+" : ""}${k.gain_db} dB`})`)))));
-  return [checks, kit];
+  return [madeFrom(r), checks, kit];
 }
 // A benchmark folds to its heading and badges; folded until Dean opens it.
 function benchCard(b) {
   const head = el("h3", {}, b.title, el("span", { class: "id" }, b.id));
   const card = el("div", { class: "body" }, el("p", { class: "hear" }, el("b", {}, "Hear: "), b.hear));
   const item = el("li", { class: "card" }, fold(`benchmark:${b.id}`, false, {}, el("summary", {}, head), card));
+  const variantIdeas = openIdeas("variant", b.id);
+  const ideas = () => [ideaList(variantIdeas), ideaForm("variant", b.id, "filled in from the title", b.id)];
+  if (variantIdeas.length) head.append(badge("idea", plural(variantIdeas.length, "variant idea")));
   const rendered = takesOf(b);
   if (!rendered.length) {
     head.append(badge("none", "not rendered"));
     card.append(el("div", { class: "why" }, renderButton(b, b.takes[0].name, `Render ${b.takes[0].name}`), ` or every take: mph bench render ${b.id}`));
-    card.append(takeList(b));
+    card.append(takeList(b), ...ideas());
     return item;
   }
-  const state = judged(b);
+  const s = standing([b]);
+  const words = standingWords(s);
+  const kind = s.unresolved ? "mid" : s.resolved === s.takes ? "ok" : "none";
   const failing = rendered.filter((t) => !t.report.passed).length;
-  head.append(badge({ pass: "ok", fail: "bad", close: "mid" }[state.state] || "none", state.label),
-    failing ? badge("bad", `${failing} take${failing === 1 ? "" : "s"} fail measurements`) : badge("ok", "measurements pass"));
+  head.append(badge(kind, s.resolved === s.takes ? (s.takes === 1 ? "resolved" : `all ${s.takes} takes resolved`) : words.join(", ")),
+    failing ? badge("bad", `${plural(failing, "take")} fail measurements`) : badge("ok", "measurements pass"));
   // Every rendered take, equal, to compare by switching between them (REQ-FBK-01).
-  const takes = rendered.map((t) => ({ key: t.name, label: t.name, hash: t.report.score_hash, file: t.report.files.delivery, note: t.title, report: t.report }));
+  const takes = rendered.map((t) => ({ key: t.name, label: t.name, hash: t.report.score_hash, file: t.report.files.delivery,
+                                       note: t.title, report: t.report, stars: t.rating ? t.rating.stars : null }));
   const buttons = takes.map((take) => el("button", { "data-key": take.key, title: take.note,
-    onclick: () => playTake(b, take, buttons) }, `▶ ${take.label}${take.report.on_disk === false ? " (renders first)" : ""}`));
+    onclick: () => playTake(b, take, buttons) },
+    `▶ ${take.label}${take.stars === null ? "" : ` ${take.stars}★`}${take.report.on_disk === false ? " (renders first)" : ""}`));
   const missing = b.takes.filter((t) => !t.report).map((t) => renderButton(b, t.name, `Render ${t.name}`));
   card.append(el("div", { class: "takes" }, ...buttons, ...missing));
-  card.append(el("div", { class: "whole" }, el("b", {}, `Your verdict on every take (${rendered.length})`),
-    el("span", { class: "why" }, "A take you judge on its own below keeps its own verdict."),
-    verdictForm(b, null)));
-  card.append(takeList(b));
+  card.append(el("div", { class: "whole" }, el("b", {}, `Your rating for every take (${rendered.length})`),
+    el("span", { class: "why" }, "A take you rate on its own below keeps its own rating."),
+    ratingForm(b, null)));
+  card.append(takeList(b), ...ideas());
   return item;
 }
 function takeList(b) {
   const rendered = takesOf(b).length;
   return fold(`takes:${b.id}`, false, { class: "variants" },
-    el("summary", {}, `Each take: ${rendered} of ${b.takes.length} rendered, with its measurements, sounds and own verdict`),
+    el("summary", {}, `Each take: ${rendered} of ${b.takes.length} rendered, with its measurements, sounds and own rating`),
     el("ul", { class: "variant-list" }, ...b.takes.map((t) => takeItem(b, t))));
 }
 function takeItem(b, t) {
@@ -514,37 +581,187 @@ function takeItem(b, t) {
     return item;
   }
   const r = t.report;
-  head.append(measuredBadge(r), verdictBadge(t), ...prunedBadge(b, r, t.name));
+  head.append(measuredBadge(r), ...ratingBadges(t), ...prunedBadge(b, r, t.name));
   const opener = openButton(b, r);
   if (opener.length) item.append(el("div", { class: "takes" }, ...opener));
-  item.append(...renderDetails(b, r), verdictForm(b, r));
+  item.append(...renderDetails(b, r), ratingForm(b, t));
   return item;
 }
-// A verdict for one take (r), or for every rendered take when r is null (REQ-FBK-02).
-function verdictForm(b, r) {
-  let choice = null;
-  const notes = el("textarea", { placeholder: r ? `What you heard in ${r.variant}` : "What you heard, e.g. 0:42 hats too loud" });
-  const choices = ["pass", "close", "fail"].map((v) => el("button", { onclick: () => {
-    choice = v; choices.forEach((c) => c.classList.toggle("on", c.textContent === v)); } }, v));
-  const stamp = el("button", { title: "add the player's current time to the notes", onclick: () => {
-    notes.value += `${notes.value && !notes.value.endsWith("\n") ? "\n" : ""}${clock(player.currentTime)} `; notes.focus(); } }, "+ time");
-  const status = el("span", { class: "why" });
+// What a rating with these stars and this status means, said as Dean picks them.
+function ratingMeaning(stars, status, clears) {
+  if (stars === 0 && !status) {
+    return clears ? "0 stars and neither resolved nor unresolved: saving clears this take's own rating."
+                  : "Pick some stars, or click resolved or unresolved: 0 stars with neither is no rating.";
+  }
+  const pass = stars >= 3;
+  const state = status || (pass ? "resolved" : "unresolved");
+  const then = state === "resolved" ? "it renders again only when forced"
+                                    : "agents work on it, and it renders again once something that shapes it changes";
+  return `${plural(stars, "star")}: ${pass ? "a pass" : "a fail"}, ${state}${status ? "" : " by its stars"}, so ${then}.`;
+}
+// A rating for one take (t), or for every rendered take when t is null (REQ-FBK-02).
+function ratingForm(b, t) {
+  const r = t?.report;
+  const key = `rating:${b.id}:${t ? t.name : "*"}`;
+  const start = t?.rating && t.rating.state !== "unrated" ? t.rating : null;
+  const draft = drafts[key] || { stars: start ? start.stars : 0, status: start ? start.status : null, notes: "" };
+  const touch = () => { drafts[key] = draft; };  // kept across redraws once Dean starts on it
+  const own = r ? b.ratings.filter((x) => x.score_hash === r.score_hash && x.scope === "take") : [];
+  const clears = own.length > 0 && own[0].state !== "unrated";
+  const meaning = el("span", { class: "why" });
+  const zero = el("button", { class: "zero", title: "0 stars: a fail; click resolved or unresolved with it",
+    onclick: () => { draft.stars = 0; touch(); draw(); } }, "0");
+  const stars = [1, 2, 3, 4, 5].map((n) => el("button", { class: "star", "aria-label": plural(n, "star"),
+    title: `${plural(n, "star")}: ${n >= 3 ? "a pass" : "a fail"}`, onclick: () => { draft.stars = n; touch(); draw(); } }, "★"));
+  const statuses = [["resolved", "nothing more wanted: renders again only when forced"],
+                    ["unresolved", "needs work: agents pick it up, and it renders again once something changes"]]
+    .map(([s, title]) => el("button", { "data-status": s, title: `${title}. Click again to let the stars decide.`,
+      onclick: () => { draft.status = draft.status === s ? null : s; touch(); draw(); } }, s[0].toUpperCase() + s.slice(1)));
+  const notes = el("textarea", { maxlength: "4000",
+    placeholder: t ? `What you heard in ${t.name}, and what you want` : "What you heard, e.g. 0:42 hats too loud" });
+  notes.value = draft.notes;
+  notes.addEventListener("input", () => { draft.notes = notes.value; touch(); });
+  const stamp = el("button", { title: "add the player's current time to the feedback", onclick: () => {
+    notes.value += `${notes.value && !notes.value.endsWith("\n") ? "\n" : ""}${clock(player.currentTime)} `;
+    draft.notes = notes.value; touch(); notes.focus(); } }, "+ time");
+  const result = el("span", { class: "why" });
   const saveButton = el("button", { class: "primary", onclick: async () => {
-    if (!choice) { status.textContent = "Pick pass, close or fail first."; return; }
-    const body = r ? { id: b.id, scope: "take", score_hash: r.score_hash, verdict: choice, notes: notes.value }
-                   : { id: b.id, scope: "all", verdict: choice, notes: notes.value };
-    const response = await fetch("/api/verdict", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body) });
-    if (!response.ok) { status.textContent = await response.text(); return; }
+    const body = { id: b.id, scope: t ? "take" : "all", stars: draft.stars, status: draft.status, notes: draft.notes,
+                   ...(r ? { score_hash: r.score_hash } : {}) };
+    const response = await post("/api/rating", body);
+    if (!response.ok) { result.textContent = await response.text(); return; }
+    const saved = await response.json();
+    delete drafts[key];
     await showBench();  // folds and scroll stay as they were
-    $("status").textContent = `Saved your verdict on ${r ? `${b.id} ${r.variant}` : `every take of ${b.id}`}: ${choice}.`;
-  } }, r ? `Save verdict on ${r.variant}` : "Save verdict on every take");
-  const box = el("div", {}, el("div", { class: "verdict" }, ...choices, notes, stamp, saveButton, status));
-  const shown = r ? b.verdicts.filter((v) => v.score_hash === r.score_hash && v.scope === "take")
-                  : b.verdicts.filter((v, i, all) => (v.scope === "all" || v.legacy) && all.findIndex((w) => w.created_at === v.created_at && w.scope === v.scope) === i);
-  if (shown.length) box.append(el("ul", { class: "history" }, ...shown.slice(0, 5).map((v) =>
-    el("li", {}, `${v.verdict} · ${v.created_at.slice(0, 16).replace("T", " ")}${v.legacy ? " · on the old main take" : ""}${v.notes ? ` · ${v.notes}` : ""}`))));
+    const what = t ? `${b.id} ${t.name}` : `every take of ${b.id}`;
+    $("status").textContent = saved.state === "unrated" ? `Cleared your own rating for ${what}.`
+      : `Saved your rating for ${what}: ${plural(saved.stars, "star")}, ${saved.state}.`;
+  } }, t ? `Save rating for ${t.name}` : "Save rating for every take");
+  function draw() {
+    zero.classList.toggle("on", draft.stars === 0);
+    stars.forEach((s, i) => s.classList.toggle("on", i < draft.stars));
+    statuses.forEach((s) => s.classList.toggle("on", s.dataset.status === draft.status));
+    meaning.textContent = ratingMeaning(draft.stars, draft.status, clears);
+    saveButton.disabled = draft.stars === 0 && !draft.status && !clears;
+  }
+  draw();
+  const box = el("div", { class: "rating" },
+    el("div", { class: "line" }, el("span", { class: "stars" }, zero, ...stars), ...statuses),
+    meaning, el("div", { class: "line" }, notes, stamp), el("div", { class: "line" }, saveButton, result));
+  box.append(ratingHistory(b, t));
   return box;
+}
+// Earlier ratings, newest first (REQ-FBK-07): for one take, or those for every take.
+function ratingHistory(b, t) {
+  const shown = t ? b.ratings.filter((x) => x.take === t.name || x.legacy)
+                  : b.ratings.filter((x, i, all) => (x.scope === "all" || x.legacy)
+                      && all.findIndex((w) => w.created_at === x.created_at && w.scope === x.scope) === i);
+  if (!shown.length) return "";
+  const line = (x) => {
+    const bits = [x.state === "unrated" ? "cleared" : `${starText(x.stars)} ${stateWords(x)}`, when(x.created_at)];
+    if (x.scope === "all") bits.push("for every take");
+    if (x.legacy) bits.push("on the old main take");
+    else if (t && t.report && x.score_hash !== t.report.score_hash) bits.push("an earlier render");
+    if (x.via === "verdict") bits.push(`was your verdict: ${x.verdict}`);
+    if (x.notes) bits.push(x.notes);
+    return el("li", {}, bits.join(" · "));
+  };
+  const more = shown.length > 5 ? [el("li", {}, `and ${shown.length - 5} earlier: mph shows them all to agents`)] : [];
+  return fold(`history:${b.id}:${t ? t.name : "*"}`, false, {},
+    el("summary", {}, `Your ratings so far (${shown.length})`),
+    el("ul", { class: "history" }, ...shown.slice(0, 5).map(line), ...more));
+}
+// --- ideas (REQ-FBK-08): new projects, benchmarks and variants for agents to build -----
+function openIdeas(kind, parent) {
+  return ideaData.ideas.filter((i) => i.kind === kind && i.status === "open" && i.parent === parent);
+}
+function ideaBar() {
+  const open = ideaData.ideas.filter((i) => i.status === "open").length;
+  return el("li", { class: "ideas-bar" },
+    el("span", { class: "why" }, open
+      ? `${plural(open, "open idea")}, shown where each would go. Agents build them as spec and scores.`
+      : "Add an idea for a project, a benchmark or a variant, and agents build it as spec and scores."),
+    ideaForm("project", "", "filled in from the name", ""));
+}
+function ideaForm(kind, parent, idHint, where) {
+  const key = `idea:${kind}:${parent}`;
+  const draft = drafts[key] || { open: false, title: "", ref: "", notes: "" };
+  const label = { project: "Project idea", benchmark: "Benchmark idea", variant: "Variant idea" }[kind];
+  const field = (name, tag, attrs) => {
+    const input = el(tag, attrs);
+    input.value = draft[name];
+    input.addEventListener("input", () => { draft[name] = input.value; drafts[key] = draft; });
+    return input;
+  };
+  const title = field("title", "input", { class: "words", maxlength: "120",
+    placeholder: kind === "project" ? "e.g. Tribal percussion" : kind === "benchmark" ? "e.g. Shaker on the offbeat" : "e.g. Hats up 3 dB" });
+  const ref = field("ref", "input", { class: "idref", maxlength: "40", placeholder: idHint,
+    title: "leave it empty and mph fills one in" });
+  const notes = field("notes", "textarea", { maxlength: "4000", placeholder: "What you want to hear, and why" });
+  const result = el("span", { class: "why" });
+  const form = el("div", { class: "idea-form" },
+    el("label", {}, kind === "project" ? "Name" : "Title", title), el("label", {}, "Id (optional)", ref),
+    el("label", { class: "grow" }, "Notes", notes),
+    el("div", { class: "line" },
+      el("button", { class: "primary", onclick: async () => {
+        const response = await post("/api/idea", { kind, parent, title: draft.title, ref: draft.ref, notes: draft.notes });
+        if (!response.ok) { result.textContent = await response.text(); return; }
+        const made = await response.json();
+        delete drafts[key];
+        await showBench();
+        $("status").textContent = `Added your ${kind} idea ${made.ref}: ${made.title}.`;
+      } }, `Save ${label.toLowerCase()}`),
+      el("button", { onclick: () => { delete drafts[key]; Object.assign(draft, { open: false, title: "", ref: "", notes: "" });
+                                      title.value = ref.value = notes.value = result.textContent = ""; show(); } }, "Cancel"), result));
+  const opener = el("button", { class: "add", onclick: () => { draft.open = true; drafts[key] = draft; show(); title.focus(); } },
+    `+ ${label}${where ? ` in ${where}` : ""}`);
+  function show() { form.hidden = !draft.open; opener.hidden = draft.open; }
+  show();
+  return el("div", { class: "idea-add" }, opener, form);
+}
+function ideaNotes(idea) {
+  return el("p", { class: "hear" }, el("b", {}, "Your idea: "), idea.notes || "no notes yet",
+    el("span", { class: "why" }, ` · added ${when(idea.created_at)}${idea.ref_given ? "" : ", id filled in"}`));
+}
+function dropButton(idea) {
+  return el("button", { title: "drop this idea and the open ideas under it; you can undo it", onclick: async () => {
+    const response = await post("/api/idea-drop", { idea: idea.id });
+    if (!response.ok) { $("status").textContent = await response.text(); return; }
+    const dropped = await response.json();
+    await showBench();
+    $("status").replaceChildren(`Dropped ${dropped.refs.join(", ")}. `, undoButton(idea, "Undo"));
+  } }, "Drop idea");
+}
+function undoButton(idea, label) {
+  return el("button", { title: "bring it back, with the ideas dropped with it", onclick: async () => {
+    const response = await post("/api/idea-drop", { idea: idea.id, undo: true });
+    if (!response.ok) { $("status").textContent = await response.text(); return; }
+    const back = await response.json();
+    await showBench();
+    $("status").textContent = `Brought back ${back.refs.join(", ")}.`;
+  } }, label);
+}
+// A benchmark idea, in its project: its notes, its variant ideas, and room for more.
+function benchmarkIdeaCard(idea) {
+  const head = el("h3", {}, idea.title, el("span", { class: "id" }, idea.ref), badge("idea", "your idea"));
+  const body = el("div", { class: "body" }, ideaNotes(idea), el("div", { class: "takes" }, dropButton(idea)),
+    ideaList(openIdeas("variant", idea.ref)), ideaForm("variant", idea.ref, "filled in from the title", idea.ref));
+  return el("li", { class: "card" }, fold(`idea:${idea.id}`, true, {}, el("summary", {}, head), body));
+}
+function ideaList(found) {
+  if (!found.length) return "";
+  return el("ul", { class: "variant-list" }, ...found.map((i) => el("li", { class: "variant" },
+    el("h4", {}, i.ref, el("span", { class: "id" }, i.title), badge("idea", "your variant idea")),
+    ideaNotes(i), el("div", { class: "takes" }, dropButton(i)))));
+}
+function droppedIdeas() {
+  const dropped = ideaData.ideas.filter((i) => i.status === "dropped").reverse();
+  if (!dropped.length) return "";
+  return el("li", { class: "project" }, fold("ideas:dropped", false, {},
+    el("summary", {}, "Dropped ideas", el("span", { class: "why" }, `${dropped.length}`)),
+    el("ul", { class: "variant-list project-body" }, ...dropped.map((i) => el("li", { class: "variant" },
+      el("h4", {}, i.title, el("span", { class: "id" }, `${i.kind} ${i.ref}${i.parent ? ` in ${i.parent}` : ""}`)),
+      el("div", { class: "why" }, `dropped ${when(i.dropped_at)}`), el("div", { class: "takes" }, undoButton(i, "Bring back")))))));
 }
 
 // --- selection: in order, or layered -------------------------------------------
@@ -612,7 +829,7 @@ $("q-layer").addEventListener("click", playTogether);
 $("q-stop").addEventListener("click", stopAll);
 $("q-clear").addEventListener("click", () => { queue = []; renderQueue(); });
 document.addEventListener("keydown", (e) => {
-  // While typing anywhere (search boxes, verdict notes), every key goes to the text:
+  // While typing anywhere (search boxes, feedback, ideas), every key goes to the text:
   // shortcuts pause until Esc or a click elsewhere. Shortcuts never take modified keys.
   if (e.target.closest("input, select, textarea, [contenteditable]")) {
     if (e.key === "Escape") e.target.blur();

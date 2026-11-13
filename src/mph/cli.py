@@ -199,7 +199,9 @@ def _add_bench(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None
     bench_sub.add_parser("report", help="the latest result for one benchmark").add_argument(
         "id", metavar="BM-ID"
     )
-    serve = bench_sub.add_parser("serve", help="listen to renders and give verdicts in a browser")
+    serve = bench_sub.add_parser(
+        "serve", help="listen to renders, rate them and add ideas in a browser"
+    )
     serve.add_argument("--port", type=int, default=8765)
     serve.add_argument("--no-open", action="store_true", help="just print the address")
 

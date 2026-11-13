@@ -6,7 +6,9 @@ Each benchmark is a short render (8 to 32 bars) with three parts:
 
 1. **Description:** what Dean should hear, in plain words, written before rendering.
 2. **Measurements:** automated checks that the render does what the score says.
-3. **Verdict:** Dean listens on the feedback page and records pass/fail plus notes.
+3. **Rating:** Dean listens on the feedback page and gives each take 0 to 5
+   stars (3 or more is a pass), resolved or unresolved, and his feedback
+   (REQ-FBK-02).
 
 A benchmark passes when the measurements pass *and* Dean passes it. Renders
 are 48 kHz / 24-bit AIFF via the delivery path, so they also exercise
@@ -29,8 +31,13 @@ measurements are in this file.
 
 ### REQ-BEN-03: Benchmark QA report
 Each render writes `report.json` next to the audio: score hash, tool
-versions, measurements with pass/fail, loudness, true peak, and the licence marker.
-- **Why:** the feedback page and the AI reviewer read the report, not the code.
+versions, measurements with pass/fail, loudness, true peak, and the licence
+marker. It also names the checkout it was rendered from, when that is a git
+checkout: the commit, the branch, and whether it had uncommitted changes.
+- **Why:** the feedback page and the AI reviewer read the report, not the
+  code. Threads render from their own branches (REQ-QRY-09), so the commit
+  says which code made what Dean heard, and links a rating to the change
+  that answered it.
 - **Verify:** test
 
 ### REQ-BEN-04: Scores are data checked against this file
@@ -101,7 +108,7 @@ the engine REQ-BEN-10 picks.
 (REQ-BEN-14); one whose engine isn't installed here is skipped with a note,
 not counted as a failure. `--variant NAME` renders just that one, and fails
 if it can't. Each variant renders into its own folder, with its own score
-hash, measurements and report, which names the variant. A verdict can cover
+hash, measurements and report, which names the variant. A rating can cover
 every take of a benchmark or just one (REQ-FBK-02).
 - **Why:** Dean wants to compare different productions of the same part by
   ear (Renoise against SuperCollider, one sound design against another) and
@@ -236,42 +243,50 @@ feel go in the delay column, where Dean can see and change them.
 - **Verify:** test, measure
 
 ### REQ-BEN-14: A pass is a pass
-`mph bench render` (named benchmarks or `--all`) renders a take only when
-there is something new for it:
+`mph bench render` (named benchmarks or `--all`) renders a take only when a
+render could come out different and its rating (REQ-FBK-06) doesn't hold it:
 - it has never been rendered;
-- what shapes it has changed since its newest render: the take's score, the
-  engine, the audio settings, or the code that renders and measures it (the
-  render and measurement modules, the SuperCollider synth definitions and
-  the Renoise bridge). Each report records these as one digest, `inputs`.
-  Comments, docstrings and formatting don't count as changes;
-- its newest render failed a measurement;
-- the verdict that stands for it (REQ-FBK-02) is fail or close;
-- or that verdict is a pass with notes: feedback still to act on.
+- or it isn't resolved, and since its newest render something that shapes
+  it has changed: the take's score, the engine, the audio settings, or the
+  code that renders and measures it (the render and measurement modules,
+  the SuperCollider synth definitions and the Renoise bridge), which each
+  report records as one digest, `inputs`; or, for a take that chooses its
+  sounds afresh (REQ-BEN-15), the sounds it would choose now. Comments,
+  docstrings and formatting don't count as changes.
 
-Any other take is skipped, and the output says why: it passed and nothing
-changed, or it is waiting for a verdict. `--force-rerender` renders the
-takes asked for anyway. A report written before this rule has no `inputs`,
-so its take renders once more. A take whose audio was pruned is still
-skipped, and the page renders it again on demand (REQ-RET-06).
+A resolved take is skipped whatever changed. The others are skipped when
+nothing changed, and the output says why each was: resolved, unresolved and
+waiting for a change, or waiting for a rating. A failed measurement or new
+feedback doesn't render a take again on its own, because the render would
+come out the same. `--force-rerender` renders the takes asked for anyway. A
+report written before `inputs` existed has none, so its take renders once
+more unless it is resolved. A take whose audio was pruned is still skipped,
+and the page renders it again on demand (REQ-RET-06).
 - **Why:** Dean, 2026-11-12: "A pass is a pass". A benchmark he has passed
-  is stable, and `mph bench render --all` must leave it alone. Only a
-  failure, feedback not yet acted on, or code that no render has used yet
-  is worth a render.
+  is stable, and `mph bench render --all` must leave it alone. Dean,
+  2026-11-13: a resolved take renders again only when forced, and an
+  unresolved one when something changed; otherwise it "just NOPs out".
+  Renders are deterministic (REQ-AUD-05), so rendering with nothing changed
+  only spends minutes making the same file. Kit choice isn't in `inputs`,
+  so for a take that chooses afresh mph compares the sounds it would pick
+  now with the ones it used: a new sample or a better search still reaches
+  a failed take.
 - **Verify:** test
 
 ### REQ-BEN-15: A passed take keeps its sounds
-When a take whose standing verdict is pass renders again, each voice keeps
+When a take whose standing rating is a pass (3 stars or more, REQ-FBK-02)
+renders again, each voice keeps
 the sound that render used if the voice still asks for the same thing (its
 role, words, synth and pick, which every report now records) and the sound
 is still on disk. A voice is chosen afresh (REQ-BEN-05) only when its
 request changed or its sound is gone. A report from before requests were
 recorded keeps its sounds. The report says which sounds were kept.
-Failed and unjudged takes choose afresh.
+Failed (0 to 2 stars) and unrated takes choose afresh.
 - **Why:** catalogue search keeps getting better (ranking, labels,
   analysis), and any improvement can change which sound wins. A pass is for
   the sounds Dean heard, so a better search must not swap them out from
-  under his verdict. The same sounds and the same inputs give the same
-  score hash, so his verdict still stands after a render. To try another
+  under his rating. The same sounds and the same inputs give the same
+  score hash, so his rating still stands after a render. To try another
   sound, change the voice's request in the score, which is a change he can
   see and judge.
 - **Verify:** test

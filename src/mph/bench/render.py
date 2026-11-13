@@ -217,13 +217,17 @@ def measure(
     matches: dict[str, list[audio.Match]] = {}
     peaks: dict[str, float] = {}
     for voice in score.voices:
-        onsets = _onsets([e for e in found if e.voice == voice.name])
+        own = [e for e in found if e.voice == voice.name]
+        onsets = _onsets(own)
+        times = [e.time_s for e in own]
         matches[voice.name] = []
         for kind in sorted({e.kind for e in onsets}):
             tpl = _template(reference, templates, voice.name, kind, rate)
             peaks[voice.name] = max(peaks.get(voice.name, 0.0), float(np.abs(tpl).max()))
             group = [e for e in onsets if e.kind == kind]
-            matches[voice.name] += audio.match_hits(stems[voice.name], tpl, group, rate)
+            matches[voice.name] += audio.match_hits(
+                stems[voice.name], tpl, group, rate, voice_times=times
+            )
     found_checks = [checks.timing(matches), checks.velocity(matches)]
     found_checks += checks.swing(score, matches)
     found_checks += checks.feel(score, matches)

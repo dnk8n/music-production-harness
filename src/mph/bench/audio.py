@@ -1,15 +1,20 @@
 """Audio for benchmarks: stems, slicing and measurement (REQ-BEN-01, REQ-BEN-03).
 
 Timing is checked by matching: each voice is also rendered alone once (its
-*template*), and every scored hit is found in the voice's stem by
-cross-correlating the template's first 20 ms within +/-5 ms of where the hit
-should be. That gives the timing error to the sample and the hit's level
+*template*), and every scored hit is found in the voice's stem within
++/-5 ms of where the hit should be. The match uses the template from its
+start through its loudest sample (at least 20 ms, at most 250 ms, never
+reaching into the voice's next note), and scores each position by shape, not
+loudness: the correlation is divided by the stem's energy under the template
+there. So a sound that swells in isn't pulled late toward its louder part
+(REQ-BEN-01). That gives the timing error to the sample and the hit's level
 (the least-squares gain), which is its velocity. Stems are separate, so other
 voices never confuse the match.
 """
 
 from __future__ import annotations
 
+import bisect
 import math
 import struct
 from collections.abc import Sequence
@@ -24,8 +29,10 @@ from pyloudnorm.iirfilter import IIRfilter
 
 from mph.bench.score import PULSES, Event
 
-TEMPLATE_S = 0.02
+TEMPLATE_S = 0.02  # a match uses at least this much of the template
+TEMPLATE_MAX_S = 0.25  # and at most this much, however late its loudest sample
 SEARCH_S = 0.005
+QUIET = 1e-12  # of the template's energy: below this, the stem counts as silent
 SILENCE = 10 ** (-60 / 20)  # -60 dBFS
 TRUE_PEAK_OVERSAMPLING = 4
 SLICES_PER_BAR = 8
@@ -100,21 +107,44 @@ def _window(signal: Audio, start: int, length: int) -> Audio:
     return out
 
 
-def match_hits(stem: Audio, template: Audio, events: Sequence[Event], rate: int) -> list[Match]:
-    tpl = mono(template)[: round(TEMPLATE_S * rate)].astype(np.float64)
-    energy = float(np.dot(tpl, tpl))
+def match_hits(
+    stem: Audio,
+    template: Audio,
+    events: Sequence[Event],
+    rate: int,
+    *,
+    voice_times: Sequence[float] = (),
+) -> list[Match]:
+    """Find each scored hit in the stem (REQ-BEN-01). ``voice_times`` are the
+    starts of all the voice's notes, so a match never reaches into the next one."""
+    sound = mono(template).astype(np.float64)
     signal = mono(stem)
     reach = round(SEARCH_S * rate)
+    shortest, longest = round(TEMPLATE_S * rate), round(TEMPLATE_MAX_S * rate)
+    loudest = int(np.argmax(np.abs(sound))) + 1 if len(sound) else 0
+    starts = sorted(round(t * rate) for t in voice_times)
     found = []
     for event in events:
         at = event.sample(rate)
+        later = bisect.bisect_right(starts, at)
+        room = starts[later] - at - reach if later < len(starts) else longest
+        tpl = sound[: max(shortest, min(loudest, room, longest))]
+        energy = float(np.dot(tpl, tpl))
         segment = _window(signal, at - reach, 2 * reach + len(tpl))
-        scores = np.correlate(segment, tpl, mode="valid")
-        lag = int(np.argmax(scores)) - reach
+        lag = _best_fit(segment, tpl, energy) - reach
         piece = segment[lag + reach : lag + reach + len(tpl)]
         level = float(np.dot(piece, tpl) / energy) if energy else 0.0
         found.append(Match(event, 1000 * lag / rate, level))
     return found
+
+
+def _best_fit(segment: Audio, tpl: Audio, energy: float) -> int:
+    """Where in the segment the template fits best by shape: the correlation at
+    each offset, divided by the segment's energy under the template there."""
+    scores = np.correlate(segment, tpl, mode="valid")
+    sums = np.concatenate(([0.0], np.cumsum(segment * segment)))
+    power = sums[len(tpl) :] - sums[: -len(tpl)]
+    return int(np.argmax(scores / np.sqrt(np.maximum(power, energy * QUIET))))
 
 
 def swing_of(matches: Sequence[Match], step_s: float) -> float | None:

@@ -65,6 +65,51 @@ def test_hits_are_found_to_the_sample_with_their_level() -> None:
     assert [round(m.level, 3) for m in found] == [1.0, 0.45, 0.8]
 
 
+def swelling_kick(seconds: float = 1.0) -> np.ndarray:
+    """A deep kick that takes about 90 ms to reach its loudest, over a soft click."""
+    t = np.arange(round(seconds * RATE)) / RATE
+    body = np.sin(2 * np.pi * 30.0 * t) * (1 - np.exp(-t / 0.04)) * np.exp(-t / 0.3)
+    body /= np.abs(body).max()
+    noise = np.random.default_rng(3).standard_normal(len(t))
+    wave = body + 10 ** (-14 / 20) * noise * np.exp(-t / 0.001)
+    return np.stack([wave, wave], axis=1).astype(np.float32)
+
+
+def cut_hits(wave: np.ndarray, times: list[float], fade_s: float = 0.007) -> np.ndarray:
+    """One sound at each time, each hit cut by the next with a short fade, as Renoise plays them."""
+    starts = [round(t * RATE) for t in times]
+    out = np.zeros((starts[-1] + len(wave), 2), dtype=np.float32)
+    fade = round(fade_s * RATE)
+    for start, until in zip(starts, [*starts[1:], None], strict=True):
+        piece = wave.copy()
+        if until is not None:
+            end = until - start
+            piece[end + fade :] = 0
+            piece[end : end + fade] *= np.linspace(1, 0, fade, dtype=np.float32)[:, None]
+        out[start : start + len(piece)] += piece
+    return out
+
+
+@pytest.mark.req("REQ-BEN-01")
+def test_a_sound_that_swells_in_is_found_where_it_starts() -> None:
+    # BM-DRUM-02's fresh take: a kick this slow failed at 5 ms with every hit on time.
+    kick = swelling_kick()
+    times = [n * 60 / 122 for n in range(6)]
+    events = [Event("kick", 4 * n, t, 1.0) for n, t in enumerate(times)]
+    found = audio.match_hits(cut_hits(kick, times), kick, events, RATE, voice_times=times)
+    assert [round(m.error_ms, 3) for m in found] == [0.0] * 6
+    assert all(m.level == pytest.approx(1.0, abs=0.01) for m in found)
+
+
+@pytest.mark.req("REQ-BEN-01")
+def test_a_match_never_reaches_into_the_next_note() -> None:
+    kick = swelling_kick()
+    roll = [0.1 + n * 0.05 for n in range(8)]  # faster than the kick takes to swell
+    events = [Event("kick", n, t, 1.0) for n, t in enumerate(roll)]
+    found = audio.match_hits(cut_hits(kick, roll), kick, events, RATE, voice_times=roll)
+    assert [round(m.error_ms, 3) for m in found] == [0.0] * 8
+
+
 def test_swing_is_measured_from_the_hits() -> None:
     step = 0.1
     events = [Event("v", 0, 0.0, 1.0), Event("v", 1, 0.116, 1.0)]

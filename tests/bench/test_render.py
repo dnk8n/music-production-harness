@@ -283,6 +283,17 @@ def test_render_flags_a_wrong_render(tmp_path: Path) -> None:
     assert not outcome.passed
 
 
+@pytest.mark.req("REQ-BEN-01")
+def test_the_timing_check_names_the_hit_furthest_off() -> None:
+    def hit(voice: str, step: int, error_ms: float) -> audio.Match:
+        return audio.Match(score.Event(voice, step, step * 0.1, 1.0), error_ms, 1.0)
+
+    found = checks.timing({"kick": [hit("kick", 0, 0.0)], "chh": [hit("chh", 3, -1.5)]})
+    assert (found.value, found.passed) == (1.5, False)
+    assert found.note == "2 hits checked; furthest off: chh step 3"
+    assert checks.timing({"kick": [hit("kick", 0, 0.0)]}).note == "1 hits checked"
+
+
 def test_render_needs_supercollider(tmp_path: Path) -> None:
     with pytest.raises(sc.RenderError, match="mph install supercollider"):
         render.run("BM-DRUM-01", cfg_for(tmp_path), FakeRunner(), None, home=tmp_path)

@@ -38,7 +38,8 @@ is the short version so every new session starts with the same rules.
    network. Tests that need real tools are marked `tools` or `macos`;
    `scripts/mac-check [REF]` runs everything, those included, on Dean's Mac
    (REQ-ENG-08). Ask for (or run, over Remote Control) a Mac check before
-   merging anything that touches renders, the Renoise bridge or the Keychain.
+   merging anything that touches renders, the Renoise bridge or the Keychain;
+   for the bridge, also `scripts/renoise-check [REF]` (real Renoise).
 
 ## Data, audio and secrets
 

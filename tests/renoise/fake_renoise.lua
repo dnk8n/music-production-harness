@@ -1,7 +1,26 @@
 -- A fake of the parts of the Renoise Lua API the bridge tool uses, for tests.
 -- It records state so a test can print the song the tool built.
+--
+-- It also keeps track of unsaved changes the way that is hardest on the tool
+-- (REQ-REN-08). A tick is one step of Renoise's event loop. Any write to a
+-- song during a tick counts as unsaved once the tick is over, even if the
+-- tool saved the song during that tick; a save in a tick with no writes
+-- leaves nothing unsaved. Starting a new song while the open one has unsaved
+-- changes makes Renoise ask whether to save it. Nobody answers in a test, so
+-- the question is recorded in `prompts` and the new song never starts.
 
-local fake = { renders = {} }
+local fake = { renders = {}, writes = 0 }
+
+-- A table whose field writes count as changes to the song.
+local function watched(object)
+  return setmetatable({}, {
+    __index = object,
+    __newindex = function(_, key, value)
+      object[key] = value
+      fake.writes = fake.writes + 1
+    end,
+  })
+end
 
 local function new_column()
   return { note_value = 121, instrument_value = 255, volume_value = 255, delay_value = 0 }
@@ -83,12 +102,14 @@ local function new_track(name)
     table.insert(self.devices, index, device)
     return device
   end
-  return track
+  return watched(track)
 end
 
-function fake.new_song()
+-- A new song; `file_name` is where it was loaded from or last saved ("" for none).
+function fake.new_song(file_name)
   local song = {
-    transport = { bpm = 120, lpb = 4 },
+    file_name = file_name or "",
+    transport = watched({ bpm = 120, lpb = 4 }),
     sequencer_track_count = 0,
     tracks = {},
     instruments = { new_instrument() },
@@ -151,26 +172,35 @@ end
 -- The global `renoise` the tool sees.
 function fake.install(bundle_path)
   local idle, new_document = {}, {}
-  local state = { song = fake.new_song(), saved = {}, refuse_new_song = false }
+  local state = {
+    song = fake.new_song(),
+    saved = {},
+    prompts = {}, -- songs Renoise asked about saving
+    unsaved = false, -- whether the open song has unsaved changes
+    refuse_new_song = false,
+  }
   renoise = {
     RENOISE_VERSION = "3.5.4 (fake)",
     Sample = { INTERPOLATE_SINC = 4 },
     Track = { MUTE_STATE_ACTIVE = 1, MUTE_STATE_OFF = 2, MUTE_STATE_MUTED = 3 },
   }
   function renoise.song()
+    if state.loading then
+      return nil -- Renoise is still loading a song
+    end
     return state.song
   end
   local app = {}
   function app:new_song_no_template()
-    if not state.refuse_new_song then
-      state.next_song = fake.new_song()
-    end
+    state.new_song_wanted = true -- like Renoise: not now, but soon after this call
   end
   function app:save_song_as(path)
     local handle = assert(io.open(path, "w"))
     handle:write("xrns")
     handle:close()
     state.saved[#state.saved + 1] = path
+    state.song.file_name = path
+    state.saved_this_tick = true
   end
   function renoise.app()
     return app
@@ -215,12 +245,29 @@ function fake.install(bundle_path)
     return names
   end
 
-  -- Drives Renoise's event loop: idle ticks, new documents and finished renders.
+  local function arrive(song)
+    state.song = song
+    for _, f in ipairs(new_document) do
+      f()
+    end
+  end
+
+  -- Someone opens a song in this Renoise, and maybe changes it without saving.
+  function state.open(path, changed)
+    arrive(fake.new_song(path))
+    state.unsaved = changed
+  end
+
+  -- Drives Renoise's event loop: new documents, finished renders, idle notifiers.
   function state.tick()
-    if state.next_song then
-      state.song, state.next_song = state.next_song, nil
-      for _, f in ipairs(new_document) do
-        f()
+    local writes = fake.writes
+    state.saved_this_tick = false
+    if state.new_song_wanted then
+      state.new_song_wanted = false
+      if state.unsaved then
+        state.prompts[#state.prompts + 1] = state.song.file_name
+      elseif not state.refuse_new_song then
+        arrive(fake.new_song())
       end
     end
     if fake.pending_render then
@@ -230,6 +277,11 @@ function fake.install(bundle_path)
     end
     for _, f in ipairs(idle) do
       f()
+    end
+    if fake.writes > writes then
+      state.unsaved = true -- recorded once the tick is over, after any save in it
+    elseif state.saved_this_tick then
+      state.unsaved = false
     end
   end
   return state

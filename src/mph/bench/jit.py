@@ -14,7 +14,8 @@ from dataclasses import asdict, dataclass
 
 from mph.bench import score
 
-RenderOne = Callable[[str, str], None]  # (benchmark id, variant); raises on failure
+# (benchmark id, variant) -> anything worth saying once it's done; raises on failure
+RenderOne = Callable[[str, str], str | None]
 Spawn = Callable[[Callable[[], None]], None]
 
 IDLE, RENDERING, DONE, FAILED = "idle", "rendering", "done", "failed"
@@ -68,10 +69,10 @@ class Renderer:
 
     def _run(self, benchmark_id: str, variant: str) -> None:
         try:
-            self._render_one(benchmark_id, variant)
+            note = self._render_one(benchmark_id, variant)
         except Exception as exc:  # any failure is shown on the page
             outcome = State(FAILED, benchmark_id, variant, str(exc) or type(exc).__name__)
         else:
-            outcome = State(DONE, benchmark_id, variant, "rendered")
+            outcome = State(DONE, benchmark_id, variant, note or "rendered")
         with self._lock:
             self._state = outcome

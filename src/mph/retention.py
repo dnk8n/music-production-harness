@@ -10,6 +10,7 @@ lists, and only inside the kinds of folder this module owns:
 - ``renders/<id>/<anything else>``: a render that never finished.
 - ``cache/<hh>/<hash>.wav``: a derivative no fresh render uses (REQ-RET-04).
 - ``renoise/jobs/*``: job files the bridge left behind.
+- ``renoise/scratch/*``: songs the bridge saved so Renoise never asks to (REQ-REN-08).
 
 Sources, stashes, downloads, the catalogue DB and synthdefs are never listed.
 Anything changed in the last hour is left alone, so a render in progress is safe.
@@ -30,6 +31,7 @@ from mph.config import Retention
 RENDERS = "renders"
 CACHE = "cache"
 JOBS = Path("renoise") / "jobs"
+SCRATCH = Path("renoise") / "scratch"
 REPORT = "report.json"
 WORK = "work"
 MAIN = "main"  # the variant of reports written before variants existed
@@ -40,7 +42,8 @@ WORK_FILES = "render work files"
 UNFINISHED = "unfinished render"
 CACHED = "unused cached derivative"
 JOB_FILES = "leftover Renoise job"
-KINDS = (SUPERSEDED, WORK_FILES, UNFINISHED, CACHED, JOB_FILES)
+SCRATCH_SONGS = "Renoise scratch song"
+KINDS = (SUPERSEDED, WORK_FILES, UNFINISHED, CACHED, JOB_FILES, SCRATCH_SONGS)
 
 
 @dataclass(frozen=True, slots=True)
@@ -207,6 +210,7 @@ def plan(
         used = frozenset().union(*(r.kit for r in fresh))
         result.items += _cache_items(data_dir, used, old)
         result.items += _job_items(data_dir, old)
+        result.items += _scratch_items(data_dir, old)
     return result
 
 
@@ -251,6 +255,16 @@ def _job_items(data_dir: Path, old: Callable[[Path], bool]) -> list[Item]:
     return items
 
 
+def _scratch_items(data_dir: Path, old: Callable[[Path], bool]) -> list[Item]:
+    """REQ-REN-08: saved only so Renoise could close them without asking."""
+    items = []
+    for path in sorted((data_dir / SCRATCH).glob("*")):
+        if path.is_file() and not path.is_symlink() and old(path):
+            why = "saved only so Renoise could close it without asking; renders keep their own song"
+            items.append(Item(path, SCRATCH_SONGS, size_of(path), why))
+    return items
+
+
 # --- deleting -----------------------------------------------------------------------
 
 
@@ -260,7 +274,7 @@ class PruneError(RuntimeError):
 
 def _owned(data_dir: Path, path: Path) -> bool:
     """Only paths inside the folders this module owns, reached without links."""
-    roots = [data_dir / RENDERS, data_dir / CACHE, data_dir / JOBS]
+    roots = [data_dir / RENDERS, data_dir / CACHE, data_dir / JOBS, data_dir / SCRATCH]
     if path.is_symlink():
         return path.parent.resolve().is_relative_to(data_dir.resolve())
     real = path.resolve()

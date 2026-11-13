@@ -106,6 +106,7 @@ uv sync && uv run pre-commit install   # once per checkout
 uv run pre-commit run --all-files      # format, lint, types, spec gate
 uv run pytest --cov=mph                # also runs before each push
 scripts/mac-check [origin/main]        # on the Mac: doctor + every test, real tools
+scripts/renoise-check [origin/main]    # on the Mac: the bridge in the real Renoise
 ```
 
 Work is tracked in GitHub issues with `type:`, `area:` and `step:` labels.

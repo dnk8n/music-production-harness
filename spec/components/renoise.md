@@ -26,7 +26,8 @@ A small Renoise tool (Lua, shipped in `src/mph/renoise/tool/`) watches a job
 folder under `data_dir/renoise/jobs/`. mph writes a job (the plan, as a Lua
 data table), and the tool starts a new song, builds it, saves the `.xrns`,
 renders each requested WAV (32-bit float at the production rate, with
-other tracks muted for a stem), then writes a result file with any error. The first render of a freshly
+other tracks muted for a stem), saves it again, then writes a result file
+with any error. It leaves nothing unsaved behind it (REQ-REN-08). The first render of a freshly
 built song starts about 30 samples late in Renoise 3.5.4, so mph asks for a
 throwaway warm-up render first and measures only the renders after it.
 mph starts Renoise in the background and waits for the result. If Renoise is
@@ -72,3 +73,35 @@ page's own origin, like a verdict (REQ-FBK-05).
 - **Why:** a plain web link can't open an app, but the page is served by mph
   on Dean's machine, so mph can open it for him.
 - **Verify:** test
+
+### REQ-REN-08: Nothing left to save
+Renoise never has to ask whether to save a song mph built, so a render never
+waits for a click. The bridge tool saves each song for the last time in an
+idle step of its own, after the step that last changed it, and starts the
+next song only after that save. After a job's last song, the tool saves the
+open song once more as mph's scratch song,
+`data_dir/renoise/scratch/mph-scratch.xrns`, and only then writes the
+result. So the song Renoise is left with is saved, and it is still on disk
+after the render's `work/` folder goes (REQ-RET-03).
+
+Before a job starts its first song, the tool saves the song that's open if
+it is mph's. A song the tool built itself is saved as the scratch song. A
+song opened from mph's data folder, such as a render's song opened with
+"Open in Renoise" (REQ-REN-07), is saved as a copy,
+`data_dir/renoise/scratch/<UTC time> <name>.xrns`. Changes made to it by hand
+are kept there, the render's own `.xrns` stays as it was measured
+(REQ-REN-02), and mph says where the copy is. mph never saves a song that
+isn't its own: Renoise asks about that one as it always has, because the
+question protects someone's work. `mph prune` lists scratch songs once
+they are an hour old (REQ-RET-05).
+- **Why:** Renoise asks to save a changed song before it closes it: when mph
+  starts its next song, when "Open in Renoise" loads another song, and when
+  Renoise quits. The question holds up a render until someone clicks, and
+  made quitting Renoise a chore (Dean, 2026-11-13). The tool did save each
+  song after its renders, yet Renoise still asked: that save ran in the same
+  step as the song's last change, and the song left open was the measuring
+  song in `work/`, which is deleted when the render finishes. Scratch songs
+  are throwaway, like any hand edit to a song mph made (REQ-REN-01). They
+  are called scratch songs because a stash in mph is a sound Dean chose to
+  keep.
+- **Verify:** test, with a fake Renoise that counts a step's changes as unsaved even after a save in that step, and asks before closing a changed song; inspect on the Mac: two renders in one Renoise, then Renoise quits without asking

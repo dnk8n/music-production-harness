@@ -70,6 +70,13 @@ checks that branch or commit in a temporary worktree and leaves the
 checkout alone. The log goes to `~/Library/Logs/mph/`. No schedule, no
 self-hosted runner, no secrets in the repo or the log.
 
+`scripts/renoise-check [REF]` checks the Renoise bridge tool in the real
+Renoise, with Renoise closed first: two small jobs in one Renoise that mph
+starts, songs opened the way "Open in Renoise" opens them, then a request to
+quit, which Renoise must obey without asking to save (REQ-REN-08). It puts
+back the bridge tool that was installed before. Run it before merging a
+change to the bridge tool.
+
 `scripts/kit-diff REF [BASE]` checks a change against Dean's own library:
 the sounds every benchmark take would pick, and the sounds whose roles
 would change, grouped by their top two folders, on REF compared with BASE
@@ -78,7 +85,9 @@ side scans its own copy of the catalogue in a temporary worktree, so Dean's
 catalogue isn't touched. Sounds are named by their path in a sample folder,
 or as downloads/SOURCE/TITLE. Run it before merging a change to naming
 rules, search or kit choice.
-- **Why:** Linux CI can't see macOS-only breakage or the real tools. A
+- **Why:** Linux CI can't see macOS-only breakage or the real tools. Tests
+  run the bridge tool against a fake Renoise, which can't show what the real
+  one asks or when (2026-11-13). A
   self-hosted runner on a public repo would let anyone's PR run code on the
   Mac, and a schedule would run when nobody is looking; on demand fits how
   Dean works. Tests use made-up libraries, so only Dean's library shows

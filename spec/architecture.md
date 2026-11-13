@@ -72,6 +72,7 @@
 | Cache | any stage | `data_dir/cache/<hash>` | yes, from recipes |
 | Stashes | Dean | `data_dir/stashes/` | yes, from recipes |
 | Renders + QA reports | benchmarks, tracks | `data_dir/renders/` | yes |
+| Renoise jobs and scratch songs | renoise bridge | `data_dir/renoise/` | yes, throwaway (REQ-REN-08) |
 | Spec, code, tests | repo | git | spec is the root |
 | Secrets | Dean | macOS Keychain | re-enter |
 

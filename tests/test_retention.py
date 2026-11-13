@@ -170,6 +170,26 @@ def test_recent_unfinished_and_foreign_things_are_safe(tmp_path: Path) -> None:
 
 
 @pytest.mark.req("REQ-RET-05")
+@pytest.mark.req("REQ-REN-08")
+def test_old_renoise_scratch_songs_can_go(tmp_path: Path) -> None:
+    scratch = tmp_path / "renoise" / "scratch"
+    scratch.mkdir(parents=True)
+    old = scratch / "mph-scratch.xrns"
+    old.write_bytes(b"x" * 100)
+    age(old)
+    young = scratch / "20261113-081500 BM-DRUM-01.xrns"  # kept a minute ago
+    young.write_bytes(b"y")
+    found = retention.plan(tmp_path, POLICY)
+    assert kinds(found) == {old: retention.SCRATCH_SONGS}
+    assert "close it without asking" in found.items[0].why
+    assert retention.apply(tmp_path, found) == 100
+    assert not old.exists() and young.is_file()
+    # Straight after a render, only that take's superseded renders are pruned.
+    age(young)
+    assert retention.plan(tmp_path, POLICY, only=("BM-DRUM-01", "renoise")).items == []
+
+
+@pytest.mark.req("REQ-RET-05")
 def test_prune_shows_the_list_and_deletes_only_with_yes(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -249,6 +269,9 @@ def test_renders_on_demand_one_at_a_time() -> None:
         "variant": "renoise",
         "message": "Renoise is already open",
     }
+    noted = jit.Renderer(lambda b, v: "Renoise had a song open", spawn=lambda work: work())
+    noted.start("BM-DRUM-01", "renoise")
+    assert noted.status().message == "Renoise had a song open"  # the page shows it (REQ-REN-08)
 
 
 @pytest.mark.req("REQ-RET-06")
@@ -282,8 +305,28 @@ def test_bench_serve_can_render_on_demand(tmp_path: Path) -> None:
 
     cfg = cfg_for(tmp_path)
     render_one = commands.render_on_demand(cfg, runner(), tmp_path)
-    render_one("BM-DRUM-01", "synth-kit")
+    assert render_one("BM-DRUM-01", "synth-kit") == ""  # nothing to say
     assert list((cfg.data_dir / "renders" / "BM-DRUM-01").glob("*/report.json"))
+
+
+@pytest.mark.req("REQ-REN-08")
+def test_the_page_says_where_a_song_open_in_renoise_was_kept(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mph.bench import commands  # noqa: PLC0415
+    from mph.renoise import bridge  # noqa: PLC0415
+
+    kept = bridge.Kept(tmp_path / "BM-DRUM-01.xrns", tmp_path / "x BM-DRUM-01.xrns")
+
+    def keeps_a_song(*_args: object, session: bridge.Session, **_kwargs: object) -> None:
+        session.kept.append(kept)
+
+    monkeypatch.setattr(render, "run", keeps_a_song)
+    render_one = commands.render_on_demand(cfg_for(tmp_path), runner(), tmp_path)
+    assert render_one("BM-DRUM-01", "renoise") == kept.note()
+    assert render_one("BM-DRUM-01", "renoise") == kept.note()  # only what this render kept
+    page = (Path(browse.__file__).parent / "browse.html").read_text("utf-8")
+    assert 'now.message !== "rendered"' in page
 
 
 @pytest.mark.req("REQ-RET-07")

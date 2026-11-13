@@ -269,6 +269,34 @@ def test_pin_mistakes_are_reported(change: tuple[str, str], message: str) -> Non
         score.load_text(GOOD.replace("[voices.a]", "[voices.zz]") + 'sound = { kind = "kick" }\n')
 
 
+FRESH_TAKES = (  # Dean's ideas 1 to 13 (2026-11-13); BM-BASS-01 has only its acid synth
+    "BM-DRUM-01",
+    "BM-DRUM-02",
+    "BM-DRUM-03",
+    "BM-DRUM-04",
+    "BM-DRUM-05",
+    "BM-DRUM-06",
+    "BM-DRUM-07",
+    "BM-DRUM-08",
+    "BM-DRUM-09",
+    "BM-DRUM-10",
+    "BM-AFRO-01",
+    "BM-AFRO-02",
+    "BM-SC-01",
+)
+
+
+@pytest.mark.req("REQ-BEN-16")
+@pytest.mark.parametrize("benchmark_id", FRESH_TAKES)
+def test_fresh_takes_pin_sounds_with_reasons(benchmark_id: str) -> None:
+    loaded = score.load(benchmark_id)
+    fresh, _ = score.variant_of(loaded, "fresh-take")
+    changed = [v for v in fresh.voices if v.sound != loaded.voice(v.name).sound]
+    # A catalogue sound the other takes don't play, so the take is new to Dean.
+    assert any(v.sound.hash for v in changed)
+    assert all(v.sound.why for v in changed)  # each change says why
+
+
 # --- melodic voices (BM-BASS-01) --------------------------------------------------------
 
 ACID = """
@@ -469,4 +497,5 @@ def test_north_star_scores_carry_their_feel() -> None:
         "shaker": 16,
     }
     names = [v.name for v in score.all_variants(afro_02)]
-    assert names == ["renoise", "supercollider", "synth-kit", "even"]  # a take per software
+    # A take per software, the even take, and the fresh take (REQ-BEN-16).
+    assert names == ["renoise", "supercollider", "synth-kit", "even", "fresh-take"]

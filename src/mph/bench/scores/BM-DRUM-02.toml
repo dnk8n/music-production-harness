@@ -24,3 +24,22 @@ seconds = 0.25
 [voices.ohh]
 grid = ". . o . . . o . . . o . . . o ."
 sound = { role = "hat_open" }
+
+[variants.fresh-take]
+title = "sounds an agent picked from the catalogue"
+
+[variants.fresh-take.voices.kick.sound]
+hash = "8842515c911a92edc17d44a3b0e95864c546bd20dfcc5bd3d2dc33da044d565f"
+why = "A rounded deeper-house kick (Kid Massive) with a soft click: the warmer Jersey/Paradise Garage thump rather than a techno punch."
+
+[variants.fresh-take.voices.clap.sound]
+hash = "4c5e8621f5e096a6b79a1f652ae87806af87ea19b5b008a939e38731e7116973"
+why = "A dub-house clap with some room on it, closer to Kerri Chandler's roomy claps; no energy below 150 Hz."
+
+[variants.fresh-take.voices.chh.sound]
+hash = "96e616a03bd565bd08eac268b14fdb9aec63c9bce1741deb7167538b4eba6dfd"
+why = "A short closed hat from the same dub-house kit as the clap, so the skipping 16ths keep one tone; it hisses rather than whistles."
+
+[variants.fresh-take.voices.ohh.sound]
+hash = "925ae4da178a0a7ff008fa51e8a5d4fcea29bf058cb9e9a313407d94660c60a0"
+why = "A longer open hat from the garage pack, so the offbeat lift rings until the closed hat chokes it; it hisses rather than whistles."

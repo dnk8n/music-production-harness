@@ -17,3 +17,24 @@ sound = { synth = "mph_snare" }
 [voices.chh]
 grid = "x . x . x . x . x . x . x . x ."
 sound = { synth = "mph_hat" }
+
+[variants.fresh-take]
+title = "sounds an agent picked from the catalogue"
+
+[variants.fresh-take.voices.kick.sound]
+role = "kick"
+synth = ""
+hash = "04b91b605965f3f93ab39bd418aab95aee4880d42430ac08974c045ccf8541df"
+why = "The catalogue has no labelled 808 kick. This is the nearest: an almost pure sine boom, 99% of it below 150 Hz, like an 808 kick with its decay up."
+
+[variants.fresh-take.voices.snare.sound]
+role = "snare"
+synth = ""
+hash = "b9019610fc1371acb741cd30eb17cf7d2325e0f38f2a53d14eff2abdbd9e9d9f"
+why = "A short, dry drum-machine snare (0.22 s, centroid 2 kHz, no low end): the boxy electro snap. There's no labelled 808 snare in the catalogue."
+
+[variants.fresh-take.voices.chh.sound]
+role = "hat"
+synth = ""
+hash = "c8ed66aa8b28dd6653b2a506514d429fbc1e39880d6c0cea39c034a04e75644a"
+why = "Labelled as an actual 808 closed hat (Deep & Raw Techno): short, bright, hissy, the electro tick."

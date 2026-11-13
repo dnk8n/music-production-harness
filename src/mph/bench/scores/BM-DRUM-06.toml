@@ -23,3 +23,22 @@ seconds = 0.25
 [voices.ohh]
 grid = ". . o . . . o . . . o . . . o ."
 sound = { role = "hat_open", words = ["909"] }
+
+[variants.fresh-take]
+title = "sounds an agent picked from the catalogue"
+
+[variants.fresh-take.voices.kick.sound]
+hash = "956df25ce2cee674ed38ff455eeecfeb9b152a09a20dfc59899f16cf932e280e"
+why = "A Darius Syrossian pure-house kick: loud and deep (LUFS -11.5) with a short tail, a jacking Chicago thump."
+
+[variants.fresh-take.voices.clap.sound]
+hash = "e30d02c0bbcc462a7686ec19155df3032ee306764668a38550d8faf10bb5b2f5"
+why = "The clap from the same pure-house pack as the kick: a fat, classic house clap with almost no low end."
+
+[variants.fresh-take.voices.chh.sound]
+hash = "fc8b85bb3135151f8a77bca1e191e096730429fd36139570bb69448f4b58a0ba"
+why = "A very short tech-house hat (0.09 s) that stays clean when the hats get busy. The two pure-house hats whistled; this one hisses."
+
+[variants.fresh-take.voices.ohh.sound]
+hash = "7f2e861fe616525bca0876f059114571620f04d3733987068b41059a06c2c0c3"
+why = "A short, bright open hat that cuts through each offbeat and is easy for the closed hat to choke; it hisses rather than whistles."

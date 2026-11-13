@@ -316,7 +316,7 @@ def test_cli_render_list_and_report(
     assert "✓ timing" in out and "files" in out
     assert run_cli(tmp_path, "list") == 0
     listing = capsys.readouterr().out
-    assert "3 of 3 takes measure well" in listing and "not rendered" in listing
+    assert "4 of 4 takes measure well" in listing and "not rendered" in listing
     assert "Drum patterns" in listing
     assert run_cli(tmp_path, "report", "BM-DRUM-01") == 0
     assert "sound  kick" in capsys.readouterr().out
@@ -540,18 +540,21 @@ def test_variants_render_into_their_own_folders_and_list_together(
     out = capsys.readouterr().out
     assert "BM-DRUM-01 [renoise]: skipped, Renoise isn't set up here" in out
     assert "[supercollider]: pass" in out and "[other-hat]: pass" in out
+    assert "[fresh-take]: pass" in out  # its picks aren't here, so it falls back (REQ-BEN-16)
     assert run_cli(tmp_path, "render", "BM-DRUM-01", "--variant", "renoise") == 1  # named: must
     assert "BM-DRUM-01 [renoise]: Renoise can't render yet" in capsys.readouterr().err
     renders = cfg_for(tmp_path).data_dir / "renders"
     listed = next(b for b in feedback.listing(renders, None) if b["id"] == "BM-DRUM-01")
     by_name = {v["name"]: v for v in listed["takes"]}
-    assert list(by_name) == ["renoise", "supercollider", "synth-kit", "other-hat"]
+    assert list(by_name) == ["renoise", "supercollider", "synth-kit", "other-hat", "fresh-take"]
     assert by_name["renoise"]["report"] is None
     assert by_name["synth-kit"]["report"]["variant_title"] == "every part a SuperCollider synth"
     hashes = {v["report"]["score_hash"] for v in by_name.values() if v["report"]}
-    assert len(hashes) == 3
+    assert len(hashes) == 4
+    fresh = {k["voice"]: k["why"] for k in by_name["fresh-take"]["report"]["kit"]}
+    assert fresh["kick"].endswith("isn't in the catalogue")  # and says what became of the pick
     assert run_cli(tmp_path, "report", "BM-DRUM-01") == 0
-    assert capsys.readouterr().out.count("BM-DRUM-01 Detroit four-to-the-floor [") == 3
+    assert capsys.readouterr().out.count("BM-DRUM-01 Detroit four-to-the-floor [") == 4
     assert feedback.latest(renders, "BM-DRUM-01", "supercollider")["engine"] == "supercollider"  # type: ignore[index]
 
 

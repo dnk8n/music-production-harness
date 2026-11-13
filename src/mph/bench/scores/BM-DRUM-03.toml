@@ -19,3 +19,18 @@ sound = { role = "snare", words = ["garage"] }
 grid = "x . x x x . x x x . x x x . x x"
 sound = { role = "hat" }
 seconds = 0.25
+
+[variants.fresh-take]
+title = "sounds an agent picked from the catalogue"
+
+[variants.fresh-take.voices.kick.sound]
+hash = "e3be56cecae97668dad765773d1793b6d699abd498801a7b89526064ae21d1c4"
+why = "A very short, tight kick, so the skipping 1 and 'and of 3' kick stays crisp at 132 bpm."
+
+[variants.fresh-take.voices.snare.sound]
+hash = "574aecb4c655599ea89fe97664322cee038f636b30137e5546c60319659661c0"
+why = "A sibling of the current layered snare-clap from the same UK garage pack, crisper and with zero low end, so the 2-step snare stays light."
+
+[variants.fresh-take.voices.chh.sound]
+hash = "8a6d1c14a3fd0476d522b553883a219581a40c6809278e23b93051dd8922576f"
+why = "A closed hat from the garage pack's demo kit: very short, which suits a heavily swung hat; it hisses rather than whistles."

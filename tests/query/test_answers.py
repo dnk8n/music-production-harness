@@ -255,7 +255,8 @@ def test_benchmarks_show_what_the_page_shows(full: Library) -> None:
     assert [b["id"] for b in found["benchmarks"]] == [b["id"] for b in page]
     drum = next(b for b in found["benchmarks"] if b["id"] == "BM-DRUM-02")
     takes = {take["take"]: take for take in drum["takes"]}
-    assert list(takes) == ["renoise", "supercollider", "synth-kit"]
+    assert list(takes) == ["renoise", "supercollider", "synth-kit", "fresh-take"]
+    assert takes["fresh-take"]["state"] == "not rendered"
     assert takes["renoise"]["score_hash"] == NEW_RENOISE
     assert takes["renoise"]["state"] == "resolved"
     assert takes["renoise"]["rating"] == {

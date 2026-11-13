@@ -27,3 +27,22 @@ seconds = 0.2
 [variants.flattened]
 title = "the bell and shaker squeezed onto sixteenths, as most Afro house programs them"
 voices = { bell = { grid = "X . . x . . x x . . x . x . . x" }, shaker = { grid = "X x x x X x x x X x x x X x x x" } }
+
+[variants.fresh-take]
+title = "sounds an agent picked from the catalogue"
+
+[variants.fresh-take.voices.kick.sound]
+hash = "6970f780161ff39ece91560dad2018887f1a160df5e29a2a5cd22aae3504151a"
+why = "A deep, round Signature Techno kick (centroid 107 Hz) for the straight Detroit four under the bell's lilt."
+
+[variants.fresh-take.voices.chh.sound]
+hash = "0f98872e698d2b889382f6514f85910f5666690c4b420c5e3ef9f5c97377d994"
+why = "A crisp, fully percussive dub-house hat, so the straight hats read clearly against the triplet shaker; it hisses rather than whistles."
+
+[variants.fresh-take.voices.bell.sound]
+synth = "mph_bell"
+why = "Kept the synth bell: you singled out the bell pattern in rating 134. The only catalogue bell, a 707 cowbell, is shorter and harsher."
+
+[variants.fresh-take.voices.shaker.sound]
+synth = "mph_shaker"
+why = "Your pick from rating 134: you preferred the synth-kit shaker. Here it plays with catalogue kick and hats for the first time."

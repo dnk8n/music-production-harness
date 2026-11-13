@@ -459,6 +459,8 @@ natural, uneven velocity (±10% humanisation, seeded).
 re-sequenced: slice order 1 2 3 4 1 2 7 8 / 1 2 3 4 5 5 7 8.
 Hear: the original break's feel, with a repeated slice in bar 2 creating a
 stutter. No clicks at slice boundaries.
+Its fresh take (REQ-BEN-16) chops a 125 BPM funk break from another pack
+instead, which plays only 4% faster at 130 BPM.
 - **Why:** tests onset slicing, re-sequencing and click-free edits (fades of
   1 ms or less at zero crossings).
 - **Verify:** measure, listen

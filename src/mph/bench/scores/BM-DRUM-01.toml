@@ -22,3 +22,18 @@ seconds = 0.25
 [variants.other-hat]
 title = "the next-best catalogue hat, to compare sound design"
 voices = { chh = { sound = { pick = 2 } } }
+
+[variants.fresh-take]
+title = "sounds an agent picked from the catalogue"
+
+[variants.fresh-take.voices.kick.sound]
+hash = "8b9bc78a69c19943c681ae08110ee1e5f97a53e45eaac9c8b20de1185cb78dcf"
+why = "A tight techno kick from the Signature Techno pack, short and dry for a mechanical UR/Mills pulse; no render has used it."
+
+[variants.fresh-take.voices.clap.sound]
+hash = "cccc79ea221e63999ed05028afdd327d9aa357f43cd717316d30951946ffaf24"
+why = "Same Signature Techno pack as the kick, so the pair sounds like one machine; bright with almost no low end, so it stays off the kick."
+
+[variants.fresh-take.voices.chh.sound]
+hash = "75abc428886c3cdb6ddd5b586e391993cd7b19c38510f522f9fbcd79b85bea0a"
+why = "An analogue closed hat from Deep & Raw Techno: a short, bright 'tss' that hisses. You rated other-hat 5 stars, so it's the hat to beat."

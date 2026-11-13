@@ -75,7 +75,7 @@ def test_listing_shows_every_benchmark_with_its_latest_render(app: browse.App) -
     assert sorted(b["id"] for b in listed) == score.available()
     shuffle = next(b for b in listed if b["id"] == "BM-DRUM-02")
     takes = {t["name"]: t for t in shuffle["takes"]}
-    assert list(takes) == ["renoise", "supercollider", "synth-kit"]  # all equal, no main
+    assert list(takes) == ["renoise", "supercollider", "synth-kit", "fresh-take"]  # no main
     assert takes["renoise"]["report"]["score_hash"] == HASH
     assert takes["supercollider"]["report"] is None
     assert shuffle["hear"].startswith("the same four-on-the-floor")

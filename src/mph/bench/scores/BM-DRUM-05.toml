@@ -19,3 +19,18 @@ velocities = [1.0, 0.45]
 grid = ". . x . . . x . . . x . . . x ."
 sound = { role = "hat" }
 seconds = 0.25
+
+[variants.fresh-take]
+title = "sounds an agent picked from the catalogue"
+
+[variants.fresh-take.voices.kick.sound]
+hash = "b55529a60bd141958721ff4e7d93a072f25db299a0257011e35cd70b415bde1a"
+why = "A soft dub-house kick (LUFS -16.5, round, little click): deep rather than punchy, for the Basic Channel feel."
+
+[variants.fresh-take.voices.rim.sound]
+hash = "73338a9ed6b945fe413eaef1493608095f15acc499572a31b73e8d82415bd2d4"
+why = "A real rimshot with body (0.48 s, centroid 1.6 kHz) in place of a 10 ms click, so the quiet ghost rims are felt rather than lost."
+
+[variants.fresh-take.voices.chh.sound]
+hash = "d7705446a04358c623bb35a871e52c5a915fd393e51dbefa82eefb107f6da9f9"
+why = "A soft closed hat from the same dub-house pack as the kick, so the kit sits together; it hisses rather than whistles."

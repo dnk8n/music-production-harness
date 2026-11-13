@@ -39,3 +39,30 @@ sound = { role = "dunun" }
 [variants.even]
 title = "the same parts in even triplets, to hear what the feel adds"
 feel = [1, 1, 1]
+
+[variants.fresh-take]
+title = "sounds an agent picked from the catalogue"
+
+[variants.fresh-take.voices.kick.sound]
+hash = "76446389da795ddc3c9e370fec261970105cf0e0cf2e0863e52d0d82922be7f6"
+why = "A short, round kick from Dave Seaman's Electronic Underground pack that stays exactly on the grid under the leaning ensemble."
+
+[variants.fresh-take.voices.bell.sound]
+hash = "afaf6a830ce36bea5a39da5fea10036e3bf5907bac470d96f3bd126fca851712"
+why = "A real drum-machine cowbell (707) in place of the synth bell: short and metallic, a common stand-in for the bell part in Afro house. Worth one listen."
+
+[variants.fresh-take.voices.shaker.sound]
+hash = "530cd0bdb9258cb971185168ca7963599935dd603cf4bd8a890ff15f2f765caf"
+why = "A crisp, dry shaker; with humanise 0.08 it should show the lean well."
+
+[variants.fresh-take.voices.tone.sound]
+synth = "mph_djembe"
+why = "Kept the synth: the catalogue's djembes are all loops, and the one-shot doumbek (DUMBEK FLM) is a flam, not a clean tone stroke."
+
+[variants.fresh-take.voices.slap.sound]
+synth = "mph_djembe"
+why = "Kept the synth: there are no djembe slap one-shots. The Freesound djembe downloads are 120 bpm loops, not single strokes."
+
+[variants.fresh-take.voices.dunun.sound]
+synth = "mph_dunun"
+why = "Kept the synth: the nearest catalogue hits (log drums, war drums) are rolls or have several onsets, and the deep single perc would mask the kick."

@@ -8,7 +8,8 @@ against the render's score hash, so each one points at exactly what was
 heard; a rating for the whole benchmark is stored once per take
 (REQ-FBK-02). Only files listed in a render's own report can be served
 (REQ-FBK-05). The query channel reads the same listing, plus what other
-branches rendered (REQ-QRY-09).
+branches rendered (REQ-QRY-09), and the standard takes a score no longer
+makes, as retired.
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ RENDER_HASH = re.compile(r"^[0-9a-f]{16}$")
 BENCHMARK_ID = re.compile(r"^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$")  # safe as a folder name
 ELSEWHERE = "Not in this checkout"  # the project of a benchmark only another branch defines
 NOT_RENDERED = "not rendered"
+RETIRED = "retired"  # a standard take this checkout's score no longer makes (REQ-QRY-09)
 
 
 class FeedbackError(ValueError):
@@ -132,7 +134,10 @@ def _listed(
     for name, made in sorted(newest.items()) if elsewhere else ():
         if name not in known:  # rendered from another branch's score
             title = str(made.get("variant_title") or name)
-            takes.append({**_take(name, title, made, given, legacy), "in_checkout": False})
+            take = {**_take(name, title, made, given, legacy), "in_checkout": False}
+            if loaded is not None and name in score.STANDARD_TAKES:
+                take["state"] = RETIRED  # the score here stopped making it (REQ-BEN-07)
+            takes.append(take)
     newest_report = found[0] if found else {}
     project = loaded.project if loaded else ELSEWHERE
     take_of = {str(r.get("score_hash")): variant_of_report(r) for r in found}

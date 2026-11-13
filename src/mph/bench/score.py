@@ -9,7 +9,9 @@ melodic voice (BM-BASS-01) has 16 ``notes`` with a ``gate`` grid, plus
 optional ``accent`` and ``slide`` rows and synth ``params``. ``swing`` moves
 sixteenths, and ``feel`` places triplets within their beat. ``events`` turns
 a score into hits at exact sample positions, so rendering and measuring both
-start from the same list.
+start from the same list. A voice's sound is a catalogue search, a synth, or
+one catalogue sound pinned by its hash with the reason it was picked
+(REQ-BEN-16).
 """
 
 from __future__ import annotations
@@ -36,6 +38,9 @@ PITCH_CLASS = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 DEFAULT_TAIL_S = 1.0
 LEGACY_MAIN = "main"  # the variant of renders from before takes were equal
 ENGINE_NAMES = ("renoise", "supercollider")
+STANDARD_TAKES = ("renoise", "supercollider", "synth-kit")  # REQ-BEN-07
+SOUND_KEYS = ("role", "words", "synth", "pick", "hash", "why")
+HASH = re.compile(r"[0-9a-f]{64}")  # a catalogue sound's content hash (BLAKE2b-256)
 
 
 class ScoreError(ValueError):
@@ -55,12 +60,26 @@ class Ramp:
 
 @dataclass(frozen=True, slots=True)
 class Sound:
-    """What a voice asks for: a catalogue search, or a SuperCollider voice."""
+    """What a voice asks for: a catalogue search, a SuperCollider voice, or one
+    catalogue sound by its hash (REQ-BEN-16)."""
 
     role: str = ""
     words: tuple[str, ...] = ()
     synth: str = ""  # forces a synth voice, e.g. "mph_kick"; "auto" picks one by role
     pick: int = 1  # take the Nth best catalogue match
+    hash: str = ""  # exactly this catalogue sound; the search above is its fallback
+    why: str = ""  # why the sound or synth was picked, for people
+
+
+def recorded(sound: Sound) -> dict[str, Any]:
+    """A sound as score hashes and reports record it. ``why`` is for people,
+    and a sound with no hash is recorded as before hashes could be pinned, so
+    renders and the requests passed takes keep (REQ-BEN-15) stay put."""
+    found = asdict(sound)
+    found.pop("why")
+    if not sound.hash:
+        found.pop("hash")
+    return found
 
 
 @dataclass(frozen=True, slots=True)
@@ -199,6 +218,7 @@ class Score:
         shape = asdict(self)
         shape.pop("variants")  # other variants don't shape this render
         shape.pop("project")  # nor does the group it is listed in
+        shape["voices"] = [{**asdict(v), "sound": recorded(v.sound)} for v in self.voices]
         if shape["sidechain"] is None:
             shape.pop("sidechain")  # so scores without one keep the hashes they had
         if self.feel == EVEN:
@@ -274,14 +294,37 @@ def _feel(raw: object, where: str) -> tuple[float, ...]:
     return tuple(float(v) for v in numbers)
 
 
-def _sound(raw: dict[str, Any]) -> Sound:
+def _sound(raw: dict[str, Any], where: str) -> Sound:
+    if unknown := set(raw) - set(SOUND_KEYS):
+        raise ScoreError(
+            f"{where}: a sound takes {', '.join(SOUND_KEYS)}, not {', '.join(sorted(unknown))}"
+        )
     words = raw.get("words", ())
-    return Sound(
+    found = Sound(
         str(raw.get("role", "")),
         tuple(str(w) for w in words),
         str(raw.get("synth", "")),
         int(raw.get("pick", 1)),
+        str(raw.get("hash", "")),
+        str(raw.get("why", "")).strip(),
     )
+    return _pinned(found, where) if found.hash else found
+
+
+def _pinned(found: Sound, where: str) -> Sound:
+    """A sound pinned by its hash (REQ-BEN-16): exactly one catalogue sound."""
+    if not HASH.fullmatch(found.hash):
+        raise ScoreError(f"{where}: hash needs the sound's 64 hex digits: {found.hash!r}")
+    if found.synth:
+        raise ScoreError(
+            f"{where}: a sound pins a hash or asks for a synth, not both "
+            '(over a synth, set synth = "")'
+        )
+    if not found.role:
+        raise ScoreError(f"{where}: a pinned sound needs its role, for its level and fallback")
+    if not found.why:
+        raise ScoreError(f"{where}: a pinned sound needs a why, saying why it was picked")
+    return found
 
 
 def _grids(
@@ -308,7 +351,7 @@ def _variant(name: str, raw: dict[str, Any], voices: dict[str, Voice]) -> Varian
     for voice, change in changes.items():
         if "sound" in change:
             merged = {**asdict(voices[voice].sound), **change["sound"]}
-            sounds.append((voice, _sound(merged)))
+            sounds.append((voice, _sound(merged, f"variant {name}, voice {voice}")))
     gains = [(v, float(c["gain_db"])) for v, c in changes.items() if "gain_db" in c]
     params = [(v, _params(c["params"])) for v, c in changes.items() if "params" in c]
     sidechain = raw.get("sidechain", {})
@@ -335,7 +378,7 @@ def _voice(name: str, raw: dict[str, Any]) -> Voice:
     ramp = raw.get("ramp")
     voice = Voice(
         name=name,
-        sound=_sound(raw.get("sound", {})),
+        sound=_sound(raw.get("sound", {}), f"voice {name}"),
         grid=str(raw.get("grid", "")),
         pulse=int(raw.get("pulse", 0)),
         slices=tuple(int(n) for n in raw.get("slices", ())),
@@ -604,12 +647,14 @@ def bar_one(score: Score, voice: Voice) -> str:
 
 
 def standard_variants(score: Score) -> list[Variant]:
-    """Equal takes, none of them "main" (REQ-BEN-07)."""
+    """Equal takes, none of them "main" (REQ-BEN-07). No take repeats another:
+    a score whose every voice is a synth already has no synth-kit take."""
     supercollider = Variant("supercollider", "in SuperCollider", engine="supercollider")
     if score.supercollider_only:  # it always renders there (REQ-BEN-10, REQ-BEN-12)
         return [supercollider]
     found = [Variant("renoise", "in Renoise", engine="renoise"), supercollider]
-    if not any(v.slices for v in score.voices):
+    sampled = any(not v.sound.synth for v in score.voices)
+    if sampled and not any(v.slices for v in score.voices):
         found.append(
             Variant("synth-kit", "every part a SuperCollider synth", every_voice_synth=True)
         )
@@ -636,8 +681,8 @@ def variant_of(score: Score, name: str) -> tuple[Score, Variant]:
     voices = []
     for voice in score.voices:
         sound = sounds.get(voice.name, voice.sound)
-        if found.every_voice_synth:
-            sound = replace(sound, synth=sound.synth or "auto")
+        if found.every_voice_synth and not sound.synth:  # a pinned sound gives way too
+            sound = replace(sound, synth="auto", hash="", why="")
         changed = _params({**dict(voice.params), **dict(params.get(voice.name, ()))})
         voices.append(
             replace(

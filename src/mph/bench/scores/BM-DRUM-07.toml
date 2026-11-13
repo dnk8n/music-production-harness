@@ -18,3 +18,18 @@ sound = { role = "tom" }
 grid = ". . x . . . x . . . x . . . x ."
 sound = { role = "hat" }
 seconds = 0.25
+
+[variants.fresh-take]
+title = "sounds an agent picked from the catalogue"
+
+[variants.fresh-take.voices.kick.sound]
+hash = "d9d397e6243c0fe0b342fa84958b72d4f8eb2a7c42a40782c49bab60a289c3ea"
+why = "A kick from Umek's pack, one of tribal techno's defining producers: very deep (centroid 44 Hz) under the rotating toms."
+
+[variants.fresh-take.voices.tom.sound]
+hash = "e50ee18093f5132dd45345ba296851c6a897b180616be3f7de34fe7399e74554"
+why = "A short, dry low tom from Deep & Raw Techno. The 3-against-4 pattern stays clear without the long ambient tail, and it has little low end, so it stays out of the kick's way."
+
+[variants.fresh-take.voices.chh.sound]
+hash = "1ddc421179f7f876e10c6bea3bedd04a26b328a03ea6ab1304e54a84a6d964ca"
+why = "A short Signature Techno hat, a dry techno tick for a hypnotic loop; it hisses rather than whistles."

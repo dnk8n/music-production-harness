@@ -24,3 +24,22 @@ grid = "x x x x x x x x x x x x x x x x"
 sound = { role = "shaker" }
 humanise = 0.1
 seconds = 0.2
+
+[variants.fresh-take]
+title = "sounds an agent picked from the catalogue"
+
+[variants.fresh-take.voices.kick.sound]
+hash = "f75e49df819debdfacc1365ae5e661e48804ff7ae232838f63d6de36c860814c"
+why = "A short, punchy kick from Lack of Afro's Analogue Soul pack: more organic than the bass-house kick, under the clave."
+
+[variants.fresh-take.voices.clave.sound]
+hash = "d909b78afa6d1b64ecca137f2bf06630b04f315d67e7ba663c76a8865b24cfb9"
+why = "A woody knock rather than the metal clave: closer to real claves for the 3-2 son clave. Zero low end, very percussive."
+
+[variants.fresh-take.voices.conga.sound]
+hash = "01111ab58f24f8502d227d04f3336d6136b224a885e98a8fd94dd188bfc42e43"
+why = "A fuller deep-house conga (0.28 s, centroid 920 Hz) that answers the clave with a real drum tone, not a click."
+
+[variants.fresh-take.voices.shaker.sound]
+hash = "ed169b6ae476d44e1ab8e3f91b2b404918778e879feed7fc4954c9d4a3012f96"
+why = "A short, crisp shaker for the seeded humanised 16ths, and it hisses rather than whistles. Brighter than the current shaker (5475 vs 2323 Hz)."

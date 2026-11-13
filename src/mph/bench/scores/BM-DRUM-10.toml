@@ -25,3 +25,22 @@ seconds = 0.25
 [voices.ohh]
 grid = ". . o . . . o . . . o . . . o ."
 sound = { role = "hat_open" }
+
+[variants.fresh-take]
+title = "sounds an agent picked from the catalogue"
+
+[variants.fresh-take.voices.kick.sound]
+hash = "1be493407915f3f87ba084c0f30dc203c5dd2523e2e2910453ec0d752c0cc2b3"
+why = "A punchy Freemasons house kick (0.28 s): enough click to drive a speed garage shuffle."
+
+[variants.fresh-take.voices.snare.sound]
+hash = "83110e0ca814a79c2633d61047c0b19ec0835eee4c060e7f2d233dc7dc15e1f3"
+why = "A layered snare-clap from the same garage pack as the current one, with two onsets, which suits the flam build; zero low end."
+
+[variants.fresh-take.voices.chh.sound]
+hash = "af6e1b8a875bffec7c45c823c7c6d1de44b4154ac3e8a33ce07d3465580744c8"
+why = "A short, bright closed hat (0.11 s) that keeps the pushy shuffle tight; it hisses rather than whistles."
+
+[variants.fresh-take.voices.ohh.sound]
+hash = "98e33ec87a9f719b4805615ca11472be8d4ff459ea1b6d5e0968f263f79b5f59"
+why = "A short open hat from the garage demo kit (0.25 s), so the closed hat chokes it cleanly; it hisses rather than whistles."

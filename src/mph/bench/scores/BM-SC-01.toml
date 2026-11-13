@@ -56,3 +56,18 @@ sidechain = { depth_db = 36.0, hold_ms = 150.0, release_ms = 290.0 }
 [variants.bypass]
 title = "sidechain bypassed (0 dB): the pad and bass hold steady"
 sidechain = { depth_db = 0.0 }
+
+[variants.fresh-take]
+title = "sounds an agent picked from the catalogue"
+
+[variants.fresh-take.voices.kick.sound]
+hash = "1caab32a118bec5a35b8ecb309dd7c3f8633e9919fce84728cdb16abfff8d30c"
+why = "A Signature Techno kick with a clear attack and a 0.47 s body, so the pump is easy to hear against each kick."
+
+[variants.fresh-take.voices.clap.sound]
+hash = "c0536cd2ae47bd1e2e0011f282b7431ccffae4bf2ae98173422134efb05e6cf3"
+why = "A tight, short clap (0.15 s) with no low end, so it doesn't blur the ducking."
+
+[variants.fresh-take.voices.chh.sound]
+hash = "db3d8cff25fb093bbd1284082a2be011061eb8db405edee6c60114301af2489d"
+why = "An 808 closed hat (Deep & Raw Techno), slightly longer (0.25 s) for a steady top line over the pump; it hisses rather than whistles."

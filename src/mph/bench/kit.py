@@ -1,4 +1,4 @@
-"""Choosing a sound for each benchmark voice (REQ-BEN-05).
+"""Choosing a sound for each benchmark voice (REQ-BEN-05, REQ-BEN-16).
 
 A voice asks the catalogue for its role and words, and takes the best match
 that SuperCollider can read directly (WAV, AIFF, FLAC, Ogg: no conversion,
@@ -6,6 +6,10 @@ REQ-AUD-01). For noise-like roles (hats, shakers, cymbals) it passes over
 tonal sounds, ones that whistle rather than hiss, unless nothing else fits.
 With no catalogue, no match, or a score that asks for a synth, the voice
 falls back to a SuperCollider drum voice, and says so.
+A voice can pin one catalogue sound by its hash, with the reason an agent
+picked it (a fresh take, REQ-BEN-16). It plays exactly that sound; if the
+sound isn't here, or whistles where a hiss is wanted, the voice searches as
+above, and the reason says what happened to the pick.
 A take Dean passed keeps the sounds he heard when it renders again (REQ-BEN-15).
 """
 
@@ -14,11 +18,11 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from mph.bench import audio
-from mph.bench.score import Score, Voice
+from mph.bench.score import Score, Voice, recorded
 from mph.catalogue import provenance, search
 from mph.catalogue.remote import CLEAR
 
@@ -29,6 +33,9 @@ AUTO = "auto"  # a score's way of saying "any synth voice for this role"
 ORDINALS = {2: "second", 3: "third"}
 NOISE_ROLES = frozenset({"hat", "hat_open", "shaker", "cymbal", "ride", "crash"})
 TONAL_FLATNESS = 0.05  # below this, a noise-like sound whistles (spectral flatness)
+SHORT_HASH = 12  # hex digits of a hash that name a sound in a reason
+PICKED = "picked: "  # how a reason starts when a score says why it chose the sound
+ASKED_FOR_SYNTH = "the score asks for a synth"
 
 # role -> (synthdef, parameters)
 SYNTHS: dict[str, tuple[str, dict[str, float]]] = {
@@ -68,7 +75,7 @@ KEPT = "; kept from passed render "
 
 def request_of(voice: Voice) -> dict[str, object]:
     """What a voice asks the catalogue for, as reports record it (REQ-BEN-15)."""
-    plain: dict[str, object] = json.loads(json.dumps(asdict(voice.sound)))
+    plain: dict[str, object] = json.loads(json.dumps(recorded(voice.sound)))
     return plain
 
 
@@ -198,6 +205,33 @@ def _best_bpm(conn: sqlite3.Connection, digest: str) -> float:
     return float(row[0]) if row else 0.0
 
 
+def _label(conn: sqlite3.Connection, digest: str) -> str:
+    """A sound's catalogue path, as search hits give it."""
+    row = conn.execute(
+        "SELECT rel_path FROM source_file WHERE asset_hash = ? ORDER BY rel_path LIMIT 1",
+        (digest,),
+    ).fetchone()
+    return str(row[0]) if row else digest[:SHORT_HASH]
+
+
+def _exact(conn: sqlite3.Connection, data_dir: Path, voice: Voice, digest: str) -> _Found | str:
+    """One catalogue sound, ready to play for this voice, or why it can't be."""
+    row = conn.execute("SELECT container, channels FROM asset WHERE hash = ?", (digest,)).fetchone()
+    if not row:
+        return "isn't in the catalogue"
+    if row[0] not in READABLE:
+        return f"is {row[0]}, which SuperCollider can't play as it is"
+    if row[1] not in (1, 2):
+        return f"has {row[1]} channels, and a voice plays mono or stereo"
+    path = provenance.locate(conn, data_dir, digest)
+    if path is None or not path.is_file():
+        return "isn't on disk"
+    bpm = _best_bpm(conn, digest) if voice.slices else 0.0
+    if voice.slices and not bpm:
+        return "has no known tempo to slice it by"
+    return _Found(digest, path, _label(conn, digest), f"mph_play{row[1]}", bpm)
+
+
 def _kept(
     conn: sqlite3.Connection, data_dir: Path, voice: Voice, kept: Kept | None
 ) -> Choice | None:
@@ -205,26 +239,63 @@ def _kept(
     and the sound is still here (REQ-BEN-15)."""
     if kept is None or (kept.request is not None and kept.request != request_of(voice)):
         return None
-    row = conn.execute(
-        "SELECT container, channels FROM asset WHERE hash = ?", (kept.digest,)
-    ).fetchone()
-    if not row or row[0] not in READABLE or row[1] not in (1, 2):
-        return None
-    path = provenance.locate(conn, data_dir, kept.digest)
-    bpm = _best_bpm(conn, kept.digest) if voice.slices else 0.0
-    if path is None or not path.is_file() or (voice.slices and not bpm):
+    found = _exact(conn, data_dir, voice, kept.digest)
+    if isinstance(found, str):
         return None
     first = kept.reason.split(KEPT)[0]
     return Choice(
         voice=voice.name,
-        synthdef=f"mph_play{row[1]}",
+        synthdef=found.synthdef,
         reason=f"{first}{KEPT}{kept.render}",
-        path=str(path),
+        path=str(found.path),
         digest=kept.digest,
         label=kept.label,
         licence=_licence(conn, kept.digest),
-        bpm=bpm,
+        bpm=found.bpm,
     )
+
+
+def _picked(conn: sqlite3.Connection, data_dir: Path, voice: Voice) -> Choice | str:
+    """The sound a score pins by its hash (REQ-BEN-16), or what is wrong with it."""
+    found = _exact(conn, data_dir, voice, voice.sound.hash)
+    if isinstance(found, str):
+        return found
+    if voice.sound.role in NOISE_ROLES and tonal(found.path):
+        return "whistles rather than hisses"  # REQ-BEN-05 holds for picks too
+    return Choice(
+        voice=voice.name,
+        synthdef=found.synthdef,
+        reason=f"{PICKED}{voice.sound.why}",
+        path=str(found.path),
+        digest=found.digest,
+        label=found.label,
+        licence=_licence(conn, found.digest),
+        bpm=found.bpm,
+    )
+
+
+def _catalogued(
+    conn: sqlite3.Connection, data_dir: Path, voice: Voice, kept: Kept | None
+) -> tuple[Choice | None, str]:
+    """A catalogue sound for the voice, and what became of its pinned one."""
+    found = _kept(conn, data_dir, voice, kept)
+    if found is not None or not voice.sound.hash:
+        return found or _sample(conn, data_dir, voice), ""
+    picked = _picked(conn, data_dir, voice)
+    if isinstance(picked, Choice):
+        return picked, ""
+    return _sample(conn, data_dir, voice), picked
+
+
+def _fallback(score: Score, voice: Voice, conn: sqlite3.Connection | None) -> Choice:
+    """A synth voice, when the catalogue has nothing for this voice."""
+    if voice.slices:
+        raise KitError(
+            f"{score.id} needs a {voice.sound.role} loop in the catalogue, with a "
+            "known tempo: scan and analyse a folder of breaks first"
+        )
+    why = "no catalogue" if conn is None else f"no {voice.sound.role} in the catalogue"
+    return synth_for(voice, f"synth fallback: {why}")
 
 
 def choose(
@@ -238,20 +309,16 @@ def choose(
     choices = []
     for voice in score.voices:
         if voice.sound.synth:
-            choices.append(synth_for(voice, "the score asks for a synth"))
+            why = voice.sound.why
+            choices.append(synth_for(voice, f"{PICKED}{why}" if why else ASKED_FOR_SYNTH))
             continue
-        found = None
+        found, problem = None, "needs the catalogue"
         if conn is not None:
-            found = _kept(conn, data_dir, voice, keep.get(voice.name))
-            found = found or _sample(conn, data_dir, voice)
-        if found is None:
-            if voice.slices:
-                raise KitError(
-                    f"{score.id} needs a {voice.sound.role} loop in the catalogue, with a "
-                    "known tempo: scan and analyse a folder of breaks first"
-                )
-            why = "no catalogue" if conn is None else f"no {voice.sound.role} in the catalogue"
-            found = synth_for(voice, f"synth fallback: {why}")
+            found, problem = _catalogued(conn, data_dir, voice, keep.get(voice.name))
+        found = found or _fallback(score, voice, conn)
+        if voice.sound.hash and problem:  # say what became of the pick (REQ-BEN-16)
+            pin = voice.sound.hash[:SHORT_HASH]
+            found = replace(found, reason=f"{found.reason}; the picked sound {pin} {problem}")
         choices.append(found)
     return choices
 

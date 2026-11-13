@@ -57,7 +57,8 @@ one-shot matching "909"), and takes the best match. For noise-like roles
 flatness above 2 kHz is under 0.05, so they ring at a few sharp pitches
 rather than hiss. It takes a tonal one only when nothing else matches, and
 the report says how many it passed over. A voice with no match,
-or one the score marks as synth, uses a SuperCollider drum voice instead. The
+or one the score marks as synth, uses a SuperCollider drum voice instead. A
+voice can instead pin one exact catalogue sound by its hash (REQ-BEN-16). The
 report names every sound used, with its hash and licence, and the score hash
 covers those choices.
 - **Why:** benchmarks should use Dean's own sounds, but still render on a
@@ -92,14 +93,15 @@ standard variants:
 |---|---|
 | `renoise` | the score as written, rendered in Renoise |
 | `supercollider` | the score as written, rendered in SuperCollider (ADR-0009's fallback engine) |
-| `synth-kit` | every part a SuperCollider synth voice (not for scores with a break) |
+| `synth-kit` | every part a SuperCollider synth voice (not for scores with a break, nor for scores whose every part is a synth already) |
 
 A score with a melodic voice or a sidechain has only `supercollider` as a
 standard variant, because it always renders there (REQ-BEN-10, REQ-BEN-12).
 
 A score can add its own under `[variants.<name>]`: a title, an engine,
-and per-voice changes to `sound` (role, words, `synth`, or `pick`, the Nth
-best catalogue match), `gain_db`, synth `params` (such as a filter
+and per-voice changes to `sound` (role, words, `synth`, `pick`, the Nth
+best catalogue match, or `hash`, one exact catalogue sound, with `why` it
+was picked: REQ-BEN-16), `gain_db`, synth `params` (such as a filter
 cutoff) and a drum voice's `grid`. A score with a sidechain can also change
 its `depth_db`, `attack_ms`, `hold_ms` and `release_ms` (REQ-BEN-12), and
 any score its `feel` (REQ-BEN-13). A declared variant with no engine uses
@@ -110,12 +112,18 @@ not counted as a failure. `--variant NAME` renders just that one, and fails
 if it can't. Each variant renders into its own folder, with its own score
 hash, measurements and report, which names the variant. A rating can cover
 every take of a benchmark or just one (REQ-FBK-02).
+No take repeats another: a standard take that would sound the same as one
+already made isn't made. A standard take a score stops making keeps its
+renders and ratings, and the query channel lists it as retired (REQ-QRY-09).
 - **Why:** Dean wants to compare different productions of the same part by
   ear (Renoise against SuperCollider, one sound design against another) and
   rate each on its own, without one take being privileged as "main". The
   same mechanism lets a whole track be made in
   SuperCollider when asked, and carries the parameter A/B comparisons
-  (filter, sidechain bypass) of the later benchmarks.
+  (filter, sidechain bypass) of the later benchmarks. BM-DRUM-04's score is
+  all synths, so its synth-kit take was its renoise take over again. Dean,
+  rating 156 (2026-11-13): it "ends up sounding exactly the same as the
+  supercollider/renoise variants. Not much purpose even though I like it."
 - **Verify:** test
 
 ### REQ-BEN-09: Kit sounds are level-matched
@@ -277,8 +285,8 @@ and the page renders it again on demand (REQ-RET-06).
 When a take whose standing rating is a pass (3 stars or more, REQ-FBK-02)
 renders again, each voice keeps
 the sound that render used if the voice still asks for the same thing (its
-role, words, synth and pick, which every report now records) and the sound
-is still on disk. A voice is chosen afresh (REQ-BEN-05) only when its
+role, words, synth, pick and pinned hash, which every report now records)
+and the sound is still on disk. A voice is chosen afresh (REQ-BEN-05) only when its
 request changed or its sound is gone. A report from before requests were
 recorded keeps its sounds. The report says which sounds were kept.
 Failed (0 to 2 stars) and unrated takes choose afresh.
@@ -290,6 +298,35 @@ Failed (0 to 2 stars) and unrated takes choose afresh.
   sound, change the voice's request in the score, which is a change he can
   see and judge.
 - **Verify:** test
+
+### REQ-BEN-16: Fresh takes: sounds an agent picked
+A voice's sound can pin one catalogue sound by its hash, with why it was
+picked: `sound = { role = "kick", hash = "<its 64 hex digits>", why = "..." }`.
+The render plays exactly that sound, and the report and the listening page
+give the reason. If the sound isn't in the catalogue here, isn't on disk,
+can't be played as it is, or rings rather than hisses where a noise-like
+role wants a hiss (REQ-BEN-05), the voice searches by its role and words as
+usual (or falls back to a synth), and the report says what happened to the
+pick. A pinned sound names its role, for its level (REQ-BEN-09) and that
+search, and gives its reason. A sound pins a hash or asks for a synth, not
+both, and a synth can carry a `why` too. The `synth-kit` take ignores pins.
+A score's hash covers its pins, not their reasons.
+
+A benchmark's `fresh-take` is the score as written, with sounds an agent
+picked by exploring the catalogue through the query channel (REQ-QRY-12)
+rather than the first hit of the fixed search the other takes use. It
+differs from the benchmark's other takes in at least one voice. Where a
+synth suits a voice better (Dean preferred the synth shaker on BM-AFRO-01),
+the fresh take asks for it, with why.
+- **Why:** Dean's ideas 1 to 14 (2026-11-13), one per benchmark: "Exactly
+  as before, but use the latest functionalities like MCP server, etc to
+  make choices". A passed take keeps its sounds (REQ-BEN-15), so a better
+  search never reaches the takes he has heard, and a fresh search alone
+  changes little (no take would pick other sounds on his catalogue). Pinning
+  by hash keeps renders deterministic (REQ-AUD-05): the choice is made once,
+  saved in the score with its reason, and Dean hears it next to the takes he
+  has rated. Issue #31 automates the picking later.
+- **Verify:** test, listen
 
 ## Drum patterns
 
@@ -349,6 +386,8 @@ chh   x . x . x . x . x . x . x . x .
 ```
 Hear: a funky, robotic kick that dodges the beat (Drexciya, Cybotron). The
 snare holds 2 and 4 steady while the kick pushes and pulls around it.
+Its score is all synths, so it has no synth-kit take (REQ-BEN-07); its
+fresh take (REQ-BEN-16) plays sampled 808-style drums as the contrast.
 - **Why:** tests synthesised drums (not samples) and syncopation.
 - **Verify:** measure, listen
 
@@ -420,6 +459,8 @@ natural, uneven velocity (±10% humanisation, seeded).
 re-sequenced: slice order 1 2 3 4 1 2 7 8 / 1 2 3 4 5 5 7 8.
 Hear: the original break's feel, with a repeated slice in bar 2 creating a
 stutter. No clicks at slice boundaries.
+Its fresh take (REQ-BEN-16) chops a 125 BPM funk break from another pack
+instead, which plays only 4% faster at 130 BPM.
 - **Why:** tests onset slicing, re-sequencing and click-free edits (fades of
   1 ms or less at zero crossings).
 - **Verify:** measure, listen

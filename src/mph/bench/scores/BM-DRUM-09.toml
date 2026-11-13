@@ -9,3 +9,10 @@ bars = 8
 [voices.break]
 slices = [1, 2, 3, 4, 1, 2, 7, 8, 1, 2, 3, 4, 5, 5, 7, 8]
 sound = { role = "break", words = ["photek"] }
+
+[variants.fresh-take]
+title = "sounds an agent picked from the catalogue"
+
+[variants.fresh-take.voices.break.sound]
+hash = "4f2d6d33f5359ba304fd288983f9383b91c3dd85bd20a157f4a8d7620bad0c60"
+why = "A 125 bpm funk breakbeat (4 bars, little low end). At 130 it plays only 4% faster, where the 170 bpm Think break plays 24% slower."

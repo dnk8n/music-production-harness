@@ -316,7 +316,7 @@ def test_cli_render_list_and_report(
     assert "✓ timing" in out and "files" in out
     assert run_cli(tmp_path, "list") == 0
     listing = capsys.readouterr().out
-    assert "3 of 3 takes measure well" in listing and "not rendered" in listing
+    assert "4 of 4 takes measure well" in listing and "not rendered" in listing
     assert "Drum patterns" in listing
     assert run_cli(tmp_path, "report", "BM-DRUM-01") == 0
     assert "sound  kick" in capsys.readouterr().out
@@ -540,18 +540,21 @@ def test_variants_render_into_their_own_folders_and_list_together(
     out = capsys.readouterr().out
     assert "BM-DRUM-01 [renoise]: skipped, Renoise isn't set up here" in out
     assert "[supercollider]: pass" in out and "[other-hat]: pass" in out
+    assert "[fresh-take]: pass" in out  # its picks aren't here, so it falls back (REQ-BEN-16)
     assert run_cli(tmp_path, "render", "BM-DRUM-01", "--variant", "renoise") == 1  # named: must
     assert "BM-DRUM-01 [renoise]: Renoise can't render yet" in capsys.readouterr().err
     renders = cfg_for(tmp_path).data_dir / "renders"
     listed = next(b for b in feedback.listing(renders, None) if b["id"] == "BM-DRUM-01")
     by_name = {v["name"]: v for v in listed["takes"]}
-    assert list(by_name) == ["renoise", "supercollider", "synth-kit", "other-hat"]
+    assert list(by_name) == ["renoise", "supercollider", "synth-kit", "other-hat", "fresh-take"]
     assert by_name["renoise"]["report"] is None
     assert by_name["synth-kit"]["report"]["variant_title"] == "every part a SuperCollider synth"
     hashes = {v["report"]["score_hash"] for v in by_name.values() if v["report"]}
-    assert len(hashes) == 3
+    assert len(hashes) == 4
+    fresh = {k["voice"]: k["why"] for k in by_name["fresh-take"]["report"]["kit"]}
+    assert fresh["kick"].endswith("isn't in the catalogue")  # and says what became of the pick
     assert run_cli(tmp_path, "report", "BM-DRUM-01") == 0
-    assert capsys.readouterr().out.count("BM-DRUM-01 Detroit four-to-the-floor [") == 3
+    assert capsys.readouterr().out.count("BM-DRUM-01 Detroit four-to-the-floor [") == 4
     assert feedback.latest(renders, "BM-DRUM-01", "supercollider")["engine"] == "supercollider"  # type: ignore[index]
 
 
@@ -652,6 +655,109 @@ def test_garage_patterns_take_a_garage_snare(conn: sqlite3.Connection, tmp_path:
         chosen = {c.voice: c for c in kit.choose(score.load(benchmark), conn, tmp_path / "data")}
         assert chosen["snare"].label == "Bass House And Garage Snare Clap 03.wav"
         assert chosen["snare"].reason == "catalogue: best snare oneshot matching garage"
+
+
+# --- sounds an agent picked (REQ-BEN-16) ------------------------------------------------
+
+
+def pinned(kick: str, hat: str, brk: str = "") -> score.Score:
+    """A score that pins its kick and hat, and maybe a break, by their hashes."""
+    loop = (
+        f"""
+[voices.brk]
+slices = [1, 2, 3, 4, 5, 6, 7, 8]
+sound = {{ role = "break", hash = "{brk}", why = "a dusty break" }}
+"""
+        if brk
+        else ""
+    )
+    return score.load_text(
+        f"""
+id = "BM-P"
+bpm = 120
+bars = 1
+[voices.kick]
+grid = "X . . . X . . . X . . . X . . ."
+sound = {{ role = "kick", words = ["909"], hash = "{kick}", why = "a rounder kick" }}
+[voices.chh]
+grid = ". . x . . . x . . . x . . . x ."
+sound = {{ role = "hat", hash = "{hat}", why = "a crisp hat" }}
+[voices.shaker]
+grid = "x x x x x x x x x x x x x x x x"
+sound = {{ synth = "mph_shaker", why = "Dean preferred the synth shaker" }}
+"""
+        + loop
+    )
+
+
+@pytest.mark.req("REQ-BEN-16")
+def test_a_pinned_sound_plays_as_picked_and_says_why(
+    conn: sqlite3.Connection, tmp_path: Path
+) -> None:
+    lib, data = tmp_path / "lib", tmp_path / "data"
+    add_sample(conn, lib, "A Kick 909.wav", [("role", "kick")])  # what the search would take
+    kick = add_sample(conn, lib, "Z Kick 909.wav", [("role", "kick")])
+    hat = add_sample(conn, lib, "Z Hat.wav", [("role", "hat")], seconds=0.05, noise=True)
+    chosen = {c.voice: c for c in kit.choose(pinned(kick, hat), conn, data)}
+    assert (chosen["kick"].label, chosen["kick"].digest) == ("Z Kick 909.wav", kick)
+    assert chosen["kick"].reason == "picked: a rounder kick"
+    assert chosen["kick"].licence == "commercial-pack"
+    assert chosen["chh"].reason == "picked: a crisp hat"
+    assert (chosen["shaker"].synthdef, chosen["shaker"].reason) == (
+        "mph_shaker",
+        "picked: Dean preferred the synth shaker",
+    )
+    # Reports record the pin with the request, so a passed take keeps it (REQ-BEN-15).
+    voice = pinned(kick, hat).voice("kick")
+    assert kit.request_of(voice)["hash"] == kick
+    kept = kit.Kept(kick, "Z Kick 909.wav", "picked: a rounder kick", "feedfacefeedface")
+    again = kit.choose(pinned(kick, hat), conn, data, keep={"kick": kept})[0]
+    assert again.reason == "picked: a rounder kick; kept from passed render feedfacefeedface"
+
+
+@pytest.mark.req("REQ-BEN-16")
+def test_a_pinned_sound_that_cant_play_falls_back_and_says_so(
+    conn: sqlite3.Connection, tmp_path: Path
+) -> None:
+    lib, data = tmp_path / "lib", tmp_path / "data"
+    add_sample(conn, lib, "A Kick 909.wav", [("role", "kick")])
+    m4a = add_sample(conn, lib, "Kick 909.m4a", [("role", "kick")], container="m4a")
+    gone = add_sample(conn, lib, "Gone Kick 909.wav", [("role", "kick")])
+    (lib / "Gone Kick 909.wav").unlink()
+    whistle = add_sample(conn, lib, "A Whistle Hat.wav", [("role", "hat")], freq=9000.0)
+    add_sample(conn, lib, "B Hat.wav", [("role", "hat")], seconds=0.05, noise=True)
+    search = "catalogue: best kick oneshot matching 909"
+
+    def reasons(kick: str, hat: str) -> dict[str, str]:
+        return {c.voice: c.reason for c in kit.choose(pinned(kick, hat), conn, data)}
+
+    missing = "00" * 32
+    found = reasons(missing, whistle)
+    assert found["kick"] == f"{search}; the picked sound {missing[:12]} isn't in the catalogue"
+    assert found["chh"] == (
+        "catalogue: best hat oneshot, passing over 1 that whistle rather than hiss; "
+        f"the picked sound {whistle[:12]} whistles rather than hisses"
+    )
+    assert reasons(m4a, whistle)["kick"].endswith(
+        f"{m4a[:12]} is m4a, which SuperCollider can't play as it is"
+    )
+    assert reasons(gone, whistle)["kick"].endswith(f"{gone[:12]} isn't on disk")
+    with conn:
+        conn.execute("UPDATE asset SET channels = 6 WHERE hash = ?", (gone,))
+    assert reasons(gone, whistle)["kick"].endswith(
+        "has 6 channels, and a voice plays mono or stereo"
+    )
+    plain = {c.voice: c.reason for c in kit.choose(pinned(missing, whistle), None, data)}
+    assert (
+        plain["kick"]
+        == f"synth fallback: no catalogue; the picked sound {missing[:12]} needs the catalogue"
+    )
+    # A break needs its tempo to be sliced, so a pinned loop without one gives way too.
+    add_sample(conn, lib, "Break 170.wav", [("role", "break"), ("bpm", "170")], form="loop")
+    still = add_sample(conn, lib, "Still Break.wav", [("role", "break")], form="loop")
+    brk = {c.voice: c for c in kit.choose(pinned(missing, whistle, still), conn, data)}["brk"]
+    assert brk.label == "Break 170.wav"
+    assert brk.reason.endswith(f"{still[:12]} has no known tempo to slice it by")
 
 
 # --- a pass is a pass (REQ-BEN-14, REQ-BEN-15) -------------------------------------------

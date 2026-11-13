@@ -184,8 +184,11 @@ def cmd_render(
     for kept in session.kept:  # songs someone had open in Renoise (REQ-REN-08)
         print(f"\n{kept.note()}")
     if skipped:
-        print(f"\n{skipped} skipped: a pass is a pass. --force-rerender renders them anyway.")
-    print("\nlisten and give verdicts: mph bench serve")
+        print(
+            f"\n{skipped} skipped: resolved, or nothing changed since their newest render. "
+            "--force-rerender renders them anyway."
+        )
+    print("\nlisten and rate them: mph bench serve")
     return 1 if failed else 0
 
 
@@ -201,7 +204,7 @@ def _decide(
 ) -> rerender.Decision:
     """Whether this take renders (REQ-BEN-14). One that can't even be planned
     renders, so that render explains what's wrong."""
-    from mph.bench import render, sc  # noqa: PLC0415 - heavy audio imports, on demand
+    from mph.bench import kit, render, sc  # noqa: PLC0415 - heavy audio imports, on demand
 
     try:
         take, chosen_variant, chosen = render.take(
@@ -210,9 +213,17 @@ def _decide(
     except (score.ScoreError, sc.RenderError, OSError):
         return rerender.Decision(True, "to report what's wrong")
     renders = cfg.data_dir / RENDERS
-    made, verdict = feedback.standing(renders, conn, benchmark_id, chosen_variant.name)
+    made, rating = feedback.standing(renders, conn, benchmark_id, chosen_variant.name)
     current = render.take_inputs(cfg, take, chosen)
-    return rerender.decide(made, verdict, current, force=force)
+
+    def sounds() -> str:  # only for a take that chooses its sounds afresh (REQ-BEN-15)
+        try:
+            choices = kit.choose(take, conn, cfg.data_dir)
+        except kit.KitError as exc:
+            return f"its sounds can't be chosen now ({exc})"
+        return rerender.changed_sounds(made or {}, choices)
+
+    return rerender.decide(made, rating, current, sounds=sounds, force=force)
 
 
 def _cannot(benchmark_id: str, variant: str, home: Path | None) -> str:

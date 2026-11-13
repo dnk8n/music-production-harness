@@ -10,13 +10,14 @@ is the short version so every new session starts with the same rules.
    `uv run mph spec check` before every commit.
 2. **Cite IDs.** Module docstrings name their spec file. Tests link
    requirements with `@pytest.mark.req("REQ-...")`. PR descriptions list the
-   IDs they implement.
+   IDs they implement, and the ids of Dean's ratings they answer: the
+   `feedback` tool lists his unresolved takes and open ideas (REQ-QRY-12).
 3. **Where work runs (REQ-PRC-06).** Code is changed and checked in a cloud
    copy of the repo, on its own branch. Anything that needs Renoise, demucs,
    real SuperCollider renders, the Keychain or Dean's samples runs on Dean's
    Mac over Remote Control, in `/Users/dean/src/music-production-harness`,
    after the PR is pushed. To look something up there (sounds, labels,
-   benchmarks, verdicts, health), use the read-only `mph` MCP tools, or
+   benchmarks, ratings, ideas, health), use the read-only `mph` MCP tools, or
    `uv run mph mcp call TOOL` where they aren't loaded
    (spec/components/query-channel.md).
 4. **One branch per PR, cut from the latest `main`.** Don't stack PRs. Before

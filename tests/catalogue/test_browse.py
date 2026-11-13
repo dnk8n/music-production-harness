@@ -232,13 +232,13 @@ def test_real_server_answers(setup: tuple[App, FakeRunner, Path]) -> None:
         assert (response.status, response.read()) == (206, b"RIFF")
         assert response.getheader("Accept-Ranges") == "bytes"
         origin = {"Origin": f"http://127.0.0.1:{port}", "Content-Type": "application/json"}
-        client.request("POST", "/api/verdict", body=b"{}", headers=origin)
+        client.request("POST", "/api/rating", body=b"{}", headers=origin)
         refused = client.getresponse()
         assert (refused.status, refused.read()) == (
             400,
-            b"verdict must be one of pass, close, fail",
+            b"stars must be a whole number from 0 to 5",
         )
-        client.request("POST", "/api/verdict", body=b"x" * (browse.MAX_BODY + 1), headers=origin)
+        client.request("POST", "/api/rating", body=b"x" * (browse.MAX_BODY + 1), headers=origin)
         assert client.getresponse().status == 413
         client.close()
     finally:

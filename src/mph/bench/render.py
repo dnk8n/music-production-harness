@@ -27,7 +27,7 @@ from typing import Any
 
 import numpy as np
 
-from mph import __version__, retention
+from mph import __version__, checkout, retention
 from mph.bench import audio, checks, feedback, kit, levels, rerender, sc
 from mph.bench.score import (
     Event,
@@ -628,8 +628,8 @@ def run(
     A take that passed keeps its sounds (REQ-BEN-15)."""
     home = Path.home() if home is None else home
     score, chosen_variant, chosen = take(benchmark_id, variant, engine, home)
-    made, verdict = feedback.standing(renders_dir(cfg), conn, score.id, chosen_variant.name)
-    choices = kit.choose(score, conn, cfg.data_dir, keep=rerender.kept_sounds(made, verdict))
+    made, rating = feedback.standing(renders_dir(cfg), conn, score.id, chosen_variant.name)
+    choices = kit.choose(score, conn, cfg.data_dir, keep=rerender.kept_sounds(made, rating))
     setup, tools, gains = _prepare(cfg, runner, score, choices, chosen)
     folder, rate = setup.folder, setup.rate
     if chosen == "renoise":
@@ -666,7 +666,7 @@ def run(
         bits=a.delivery_bit_depth,
         fmt=a.delivery_format,
     )
-    report = {
+    report: dict[str, object] = {
         "id": score.id,
         "title": score.title,
         "variant": score.variant,
@@ -676,6 +676,7 @@ def run(
         "rendered_at": utc_now(),
         "engine": chosen,
         "tools": {"mph": __version__, **rendered.tools},
+        "checkout": checkout.state(runner),  # the code it was rendered from (REQ-BEN-03)
         "production_rate": rate,
         "bpm": score.bpm,
         "bars": score.bars,

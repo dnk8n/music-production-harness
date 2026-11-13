@@ -14,7 +14,13 @@ from mph.query.answers import Library
 from mph.query.tools import Tool
 from tests.query.conftest import library_for, make_cfg
 
-LISTS = {"labels": "limit", "search_sounds": "limit", "verdicts": "limit", "sql": "max_rows"}
+LISTS = {
+    "labels": "limit",
+    "search_sounds": "limit",
+    "ratings": "limit",
+    "ideas": "limit",
+    "sql": "max_rows",
+}
 
 
 def stub(answer: Any, schema: dict[str, Any] | None = None) -> Tool:
@@ -33,7 +39,7 @@ def problems(tool_name: str, arguments: dict[str, Any]) -> list[str]:
 @pytest.mark.req("REQ-QRY-01")
 def test_every_tool_is_described_for_the_model() -> None:
     names = [tool.name for tool in tools.TOOLS]
-    assert len(names) == len(set(names)) == 11
+    assert len(names) == len(set(names)) == 13
     for tool in tools.TOOLS:
         assert re.fullmatch(r"[a-z_]{2,32}", tool.name)
         assert tool.title
@@ -104,7 +110,8 @@ def test_every_list_has_a_limit(name: str, limit: str) -> None:
         ("search_sounds", {"roles": ["kick", 3]}, "roles[1] must be a string"),
         ("search_sounds", {"words": ["x"] * 13}, "words takes at most 12 items"),
         ("report", {"id": "BM-DRUM-02", "score_hash": "XYZ"}, "should look like 0123456789abcdef"),
-        ("verdicts", {"since": "yesterday"}, "since should look like 2026-11-10"),
+        ("ratings", {"since": "yesterday"}, "since should look like 2026-11-10"),
+        ("ratings", {"state": "great"}, "state must be one of: resolved, unresolved"),
         ("sql", {"query": "x" * 20_001}, "query is longer than 20000 characters"),
         ("doctor", {"stages": ["core", "everything"]}, "stages[1] must be one of: core"),
         ("schema", {"table": "asset"}, "unknown argument table (arguments: none)"),

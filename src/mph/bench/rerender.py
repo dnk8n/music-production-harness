@@ -1,15 +1,20 @@
-"""A pass is a pass (spec/components/benchmarks.md: REQ-BEN-14, REQ-BEN-15).
+"""A pass is a pass (spec/components/benchmarks.md: REQ-BEN-14, REQ-BEN-15;
+spec/components/feedback.md: REQ-FBK-06).
 
-A take renders again only when something about it is new: it was never
-rendered, what shapes it changed, it failed, or Dean's notes on it are still
-to act on. When a take he passed does render again, its voices keep the
-sounds he heard (``kit.Kept``), so a better catalogue search can't swap them
-out from under his verdict.
+A take renders again only when a render could come out different and its
+rating doesn't hold it. A resolved take waits for ``--force-rerender``. Any
+other renders once something that shapes it changed since its newest render,
+and otherwise is skipped: renders are deterministic, so the same inputs make
+the same file. When a take rated a pass does render again, its voices keep
+the sounds Dean heard (``kit.Kept``), so a better catalogue search can't swap
+them out from under his rating.
 
 What shapes a take is one digest, ``inputs``, written into every report: its
 score, the engine, the audio settings and the code that renders and measures
 it. Kit choice and search are left out on purpose, because a passed take
-keeps its sounds whatever they would pick now.
+keeps its sounds whatever they would pick now. For a take that chooses its
+sounds afresh, the caller compares what it would choose now
+(``changed_sounds``), so a new sample or a better search still reaches it.
 """
 
 from __future__ import annotations
@@ -17,12 +22,14 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import cache
 from importlib import resources
 from typing import Any
 
-from mph.bench import kit
+from mph.bench import kit, ratings
+from mph.bench.ratings import Rating
 from mph.bench.score import Score
 
 # Inside the mph package: the code that renders a take and measures it.
@@ -89,48 +96,73 @@ def inputs(score: Score, engine: str, audio: dict[str, Any]) -> str:
     )
 
 
-def _what_changed(report: dict[str, Any] | None, current: str) -> str:
-    """Why a take's newest render no longer stands for it, or "" if it does."""
-    if report is None:
-        return "never rendered"
+def _what_changed(report: Mapping[str, Any], current: str) -> str:
+    """Why the take's newest render no longer shows what it would make now, or ""."""
     recorded = report.get("inputs")
     if recorded is None:
         return "rendered before mph recorded what shapes a render"
     if recorded != current:
         return "its score, engine, audio settings or render code changed"
-    return "" if report.get("passed") else "a measurement failed"
+    return ""
 
 
-def _what_dean_said(verdict: dict[str, str] | None) -> Decision:
-    if verdict is None:
-        return Decision(False, "waiting for your verdict")
-    if verdict["verdict"] != "pass":
-        return Decision(True, f"your verdict is {verdict['verdict']}")
-    if notes := str(verdict.get("notes") or "").strip():
-        return Decision(True, f"your notes are still to act on: {notes}")
-    return Decision(False, "passed, and nothing changed")
+def _stars(rating: Rating) -> str:
+    return f"{rating.stars} star" + ("" if rating.stars == 1 else "s")
+
+
+def chooses_afresh(rating: Rating | None) -> bool:
+    """A take not rated a pass chooses its sounds again on each render (REQ-BEN-15)."""
+    return rating is None or not rating.passed
+
+
+def changed_sounds(report: Mapping[str, Any], choices: Sequence[kit.Choice]) -> str:
+    """Which voices would now get another sound than the newest render used, or ""
+    if none would. A sample is the same sound by its digest, wherever it lives;
+    a synth voice by its synth's name."""
+    used = {
+        str(entry.get("voice")): str(entry.get("hash") or entry.get("sound") or "")
+        for entry in report.get("kit", [])
+    }
+    moved = [c.voice for c in choices if used.get(c.voice) != (c.digest or c.label)]
+    return f"it would choose other sounds now ({', '.join(moved)})" if moved else ""
+
+
+def _waiting(rating: Rating | None) -> Decision:
+    if rating is None:
+        return Decision(False, "not rated yet, and nothing changed since its newest render")
+    return Decision(
+        False, f"unresolved ({_stars(rating)}), waiting for a change: nothing changed yet"
+    )
 
 
 def decide(
-    report: dict[str, Any] | None,
-    verdict: dict[str, str] | None,
+    report: Mapping[str, Any] | None,
+    rating: Rating | None,
     current: str,
     *,
+    sounds: Callable[[], str] | None = None,
     force: bool = False,
 ) -> Decision:
-    """Whether a take renders, from its newest render and the verdict that stands."""
+    """Whether a take renders, from its newest render, the rating that stands for
+    it and its ``inputs`` now (REQ-BEN-14). ``sounds`` says which sounds it would
+    choose differently now (``changed_sounds``); it is asked only when the
+    answer matters, because choosing searches the catalogue."""
     if force:
         return Decision(True, "asked to (--force-rerender)")
+    if report is None:
+        return Decision(True, "never rendered")
+    if rating is not None and rating.state == ratings.RESOLVED:
+        return Decision(False, f"resolved ({_stars(rating)}), so only --force-rerender renders it")
     if why := _what_changed(report, current):
         return Decision(True, why)
-    return _what_dean_said(verdict)
+    if chooses_afresh(rating) and sounds is not None and (why := sounds()):
+        return Decision(True, why)
+    return _waiting(rating)
 
 
-def kept_sounds(
-    report: dict[str, Any] | None, verdict: dict[str, str] | None
-) -> dict[str, kit.Kept]:
-    """The catalogue sounds a take keeps (REQ-BEN-15): only a passed take keeps any."""
-    if report is None or verdict is None or verdict["verdict"] != "pass":
+def kept_sounds(report: Mapping[str, Any] | None, rating: Rating | None) -> dict[str, kit.Kept]:
+    """The catalogue sounds a take keeps (REQ-BEN-15): only one rated a pass keeps any."""
+    if report is None or chooses_afresh(rating):
         return {}
     return {
         str(entry["voice"]): kit.Kept(

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -214,8 +214,19 @@ def test_render_failures_are_explained(tmp_path: Path) -> None:
 @pytest.mark.req("REQ-AUD-05")
 def test_render_writes_stems_master_delivery_and_report(tmp_path: Path) -> None:
     cfg = cfg_for(tmp_path)
-    outcome = render.run("BM-DRUM-02", cfg, runner(), None, home=tmp_path)
+    git = {"--abbrev-ref": "claude/stars\n", "--porcelain": "", "HEAD": "c0ffee1234\n"}
+
+    def answer(argv: Sequence[str]) -> Result:
+        return Result(0, next(out for key, out in git.items() if key in argv))
+
+    outcome = render.run("BM-DRUM-02", cfg, runner(git=answer), None, home=tmp_path)
     report = outcome.report
+    # The code it was rendered from, to tie a rating to a change (REQ-BEN-03).
+    assert report["checkout"] == {
+        "commit": "c0ffee1234",
+        "branch": "claude/stars",
+        "uncommitted": False,
+    }
     assert outcome.folder.parent == cfg.data_dir / "renders" / "BM-DRUM-02"
     assert outcome.folder.name == report["score_hash"]
     failures = [m for m in report["measurements"] if not m["passed"]]  # type: ignore[attr-defined]
@@ -656,11 +667,18 @@ def _kit(tmp_path: Path) -> dict[str, dict[str, Any]]:
 
 @pytest.mark.req("REQ-BEN-14")
 @pytest.mark.req("REQ-BEN-15")
-def test_a_pass_is_a_pass_and_keeps_its_sounds(
-    conn: sqlite3.Connection, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+@pytest.mark.req("REQ-FBK-06")
+def test_a_resolved_take_waits_for_force_and_a_pass_keeps_its_sounds(
+    conn: sqlite3.Connection,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from mph.bench import feedback  # noqa: PLC0415
 
+    # A minute between renders, as on a real machine: the newest render is the newest by time.
+    minutes = iter(range(60))
+    monkeypatch.setattr(render, "utc_now", lambda: f"2026-11-13T09:{next(minutes):02d}:00+00:00")
     lib = tmp_path / "lib"
     add_sample(conn, lib, "Kick B.wav", [("role", "kick")])
     take = ("render", "BM-DRUM-01", "--variant", "supercollider")
@@ -670,31 +688,44 @@ def test_a_pass_is_a_pass_and_keeps_its_sounds(
     assert first["sound"] == "Kick B.wav"
     assert first["request"] == {"role": "kick", "words": ["909"], "synth": "", "pick": 1}
 
-    assert run_cli(tmp_path, *take) == 0  # rendered, not judged yet: nothing new
-    assert "skipped, waiting for your verdict" in capsys.readouterr().out
+    assert run_cli(tmp_path, *take) == 0  # rendered, not rated yet: nothing changed
+    assert "skipped, not rated yet, and nothing changed" in capsys.readouterr().out
 
     renders = cfg_for(tmp_path).data_dir / "renders"
-    feedback.record(conn, renders, {"id": "BM-DRUM-01", "scope": "all", "verdict": "pass"})
+
+    def rate(**asked: object) -> None:
+        feedback.rate(conn, renders, {"id": "BM-DRUM-01", "scope": "all", **asked})
+
+    rate(stars=4)  # a pass, resolved by its stars
     assert run_cli(tmp_path, *take) == 0
     out = capsys.readouterr().out
-    assert "[supercollider]: skipped, passed, and nothing changed" in out
-    assert "1 skipped: a pass is a pass. --force-rerender renders them anyway." in out
+    assert "[supercollider]: skipped, resolved (4 stars), so only --force-rerender" in out
+    assert "1 skipped: resolved, or nothing changed since their newest render." in out
 
     # A new sound that sorts first would win a fresh choice, but the passed take keeps its kick.
     add_sample(conn, lib, "A Kick.wav", [("role", "kick")])
+    assert run_cli(tmp_path, *take) == 0
+    assert "skipped, resolved (4 stars)" in capsys.readouterr().out
     assert run_cli(tmp_path, *take, "--force-rerender") == 0
     assert "rendering, asked to (--force-rerender)" in capsys.readouterr().out
     again = _kit(tmp_path)["kick"]
     assert again["sound"] == "Kick B.wav"
     assert again["why"].endswith(f"; kept from passed render {first['score_hash']}")
-    assert again["score_hash"] == first["score_hash"]  # same render, so the pass still stands
+    assert again["score_hash"] == first["score_hash"]  # same render, so the rating still stands
 
-    # Notes on a pass are feedback still to act on.
-    feedback.record(
-        conn, renders, {"id": "BM-DRUM-01", "scope": "all", "verdict": "pass", "notes": "hats"}
-    )
+    # Unresolved, a pass keeps its sounds and waits for something to change.
+    rate(stars=4, status="unresolved", notes="hats up a little")
     assert run_cli(tmp_path, *take) == 0
-    assert "rendering, your notes are still to act on: hats" in capsys.readouterr().out
+    assert "skipped, unresolved (4 stars), waiting for a change" in capsys.readouterr().out
+
+    # A fail chooses afresh, so the kick that would win now is a change worth a render.
+    rate(stars=2, notes="kick too soft")
+    assert run_cli(tmp_path, *take) == 0
+    assert "rendering, it would choose other sounds now (kick)" in capsys.readouterr().out
+    assert _kit(tmp_path)["kick"]["sound"] == "A Kick.wav"
+    # Other sounds make another render, which Dean hasn't heard: it waits for his rating.
+    assert run_cli(tmp_path, *take) == 0
+    assert "skipped, not rated yet, and nothing changed" in capsys.readouterr().out
 
 
 @pytest.mark.req("REQ-BEN-15")

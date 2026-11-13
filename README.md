@@ -49,17 +49,22 @@ a 48 kHz / 24-bit AIFF:
 uv run mph renoise install # once; then restart Renoise
 uv run mph bench list
 uv run mph bench render BM-DRUM-02                       # every take of it with something new
-uv run mph bench render --all                            # leaves takes you passed alone
+uv run mph bench render --all                            # leaves resolved takes alone
 uv run mph bench render BM-DRUM-01 --variant synth-kit   # just one take
-uv run mph bench render BM-DRUM-01 --force-rerender      # even takes that passed
-uv run mph bench serve     # listen, compare, give verdicts, open in Renoise
+uv run mph bench render BM-DRUM-01 --force-rerender      # even resolved takes
+uv run mph bench serve     # listen, compare, rate, add ideas, open in Renoise
 ```
 
 Renders are deterministic, so mph keeps only the newest of each benchmark
 variant and makes older ones again when needed (spec/components/retention.md).
-A pass is a pass: a take you passed renders again only if its score or the
-render code changes, and then it keeps the sounds you heard (REQ-BEN-14, 15).
-The listening page renders a pruned take when you play it.
+You rate each take 0 to 5 stars on the listening page (3 or more is a pass),
+and mark it resolved or unresolved, with feedback (REQ-FBK-02, REQ-FBK-06).
+A resolved take renders again only with `--force-rerender`. An unresolved
+one renders again once its score, the render code or its sounds change, and
+agents find it through the `feedback` tool. A take rated a pass keeps the
+sounds you heard (REQ-BEN-14, 15). You can also add ideas for new projects,
+benchmarks and variants there (REQ-FBK-08). The listening page renders a
+pruned take when you play it.
 
 ```sh
 uv run mph prune           # what can be freed; deletes nothing
@@ -78,7 +83,7 @@ uv run mph secrets set gemini      # API key
 
 Let Claude look things up for you: one command gives every Claude Code
 session on this Mac read-only tools for the catalogue, benchmarks, renders,
-verdicts and health (spec/components/query-channel.md). Claude can then
+your ratings and ideas, and health (spec/components/query-channel.md). Claude can then
 answer questions like "which kicks have I never used in a render?" without
 being able to change anything.
 

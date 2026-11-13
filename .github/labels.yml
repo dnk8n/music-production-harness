@@ -4,7 +4,7 @@
 - {name: "type:dev", color: "1d76db", description: "Implementation work"}
 - {name: "type:qa", color: "0e8a16", description: "Tests, benchmarks, measurements"}
 - {name: "type:infra", color: "bfd4f2", description: "CI, tooling, repo setup"}
-- {name: "type:feedback", color: "fbca04", description: "Dean's listening verdict on a render"}
+- {name: "type:feedback", color: "fbca04", description: "Dean's rating of a render, and what he heard"}
 - {name: "type:bug", color: "d73a4a", description: "Something behaves differently from the spec"}
 - {name: "type:research", color: "c5def5", description: "Investigate before deciding"}
 - {name: "area:config", color: "ededed", description: "Config and secrets"}

@@ -13,8 +13,11 @@
 | **Stem** | A rendered audio track for one musical part (drums, bass, vocal), 32-bit float at the production rate. |
 | **Production rate** | Sample rate for synthesis and stems (default 96 kHz). |
 | **Delivery** | The final 48 kHz / 24-bit AIFF. The only point where sample rate conversion (SRC) and dither happen. |
-| **Benchmark** | A short render with a written description of what Dean should hear, automated measurements, and Dean's verdict. ID `BM-...`. |
-| **Verdict** | Dean's pass/fail plus notes on a benchmark render, captured by the feedback page. |
+| **Benchmark** | A short render with a written description of what Dean should hear, automated measurements, and Dean's rating. ID `BM-...`. |
+| **Rating** | Dean's 0 to 5 stars on a take (3 or more is a pass), whether it is resolved, and his feedback, given on the feedback page (REQ-FBK-02). |
+| **Resolved** | A take needs nothing more: it renders again only when forced. **Unresolved**: it needs work, and agents find it through `feedback` (REQ-FBK-06). Set by Dean, or by the stars when he doesn't. |
+| **Idea** | A project, benchmark or variant Dean asked for on the page, until agents build it as spec and score (REQ-FBK-08). |
+| **Verdict** | Retired 2026-11-13: pass, close or fail on a render, before ratings. Carried over into ratings (REQ-FBK-07). |
 | **Take** | One way of making a benchmark (engine, sounds, levels): a variant. All takes are equal. |
 | **Triplet grid** | A 12-step grid: eighth-note triplets, three to a beat, playing alongside 16-step grids (REQ-BEN-13). |
 | **Feel** | Where a beat's three triplet pulses fall, as shares of the beat: even, or uneven like the long-short-short of jembe drumming (REQ-BEN-13). |

@@ -69,7 +69,7 @@ editable in the pattern. Choked voices get a note-off.
 The Benchmarks page has an "Open in Renoise" button for each render that has
 a song. The local server opens that render's `.xrns` (only one listed in its
 `report.json`) with Renoise. It accepts the request only as JSON from the
-page's own origin, like a verdict (REQ-FBK-05).
+page's own origin, like a rating (REQ-FBK-05).
 - **Why:** a plain web link can't open an app, but the page is served by mph
   on Dean's machine, so mph can open it for him.
 - **Verify:** test

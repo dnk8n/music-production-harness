@@ -156,6 +156,48 @@ MIGRATIONS: tuple[str, ...] = (
     ALTER TABLE verdict ADD COLUMN scope TEXT NOT NULL DEFAULT 'take'
         CHECK (scope IN ('take', 'all'));
     """,
+    # 9: star ratings replace verdicts (REQ-FBK-02, REQ-FBK-06, ADR-0012). Every save is a
+    # row; the newest stands. Verdicts carry over once (REQ-FBK-07); the verdict table stays
+    # as it was, for branches from before ratings. Ideas Dean adds on the page (REQ-FBK-08).
+    """
+    CREATE TABLE rating (
+        id INTEGER PRIMARY KEY,
+        benchmark TEXT NOT NULL,             -- BM-DRUM-02, ...
+        score_hash TEXT NOT NULL,            -- the render it judged
+        scope TEXT NOT NULL CHECK (scope IN ('take', 'all')),
+        stars INTEGER NOT NULL CHECK (stars BETWEEN 0 AND 5),  -- 3 to 5 is a pass
+        status TEXT CHECK (status IN ('resolved', 'unresolved')),  -- NULL: the stars decide
+        notes TEXT NOT NULL,                 -- Dean's feedback, may hold times like "0:42 ..."
+        created_at TEXT NOT NULL,
+        take TEXT NOT NULL DEFAULT '',       -- the take that render was ('' when carried over)
+        inputs TEXT NOT NULL DEFAULT '',     -- what shaped that render (REQ-BEN-14)
+        via TEXT NOT NULL CHECK (via IN ('page', 'verdict')),  -- given on the page, or carried over
+        verdict TEXT CHECK (verdict IN ('pass', 'close', 'fail'))  -- the verdict it came from
+    );
+    CREATE INDEX rating_render ON rating (benchmark, score_hash);
+    INSERT INTO rating
+        (benchmark, score_hash, scope, stars, status, notes, created_at, via, verdict)
+    SELECT benchmark, score_hash, scope,
+           CASE verdict WHEN 'pass' THEN 3 WHEN 'close' THEN 2 ELSE 1 END,
+           CASE WHEN verdict = 'pass' AND trim(notes) != '' THEN 'unresolved' END,
+           notes, created_at, 'verdict', verdict
+    FROM verdict ORDER BY id;
+    CREATE TABLE idea (
+        id INTEGER PRIMARY KEY,
+        kind TEXT NOT NULL CHECK (kind IN ('project', 'benchmark', 'variant')),
+        ref TEXT NOT NULL,                   -- its id: a project id, BM-AREA-NN or a variant name
+        parent TEXT NOT NULL,                -- '' for a project; a project id; a benchmark id
+        title TEXT NOT NULL,
+        notes TEXT NOT NULL,                 -- what Dean wants, and why
+        ref_given INTEGER NOT NULL CHECK (ref_given IN (0, 1)),  -- 1: typed; 0: filled in
+        created_at TEXT NOT NULL,
+        dropped_at TEXT,                     -- when Dean dropped it; NULL while it's open
+        dropped_with INTEGER                 -- the idea whose drop took it (itself, or above it)
+    );
+    CREATE UNIQUE INDEX idea_open ON idea (kind, parent, ref) WHERE dropped_at IS NULL;
+    CREATE UNIQUE INDEX idea_benchmark ON idea (ref)
+        WHERE kind = 'benchmark' AND dropped_at IS NULL;
+    """,
 )
 
 

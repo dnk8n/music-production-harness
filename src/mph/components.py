@@ -317,7 +317,7 @@ REGISTRY: tuple[Component, ...] = (
         "gh",
         "GitHub CLI",
         Stage.AI,
-        "Turns listening verdicts into issues",
+        "Turns unresolved ratings into issues",
         Binary("gh", ("--version",)),
         steps=(brew("gh"),),
     ),

@@ -54,13 +54,18 @@ class Check:
 
 
 def timing(matches: Mapping[str, Sequence[Match]]) -> Check:
-    worst = max((abs(m.error_ms) for found in matches.values() for m in found), default=0.0)
+    found = [m for hits in matches.values() for m in hits]
+    furthest = max(found, key=lambda m: abs(m.error_ms), default=None)
+    worst = abs(furthest.error_ms) if furthest else 0.0
+    note = f"{len(found)} hits checked"
+    if furthest and worst:
+        note += f"; furthest off: {furthest.event.voice} step {furthest.event.step}"
     return Check(
         "timing: worst hit error (ms)",
         round(worst, 3),
         f"<= {TIMING_LIMIT_MS}",
         worst <= TIMING_LIMIT_MS,
-        f"{sum(len(f) for f in matches.values())} hits checked",
+        note,
     )
 
 

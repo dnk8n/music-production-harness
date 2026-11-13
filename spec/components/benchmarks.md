@@ -19,9 +19,18 @@ REQ-AUD-03.
 ### REQ-BEN-01: Timing accuracy
 Detected onsets fall within ±1 ms of their scored position (after swing),
 for every drum hit in the benchmark.
+A hit is found by matching the voice's own sound, rendered alone, within
+±5 ms of where the hit belongs. The match uses the sound from its start
+through its loudest point (at least 20 ms, at most 250 ms, and never into
+the voice's next note), and it compares shape, not loudness. So a sound that
+swells in is found where it starts, not pulled late toward its louder part.
+The check names the hit that is furthest off.
 - **Why:** a quantised groove that drifts sounds sloppy. We need to know the
-  pipeline is sample-accurate before blaming the music.
-- **Verify:** measure
+  pipeline is sample-accurate before blaming the music. On 2026-11-13,
+  BM-DRUM-02's fresh take failed at 5 ms with every hit on time. Its kick
+  takes 101 ms to reach its loudest. A match on the first 20 ms that
+  favoured louder audio slid all 31 later hits to the edge of the search.
+- **Verify:** measure, test
 
 ### REQ-BEN-02: Every benchmark has a written expectation
 A benchmark can't render until its description, tempo, length and

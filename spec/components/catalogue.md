@@ -349,5 +349,8 @@ hashes depend on the audio alone.
   Hence 0.5%. It also showed that the root notes those chunks name match
   the key in the file's name on all 242 loops whose tempo doesn't fit (and
   38 of 38 that do), so roots count whatever the tempo. `IKEY` held only a
-  pack's genre list.
+  pack's genre list. The third kit-diff (2026-11-14) confirmed the cut:
+  within 0.5% the stated tempo matched the tempo in the file's name on 89
+  of 89 loops, beyond it on none of 1,097, and against main only 9 sounds'
+  tempo or key changed, with no kit pick or role.
 - **Verify:** test; inspect on the Mac: kit-diff against main, and the first scan of Dean's library

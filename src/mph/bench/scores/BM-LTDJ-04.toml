@@ -1,7 +1,7 @@
-# spec/tracks/love-train.md#bm-ltdj-04: bars 177-208 of remix 1 (BM-LTDJ-05):
-# the dub-out, with the kit coming back between source passages.
+# spec/tracks/love-train.md#bm-ltdj-04: bars 173-204 of remix 1 (BM-LTDJ-05):
+# the dub-out, the last train and the outro.
 id = "BM-LTDJ-04"
-title = "Remix 1, bars 177-208: dub-out and the last train"
-hear = "the source's verse-like passage and the start of its outro, then eight bars of the full kit. The source's own second train ends the block, where the DJ outro takes over in the whole track."
+title = "Remix 1, bars 173-204: dub-out, the last train and the outro"
+hear = "the end of the ad-libs, then the dub-out: kick, rim and ride with the bass closing down, stabs and the tag line deep in the echo. The last horn bends into the outro, where the first hook line returns as an echo."
 project = "Love Train remix 1: Detroit x Jersey"
-excerpt = { of = "BM-LTDJ-05", bars = [177, 208] }
+excerpt = { of = "BM-LTDJ-05", bars = [173, 204] }

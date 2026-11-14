@@ -17,6 +17,11 @@ recording at its own tempo and level: Renoise loads each clip cut, sample for
 sample, into ``work/clips``; SuperCollider plays the recording from each
 clip's first frame. Each cue is checked against the recording itself rather
 than a template.
+
+A score with a mix (spec/components/mix.md) renders in SuperCollider in two
+passes (REQ-MIX-04): the first writes each voice as it enters its strip (the
+stems every check measures), the sidechain's targets before their dip, and
+the master; the second writes the master alone, for the determinism check.
 """
 
 from __future__ import annotations
@@ -44,9 +49,10 @@ from mph.bench.score import (
     all_variants,
     clip_start_s,
     events,
+    first_note,
     load,
-    midi,
     plays,
+    unmixed,
     variant_of,
 )
 from mph.catalogue.scanner import utc_now
@@ -57,6 +63,7 @@ from mph.renoise import bridge
 from mph.renoise import plan as song_plan
 
 TEMPLATE_GAP_S = 2.0  # each template hit gets this long to itself
+TEMPLATE_HOLD_S = 0.75  # and is held at most this long, so a pad's release ends before the next
 NOTE_PART = 0.5  # of a step: how much of each note the accent check compares
 PROBE_PITCH = 72  # C5: high enough that aliasing would show
 PROBE_S = 1.0
@@ -65,7 +72,8 @@ GLIDE_FROM_S = 0.3  # the slide starts here
 GLIDE_HOLD_S = 0.6  # and the note slid into is held this long
 GLIDE_MEASURE_S = 0.15  # its last part, once the glide and filter have settled
 GLIDE_SEARCH = 2**0.5  # look for the pitch within half an octave of the target
-# A pad plays its root alone, undetuned, so the energy between harmonics is aliasing.
+# A pad plays its root alone, undetuned, strings without vibrato and an organ
+# without its fifth or chorus, so the energy between harmonics is aliasing.
 PROBE_PARAMS = {
     "cutoff": 8000.0,
     "resonance": 0.9,
@@ -73,6 +81,9 @@ PROBE_PARAMS = {
     "accent": 0.0,
     "chord": 0.0,
     "detune": 0.0,
+    "vibrato": 0.0,
+    "chorus": 0.0,
+    "fifth": 0.0,
 }
 DELIVERY_CEILING_DBTP = -1.0  # benchmarks aren't mastered: keep them clear of clipping
 RENDERS = "renders"
@@ -86,6 +97,7 @@ CLIP_TEMPO_SLACK_BPM = 0.01  # REQ-TRK-02: a clip plays at its recording's own t
 CLIP_WINDOW_S = 0.5  # each cue is checked over this long near its start and its end
 CLIP_EDGE_S = 0.02  # clear of the fades at a cue's ends
 CLIP_SEARCH_S = 0.01  # how far either way a cue is looked for
+CLIP_PART = 0.25  # the loudest window in a cue's first and last quarter is checked
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,23 +192,33 @@ def _templated(score: Score) -> list[Voice]:
     return [v for v in score.voices if not v.clips]
 
 
+def _held(event: Event) -> float:
+    """How long a template note is held: as scored, up to TEMPLATE_HOLD_S. A
+    match uses at most its first quarter second, and a long pad held for its
+    whole length would still be ringing when the next template starts."""
+    return min(event.length_s, TEMPLATE_HOLD_S)
+
+
 def template_events(score: Score, found: Sequence[Event]) -> list[Event]:
     """Each voice's distinct sounds, alone, at full velocity, one per gap."""
     out = []
     for voice in _templated(score):
         kinds = _kinds([e for e in found if e.voice == voice.name])
         out += [
-            replace(e, step=0, time_s=n * TEMPLATE_GAP_S, velocity=1.0) for n, e in enumerate(kinds)
+            replace(e, step=0, time_s=n * TEMPLATE_GAP_S, velocity=1.0, length_s=_held(e))
+            for n, e in enumerate(kinds)
         ]
     return sorted(out, key=lambda e: (e.time_s, e.voice))
 
 
 def template_score(score: Score, templates: Sequence[Event]) -> Score:
+    """Each voice alone and dry: no chokes, sidechain, sections or mix."""
     longest = max((e.time_s for e in templates), default=0.0) + TEMPLATE_GAP_S
-    voices = tuple(replace(v, chokes=()) for v in score.voices)
+    dry = unmixed(score)
+    voices = tuple(replace(v, chokes=()) for v in dry.voices)
     # Templates sit side by side, so a sidechain would duck one with another's hit.
     return replace(
-        score, bars=0, tail_s=longest, voices=voices, sidechain=None, sections=(), lead_bars=0
+        dry, bars=0, tail_s=longest, voices=voices, sidechain=None, sections=(), lead_bars=0
     )
 
 
@@ -207,7 +229,8 @@ def spaced_templates(score: Score, found: Sequence[Event]) -> list[Event]:
     for voice in _templated(score):
         for kind in _kinds([e for e in found if e.voice == voice.name]):
             slot = len(out)
-            out.append(replace(kind, step=0, time_s=slot * lines * score.step_s, velocity=1.0))
+            at = slot * lines * score.step_s
+            out.append(replace(kind, step=0, time_s=at, velocity=1.0, length_s=_held(kind)))
     return out
 
 
@@ -349,65 +372,113 @@ def _fit(data: audio.Audio, frames: int) -> audio.Audio:
     return np.vstack([data, np.zeros((frames - len(data), data.shape[1]), dtype=data.dtype)])
 
 
+def _passes(
+    runner: Runner, tools: sc.Tools, setup: Setup
+) -> tuple[dict[str, audio.Audio], dict[str, audio.Audio], audio.Audio, audio.Audio]:
+    """The stems, the sidechain's targets before their dip, the master, and the
+    master again. A mix renders in two passes (REQ-MIX-04); otherwise the
+    master is the stems' sum, and the targets are rendered again with the
+    sidechain bypassed (REQ-BEN-12)."""
+    score, plan, found, work = setup.score, setup.plan, setup.found, setup.folder / "work"
+    names = [v.name for v in score.voices]
+    rendered, _ = audio.read(sc.render(runner, tools, plan, found, work / "render.wav"))
+    stems = audio.split(rendered, names)
+    if not score.mixed:
+        again, _ = audio.read(sc.render(runner, tools, plan, found, work / "again.wav"))
+        dry = _bypassed(runner, tools, setup)
+        return stems, dry, audio.mixdown(stems), audio.mixdown(audio.split(again, names))
+    layout = plan.layout
+    dry = audio.split(rendered[:, 2 * len(names) :], layout.targets)  # after the stems
+    master = rendered[:, layout.master_out : layout.master_out + 2]
+    second = replace(plan, master_only=True)
+    again, _ = audio.read(sc.render(runner, tools, second, found, work / "again.wav"))
+    return stems, dry, master, again
+
+
 def _render_supercollider(runner: Runner, tools: sc.Tools, setup: Setup) -> Rendered:
     score, plan, found, work = setup.score, setup.plan, setup.found, setup.folder / "work"
-    rendered, _ = audio.read(sc.render(runner, tools, plan, found, work / "render.wav"))
-    again, _ = audio.read(sc.render(runner, tools, plan, found, work / "again.wav"))
+    stems, dry, master, again = _passes(runner, tools, setup)
     templates = template_events(score, found)
     ref_plan = replace(plan, score=template_score(score, templates))
     ref_file = sc.render(runner, tools, ref_plan, templates, work / "templates.wav")
     names = [v.name for v in score.voices]
-    stems = audio.split(rendered, names)
-    dry, ducking = _sidechain(runner, tools, setup, stems)
     return Rendered(
-        master=audio.mixdown(stems),
-        again=audio.mixdown(audio.split(again, names)),
+        master=master,
+        again=again,
         stems=stems,
         reference=audio.split(audio.read(ref_file)[0], names),
         templates=templates,
         tools={"scsynth": sc.version(runner, tools)},
-        extra_checks=probe(runner, tools, setup.plan, work) + ducking,
+        extra_checks=probe(runner, tools, setup.plan, work) + _ducking(setup, stems, dry),
         dry=dry,
     )
 
 
-def _sidechain(
-    runner: Runner, tools: sc.Tools, setup: Setup, stems: dict[str, audio.Audio]
-) -> tuple[dict[str, audio.Audio], list[checks.Check]]:
-    """REQ-BEN-12: the targets again with the sidechain bypassed, and the dip
-    measured as the ducked targets against those."""
+def _bypassed(runner: Runner, tools: sc.Tools, setup: Setup) -> dict[str, audio.Audio]:
+    """The sidechain's targets rendered again with the sidechain bypassed."""
     score, plan = setup.score, setup.plan
     chain = score.sidechain
     if chain is None or not chain.active:
-        return {}, []
+        return {}
     bypassed = replace(plan, score=replace(score, sidechain=replace(chain, depth_db=0.0)))
     out = setup.folder / "work" / "dry.wav"
     rendered = audio.split(
         audio.read(sc.render(runner, tools, bypassed, setup.found, out))[0],
         [v.name for v in score.voices],
     )
-    dry = {name: rendered[name] for name in chain.targets}
+    return {name: rendered[name] for name in chain.targets}
+
+
+def _ducking(
+    setup: Setup, stems: dict[str, audio.Audio], dry: dict[str, audio.Audio]
+) -> list[checks.Check]:
+    """REQ-BEN-12: the dip, measured as the ducked targets against the targets
+    before it. In a mix the voices are summed as they enter their strips."""
+    score, plan = setup.score, setup.plan
+    chain = score.sidechain
+    if chain is None or not chain.active:
+        return []
     hits = [e.sample(plan.rate) / plan.rate for e in setup.found if e.voice == chain.trigger]
+    targets = [t for t in chain.targets if _under(setup, t, hits)]
+    if not targets:
+        return []
     found = []
-    for target in chain.targets:
+    for target in targets:
         found += checks.sidechain(chain, target, stems[target], dry[target], hits, rate=plan.rate)
-    # The whole mix, ducked and as bypass would have it, weighted as loudness is.
-    ducked = audio.k_weighted(audio.mixdown(stems), plan.rate)
-    bypass = audio.k_weighted(audio.mixdown({**stems, **dry}), plan.rate)
+    # The whole mix, ducked and as bypass would have it, weighted as loudness is,
+    # after the hits where a target sounds. Recordings the sidechain leaves alone,
+    # like a remix's vocals, ride on top of the pump, so they're left out.
+    riding = {v.name for v in score.voices if v.clips and v.name not in chain.targets}
+    music = {name: stem for name, stem in stems.items() if name not in riding}
+    ducked = audio.k_weighted(audio.mixdown(music), plan.rate)
+    bypass = audio.k_weighted(audio.mixdown({**music, **dry}), plan.rate)
+    heard = audio.mixdown({t: dry[t] for t in targets})
     under, after = (
-        audio.window_changes(ducked, bypass, hits, rate=plan.rate, start_s=lo, end_s=hi)
+        audio.window_changes(
+            ducked, bypass, hits, rate=plan.rate, start_s=lo, end_s=hi, heard=heard
+        )
         for lo, hi in (checks.MIX_UNDER_KICK_S, checks.MIX_AFTER_KICK_S)
     )
-    return dry, found + checks.sidechain_mix(under, after, len(hits))
+    return found + checks.sidechain_mix(under, after, len(hits))
+
+
+def _under(setup: Setup, target: str, hits: Sequence[float]) -> bool:
+    """True when one of the target's notes is held under a trigger hit. An
+    excerpt can leave a target out, and a pad may only play where the kick
+    rests: then there's no dip to hear or measure (REQ-BEN-12)."""
+    step = setup.score.step_s
+    spans = [(e.time_s, e.time_s + max(e.length_s, step)) for e in setup.found if e.voice == target]
+    return any(start <= hit < end for start, end in spans for hit in hits)
 
 
 def _probe_render(
     runner: Runner, tools: sc.Tools, plan: sc.Plan, voice: Voice, *, notes: list[Event], out: Path
 ) -> audio.Audio:
-    """Some notes from one voice, alone, with that voice's controls set as given."""
-    voices = tuple(voice if v.name == voice.name else v for v in plan.score.voices)
+    """Some notes from one voice, alone and dry, with that voice's controls set as given."""
+    dry = unmixed(plan.score)
+    voices = tuple(replace(voice, strip=None) if v.name == voice.name else v for v in dry.voices)
     length = max(e.time_s + e.length_s for e in notes) + PROBE_TAIL_S
-    score = replace(plan.score, voices=voices, bars=0, tail_s=length, sections=(), lead_bars=0)
+    score = replace(dry, voices=voices, bars=0, tail_s=length, sections=(), lead_bars=0)
     data, _ = audio.read(sc.render(runner, tools, replace(plan, score=score), notes, out))
     return audio.split(data, [v.name for v in voices])[voice.name]
 
@@ -419,8 +490,8 @@ def probe(runner: Runner, tools: sc.Tools, plan: sc.Plan, work: Path) -> list[ch
     settles, measured for pitch."""
     found = []
     for voice in (v for v in plan.score.voices if v.melodic):
-        opened = replace(
-            voice, params=tuple(sorted({**dict(voice.params), **PROBE_PARAMS}.items()))
+        opened = replace(  # one note of a chord alone (REQ-BEN-18)
+            voice, params=tuple(sorted({**dict(voice.params), **PROBE_PARAMS}.items())), chord=()
         )
         note = Event(voice.name, 0, 0.0, 1.0, pitch=PROBE_PITCH, length_s=PROBE_S)
         stem = _probe_render(
@@ -597,17 +668,16 @@ def synth_oneshots(runner: Runner, tools: sc.Tools, plan: sc.Plan, folder: Path)
     synths = [c.voice for c in plan.choices if not c.is_sample]
     if not synths:
         return {}
-    melodic = {v.name: v for v in score.voices if v.melodic}
-    first = {e.voice: e for e in reversed(events(score))}  # each voice's first note
+    melodic = {v.name: first_note(score, v) for v in score.voices if v.melodic}
     hits = [
         Event(
             name,
             0,
             0.0,
             1.0,
-            pitch=midi(melodic[name].notes[0]),
+            pitch=melodic[name].pitch,
             # at least a step; a held pad note whole, so its level is measured settled
-            length_s=max(score.step_s, first[name].length_s if name in first else 0.0),
+            length_s=max(score.step_s, melodic[name].length_s),
         )
         if name in melodic
         else Event(name, 0, 0.0, 1.0)
@@ -674,12 +744,34 @@ def clip_checks(setup: Setup, stems: dict[str, audio.Audio]) -> list[checks.Chec
     return found
 
 
+def _loudest(
+    path: Path, native: int, first: int, *, span: tuple[float, float], window: float, step: float
+) -> float:
+    """Where in ``span`` (seconds into a cue) the recording's loudest ``window``
+    starts, on the grid of ``step`` seconds, so a line that starts on beat 2
+    is checked where it sings (REQ-TRK-02)."""
+    low, high = span
+    data = audio.mono(
+        audio.read_frames(path, first + round(low * native), round((high - low) * native))
+    )
+    power = np.concatenate(([0.0], np.cumsum(data.astype(np.float64) ** 2)))
+    hop = max(round(step * native), 1)
+    width = round(window * native)
+    starts = np.arange(0, max(len(data) - width, 0) + 1, hop)
+    loudest = int(starts[np.argmax(power[starts + width] - power[starts])]) if len(starts) else 0
+    return low + loudest / native
+
+
 def _cue_heard(
     setup: Setup, voice: Voice, play: Play, stem: audio.Audio, native: int
 ) -> list[tuple[int, float, float, float]]:
-    """One cue, near its start and its end: (bar, offset in ms, dB left, level).
-    The windows start a whole number of samples into the cue at both rates, so
-    the recording's samples, resampled, fall exactly where the render's do."""
+    """One cue, at its loudest near its start and near its end: (bar, offset in
+    ms, dB left, level). What's left is measured against the cue's loudest
+    stretch, so faint leftovers between a stem's lines, which an engine's
+    resampling follows less closely than the singing, are judged against the
+    line they belong to. The windows start a whole number of samples into the
+    cue at both rates, so the recording's samples, resampled, fall exactly
+    where the render's do."""
     score, rate = setup.score, setup.rate
     step = audio.common_step_s(native, rate)
 
@@ -690,15 +782,21 @@ def _cue_heard(
     cue = round((play.bar - 1) * score.bar_s * rate)
     length_s = play.bars * score.bar_s
     window = on_grid(min(CLIP_WINDOW_S, length_s / 2 - CLIP_EDGE_S))
+    part = max(length_s * CLIP_PART, window + CLIP_EDGE_S)
+    path = setup.sounds[voice.name]
     gain = levels.linear(voice.gain_db)
+
+    def recorded(span: tuple[float, float]) -> tuple[float, audio.Audio]:
+        into = on_grid(_loudest(path, native, first, span=span, window=window, step=step))
+        start, frames = first + round(into * native), round(window * native)
+        return into, audio.excerpt_at(path, native, start, frames, rate) * gain
+
+    loudest = recorded((CLIP_EDGE_S, length_s - CLIP_EDGE_S))[1]
     found = []
-    for into in (on_grid(CLIP_EDGE_S), on_grid(length_s - CLIP_EDGE_S - window)):
-        wanted = audio.excerpt_at(
-            setup.sounds[voice.name], native, first + round(into * native),
-            round(window * native), rate,
-        )  # fmt: skip
+    for span in ((CLIP_EDGE_S, part), (length_s - part, length_s - CLIP_EDGE_S)):
+        into, wanted = recorded(span)
         at, reach = cue + round(into * rate), round(CLIP_SEARCH_S * rate)
-        lag, left, level = audio.aligned(stem, wanted * gain, at, reach)
+        lag, left, level = audio.aligned(stem, wanted, at, reach, against=loudest)
         found.append((play.bar, 1000 * lag / rate, left, level))
     return found
 
@@ -725,6 +823,19 @@ def _ceiling_gain(master: audio.Audio, rate: int) -> float:
     return min(0.0, DELIVERY_CEILING_DBTP - peak)
 
 
+def production_rate(cfg: Config, score: Score) -> int:
+    """The rate a take renders at: the track's own, if it sets one, else the
+    production rate (REQ-AUD-02, REQ-TRK-06)."""
+    if not score.rate:
+        return cfg.audio.production_sample_rate
+    if score.rate < cfg.audio.delivery_sample_rate:
+        raise sc.RenderError(
+            f"{score.id} renders at {score.rate} Hz, below the delivery rate "
+            f"({cfg.audio.delivery_sample_rate} Hz), which would need converting up"
+        )
+    return score.rate
+
+
 def _prepare(
     cfg: Config, runner: Runner, score: Score, choices: list[kit.Choice], engine: str
 ) -> tuple[Setup, sc.Tools | None, dict[str, float]]:
@@ -732,7 +843,7 @@ def _prepare(
     needs_sc = engine == "supercollider" or any(not c.is_sample for c in choices)
     if needs_sc and tools is None:
         raise sc.RenderError("SuperCollider isn't installed: run `mph install supercollider`")
-    rate = cfg.audio.production_sample_rate
+    rate = production_rate(cfg, score)
     slices, slice_rate, break_rate = _slicing(score, choices)
     synthdefs = sc.compile_synthdefs(runner, tools, cfg.data_dir) if tools else Path()
     plan = sc.Plan(

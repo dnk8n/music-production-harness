@@ -1,71 +1,352 @@
 # spec/tracks/love-train.md#bm-ltdj-05: remix 1 of Love Train, the whole track.
-# This version is a re-edit: the source's own bars in the remix plan's form,
-# with BM-DRUM-02's Jersey shuffle (its fresh take's sounds) where no source bars play.
+# Version 2: only the vocal lines and the train's horn come from the source
+# (from their stems, cued line by line); everything else is new Detroit techno
+# with a splash of Jersey, mixed through strips, a dub echo and a hall.
 id = "BM-LTDJ-05"
 title = "Remix 1, the whole track"
-hear = "a DJ-friendly 8 minutes. Sixteen bars of swung kick and hats build to the clap. Then everything stops for the train, the original's groove drops on bar 33, and the song runs in the plan's order with its sections stretched and repeated. The train returns at bar 141 to drop the chorus again, and the source's own last train comes before the kit carries the outro. Every cut lands on a bar line, with no clicks, no gaps and no change of speed or pitch."
+hear = "a Detroit techno track that the song's voice moves through. A dry 909 groove builds with a rolling bass, and a fragment of the hook drifts past in the echo. Everything drops away for the train's horn, whose bend lands the groove. From there the vocal lines come one at a time, each on its own chords, each last word echoing into the gap, with the stabs answering in between. The hooks lift into Jersey: the organ bass, the shaker and the swelling strings. The dubs strip back to kick, rim, ride and echoing stabs, the breakdown floats on strings, and the horn drops the peak and, at the end, the outro. Nothing of the original's band plays."
 project = "Love Train remix 1: Detroit x Jersey"
 bpm = 120
 bars = 240
-swing = 0.58
+swing = 0.55
+rate = 48000
 
 sections = [
-  { name = "DJ intro", bars = [1, 8], play = ["kick", "chh"] },
-  { name = "DJ intro", bars = [9, 16], play = ["kick", "chh", "ohh"] },
-  { name = "Intro build", bars = [17, 28], play = ["kick", "clap", "chh", "ohh"] },
-  { name = "Departure", bars = [29, 32], play = ["source:train"] },
-  { name = "Groove A", bars = [33, 48], play = ["source:groove"] },
-  { name = "Groove B", bars = [49, 60], play = ["source:groove-end"] },
-  { name = "Mini-break", bars = [61, 64], play = ["chh", "ohh"] },
-  { name = "Verse", bars = [65, 80], play = ["source:verse"] },
-  { name = "Chorus", bars = [81, 96], play = ["source:chorus"] },
-  { name = "Instrumental", bars = [97, 112], play = ["source:horns"] },
-  { name = "Breakdown", bars = [113, 120], play = ["source:break"] },
-  { name = "Breakdown", bars = [121, 128], play = ["source:verse-2"] },
-  { name = "Breakdown: build", bars = [129, 140], play = ["source:verse-3"] },
-  { name = "Departure II", bars = [141, 144], play = ["source:train"] },
-  { name = "Peak", bars = [145, 160], play = ["source:chorus"] },
-  { name = "Lift", bars = [161, 176], play = ["source:chorus-3"] },
-  { name = "Dub-out", bars = [177, 192], play = ["source:verse-4"] },
-  { name = "Dub-out II", bars = [193, 196], play = ["source:outro"] },
-  { name = "Dub-out II", bars = [197, 204], play = ["kick", "clap", "chh", "ohh"] },
-  { name = "Last train", bars = [205, 208], play = ["source:last-train"] },
-  { name = "DJ outro", bars = [209, 224], play = ["kick", "clap", "chh", "ohh"] },
-  { name = "DJ outro", bars = [225, 240], play = ["kick", "chh"] },
+  { name = "Intro", bars = [1, 8], play = ["kick", "chh", "rim"] },
+  { name = "Intro", bars = [9, 16], play = ["kick", "chh", "rim", "ride", "vox"] },
+  { name = "Build", bars = [17, 24], play = ["kick", "chh", "rim", "ride", "ohh", "bass"] },
+  { name = "Build", bars = [25, 32], play = ["kick", "chh", "rim", "ride", "ohh", "bass", "clap", "stabs", "vox"] },
+  { name = "Departure", bars = [33, 36], play = ["strings_a", "strings_b", "shaker", "vox", "siren"] },
+  { name = "Groove A", bars = [37, 52], play = ["kick", "clap", "chh", "ohh", "ride", "rim", "bass", "stabs", "vox", "siren"] },
+  { name = "Pre-chorus", bars = [53, 60], play = ["kick", "clap", "chh", "ohh", "ride", "bass", "stabs", "strings_a", "strings_b", "vox"] },
+  { name = "Hook", bars = [61, 76], play = ["kick", "clap", "chh", "ohh", "shaker", "organ", "stabs", "strings_a", "strings_b", "vox"] },
+  { name = "Dub", bars = [77, 92], play = ["kick", "rim", "ride", "chh", "bass", "stabs", "vox"] },
+  { name = "Break", bars = [93, 96], play = ["stabs", "ride", "vox"] },
+  { name = "Breakdown", bars = [97, 108], play = ["strings_a", "strings_b", "stabs", "shaker", "vox"] },
+  { name = "Departure II", bars = [109, 112], play = ["strings_a", "strings_b", "chh", "vox", "siren"] },
+  { name = "Peak", bars = [113, 128], play = ["kick", "clap", "chh", "ohh", "ride", "rim", "shaker", "bass", "stabs", "strings_a", "strings_b", "vox", "siren"] },
+  { name = "Groove B", bars = [129, 144], play = ["kick", "clap", "chh", "ohh", "ride", "rim", "bass", "stabs", "vox"] },
+  { name = "Pre-chorus 2", bars = [145, 152], play = ["kick", "clap", "chh", "ohh", "ride", "bass", "stabs", "strings_a", "strings_b", "vox"] },
+  { name = "Hook 2", bars = [153, 168], play = ["kick", "clap", "chh", "ohh", "shaker", "organ", "stabs", "strings_a", "strings_b", "vox"] },
+  { name = "Ad-libs", bars = [169, 176], play = ["kick", "clap", "chh", "ohh", "shaker", "organ", "stabs", "vox"] },
+  { name = "Dub-out", bars = [177, 192], play = ["kick", "rim", "ride", "bass", "stabs", "strings_a", "strings_b", "vox"] },
+  { name = "Last train", bars = [193, 196], play = ["strings_a", "strings_b", "shaker", "vox", "siren"] },
+  { name = "Outro", bars = [197, 208], play = ["kick", "clap", "chh", "ohh", "ride", "rim", "bass", "stabs", "vox", "siren"] },
+  { name = "Outro", bars = [209, 224], play = ["kick", "chh", "ohh", "ride", "rim", "bass"] },
+  { name = "DJ outro", bars = [225, 240], play = ["kick", "chh", "rim"] },
 ]
 
+# --- drums: a 909-style kit from Dean's library (nothing there is tagged 909) ---
+
+# Four to the floor, with a push on the last eighth of every fourth bar.
 [voices.kick]
-grid = "X . . . X . . . X . . . X . . ."
-sound = { role = "kick", hash = "8842515c911a92edc17d44a3b0e95864c546bd20dfcc5bd3d2dc33da044d565f", why = "BM-DRUM-02's fresh-take kick: a rounded deeper-house kick (Kid Massive) with a soft click, the warmer Jersey thump." }
+grid = "X . . . X . . . X . . . X . . . | X . . . X . . . X . . . X . . . | X . . . X . . . X . . . X . . . | X . . . X . . . X . . . X . x ."
+sound = { role = "kick", hash = "8b9bc78a69c19943c681ae08110ee1e5f97a53e45eaac9c8b20de1185cb78dcf", why = "SIG_Kick_13 from Signature Techno: the classic 909 shape, tuned low (51 Hz body) with a short tail and a click near 1.3 kHz." }
+
+[voices.kick.mix]
+highpass = 28
 
 [voices.clap]
 grid = ". . . . x . . . . . . . x . . ."
-sound = { role = "clap", hash = "4c5e8621f5e096a6b79a1f652ae87806af87ea19b5b008a939e38731e7116973", why = "BM-DRUM-02's fresh-take clap: a dub-house clap with some room on it, closer to Kerri Chandler's roomy claps." }
+sound = { role = "clap", hash = "cccc79ea221e63999ed05028afdd327d9aa357f43cd717316d30951946ffaf24", why = "SIG_Clap_03 from Signature Techno: a short, crisp, noisy 909-type clap." }
 
+[voices.clap.mix]
+highpass = 180
+level = -1
+send = { hall = -16 }
+
+# Closed hats on the sixteenths around the open hats, which they choke.
 [voices.chh]
-grid = "x x x x x x x x x x x x x x x x"
-sound = { role = "hat", hash = "96e616a03bd565bd08eac268b14fdb9aec63c9bce1741deb7167538b4eba6dfd", why = "BM-DRUM-02's fresh-take closed hat: short, from the clap's kit, so the skipping 16ths keep one tone." }
+grid = "x x . x x x . x x x . x x x . x"
+sound = { role = "hat", hash = "75abc428886c3cdb6ddd5b586e391993cd7b19c38510f522f9fbcd79b85bea0a", why = "DRT_Analogue_Closed_Hat_03 from Deep & Raw Techno: short analogue hiss with no ring." }
 chokes = ["ohh"]
-seconds = 0.25
+
+[voices.chh.mix]
+highpass = 350
+pan = 0.15
+level = -2
+
+# Rising under the second horn.
+[voices.chh.automate]
+level = [[1, -2], [109, -2], [109, -20], [113, -2]]
 
 [voices.ohh]
 grid = ". . o . . . o . . . o . . . o ."
-sound = { role = "hat_open", hash = "925ae4da178a0a7ff008fa51e8a5d4fcea29bf058cb9e9a313407d94660c60a0", why = "BM-DRUM-02's fresh-take open hat: rings on the off-beat until the closed hat chokes it." }
+sound = { role = "hat_open", hash = "489ba8a29f7197b4463ae16d407c676e3bef80316c50d6b123cb2941eba53318", why = "UMK_Open_Hat_12 (Umek): a techno open hat that rings on the off-beat with no ring tone." }
 
-[voices.source]
-sound = { role = "track", hash = "406fc403707baff75c28c7605a3aa49fb0d6f57653a10c6ea222af76bc19a17b", why = "Love Train, the track this remixes: Dean's FLAC in his full tracks folder, 120 BPM with bar 1 at its first sample." }
+[voices.ohh.mix]
+highpass = 400
+pan = -0.15
+level = -2
+send = { hall = -22 }
 
-[voices.source.clips]
-train = [9, 12]
-groove = [13, 28]
-groove-end = [25, 36]
-verse = [37, 52]
-chorus = [53, 68]
-break = [69, 76]
-verse-2 = [77, 84]
-horns = [93, 108]
-verse-3 = [111, 122]
-chorus-3 = [127, 142]
-verse-4 = [143, 158]
-outro = [159, 162]
-last-train = [163, 166]
+# The ride on the eighths, cut before the next one like a 909's decay.
+[voices.ride]
+grid = "x . X . x . X . x . X . x . X ."
+sound = { role = "ride", hash = "e7479f9cf7ff6aeeed05abe5512209cee35d48ee87cc576dcddd3e6e25b36bde", why = "KDE_Ride_1 (Kid Massive): a long, washy ride, the closest to the 909 Detroit ride in the library." }
+seconds = 0.24
+gain_db = -4
+
+[voices.ride.mix]
+highpass = 500
+pan = 0.3
+level = -3
+send = { hall = -18 }
+
+# A syncopated two-bar figure, echoing deeper in the dubs.
+[voices.rim]
+grid = ". . . x . . x . . . . x . . x . | . x . . . . x . . . x . . . . ."
+sound = { role = "rim", hash = "817c97deb662e360f73a36a26a7cffcf89852015f115e941d6192b873ef06303", why = "DSR_Rimshot_05 (Darius Syrossian): a short, high 909-style click near 1.4 kHz." }
+seconds = 0.2
+
+[voices.rim.mix]
+highpass = 300
+pan = -0.3
+level = -3
+send = { echo = -14 }
+
+[voices.rim.automate]
+echo = [[1, -14], [77, -14], [77, -6], [93, -6], [93, -14], [177, -14], [177, -6], [193, -6], [193, -14]]
+
+# The Jersey part: a garage shaker on the sixteenths, leaning on the off-beats.
+[voices.shaker]
+grid = "x x X x x x X x x x X x x x X x"
+sound = { role = "shaker", hash = "ed169b6ae476d44e1ab8e3f91b2b404918778e879feed7fc4954c9d4a3012f96", why = "FRM_SHAKER_09 (Freemasons): light and airy, garage-style." }
+
+[voices.shaker.mix]
+highpass = 600
+pan = 0.35
+level = -3
+send = { hall = -20 }
+
+# --- the synths ---
+
+# Rolling on every sixteenth, C in odd bars and F in even bars, with octave
+# jumps and a glide down to G. The kick ducks it.
+[voices.bass]
+notes  = "C2 C2 C2 C2 C2 C2 C3 C2 C2 C2 C2 C2 C2 C2 C3 C2 | F1 F1 F1 F1 F1 F1 F2 F1 F1 F1 F1 F1 F2 F2 G1 G1"
+gate   = "x  x  x  x  x  x  x  x  x  x  x  x  x  x  x  x  | x  x  x  x  x  x  x  x  x  x  x  x  x  x  x  x"
+accent = ".  .  X  .  .  .  X  .  .  .  X  .  .  .  X  .  | .  .  X  .  .  .  X  .  .  .  X  .  .  .  X  ."
+slide  = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  S  .  ."
+sound = { synth = "mph_bass" }
+params = { cutoff = 380.0, resonance = 0.3, envmod = 0.5, decay = 0.14, sub = 0.9, glide = 0.06 }
+
+[voices.bass.mix]
+highpass = 30
+lowpass = 250
+resonance = 0.35
+
+# Opening through the builds, closing down through the dubs.
+[voices.bass.automate]
+lowpass = [[1, 250], [17, 250], [25, 1400], [33, 2000], [53, 2000], [61, 3000], [77, 3000], [77, 500], [93, 900], [113, 900], [113, 3500], [129, 3500], [129, 2200], [145, 2200], [153, 3200], [177, 3200], [177, 2000], [193, 220], [197, 220], [197, 1200], [209, 1200], [225, 600]]
+
+# The Jersey organ bass (after a Korg M1 "Organ 2"): a syncopated garage line
+# with octave jumps, in place of the Detroit bass in the hooks.
+[voices.organ]
+notes  = "C2 -  -  C3 -  -  C2 -  C2 -  -  C3 -  -  G2 -  | F2 -  -  F3 -  -  F2 -  F2 -  -  F3 -  F2 G2 -"
+gate   = "x  -  .  x  .  .  x  .  x  -  .  x  .  .  x  .  | x  -  .  x  .  .  x  .  x  -  .  x  .  x  x  ."
+accent = ".  .  .  X  .  .  .  .  .  .  .  X  .  .  .  .  | .  .  .  X  .  .  .  .  .  .  .  X  .  .  .  ."
+sound = { synth = "mph_organ" }
+params = { cutoff = 1200.0, envmod = 2.0, decay = 0.12, chorus = 0.3, fifth = 0.25 }
+gain_db = -1
+
+[voices.organ.mix]
+highpass = 40
+lowpass = 5000
+send = { hall = -20 }
+
+# One minor seventh shape moved in parallel (chord memory): E minor 7 over the
+# C bars and A minor 7 over the F bars, which make Cmaj9 and Fmaj9 with the
+# song's roots. Off-beat sixteenths, into the dub echo.
+[voices.stabs]
+notes = "-  -  -  E4 -  -  -  -  -  -  E4 -  -  -  -  -  | -  -  -  A3 -  -  A3 -  -  -  -  -  -  A3 -  -"
+gate  = ".  .  .  x  .  .  .  .  .  .  x  -  .  .  .  .  | .  .  .  x  .  .  x  .  .  .  .  .  .  x  .  ."
+chord = [0, 3, 7, 10]
+sound = { synth = "mph_stab" }
+params = { cutoff = 700.0, resonance = 0.35, envmod = 3.5, decay = 0.2, release = 0.15 }
+gain_db = -4
+
+[voices.stabs.mix]
+highpass = 250
+lowpass = 600
+resonance = 0.25
+pan = 0.2
+send = { echo = -8, hall = -14 }
+
+# Dark in the builds, opening up through the grooves, wide open at the peak,
+# and deeper into the echo in the dubs.
+[voices.stabs.automate]
+lowpass = [[1, 600], [37, 600], [53, 3200], [61, 4000], [77, 4000], [77, 1400], [93, 1400], [97, 2500], [113, 2500], [113, 8000], [129, 8000], [129, 3000], [153, 3000], [153, 4000], [177, 4000], [177, 1800], [197, 1800], [197, 2400]]
+echo = [[1, -8], [77, -8], [77, -2], [93, -2], [93, -8], [177, -8], [177, -3], [197, -3], [197, -6]]
+
+# Strings in two parts, so each chord rings out while the next swells in:
+# Cmaj9 (E G B D above the bass's C) on odd bars, Fmaj9 (E G A C above F) on
+# even bars, voiced above the voice.
+[voices.strings_a]
+notes = "E4 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+gate  = "x  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+chord = [0, 3, 7, 10]
+sound = { synth = "mph_strings" }
+params = { attack = 0.6, release = 1.4, cutoff = 4500.0, vibrato = 0.1 }
+gain_db = -3
+
+[voices.strings_b]
+notes = "-  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | E4 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+gate  = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | x  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+chord = [0, 3, 5, 8]
+sound = { synth = "mph_strings" }
+params = { attack = 0.6, release = 1.4, cutoff = 4500.0, vibrato = 0.1 }
+gain_db = -3
+
+[voices.strings_a.mix]
+highpass = 200
+lowpass = 7000
+pan = -0.2
+send = { hall = -8 }
+
+[voices.strings_b.mix]
+highpass = 200
+lowpass = 7000
+pan = 0.2
+send = { hall = -8 }
+
+# Swelling in under each horn.
+[voices.strings_a.automate]
+level = [[1, -14], [37, 0], [109, 0], [109, -10], [113, 0], [193, 0], [193, -10], [197, 0]]
+
+[voices.strings_b.automate]
+level = [[1, -14], [37, 0], [109, 0], [109, -10], [113, 0], [193, 0], [193, -10], [197, 0]]
+
+# --- from the source: the vocal lines and the train's horn, from their stems ---
+
+# Each line placed on an even bar, as it was sung, so it stays on its chords.
+# The horn also bleeds into the vocal stem, so it plays from both voices.
+[voices.vox]
+sound = { role = "track", hash = "c2b24168a2cb70f09d14efee4b06d95ec36a29b1a80b16fe8fbd775ddd34092e", why = "Love Train's vocals: Demucs' vocal stem of Dean's FLAC (htdemucs_ft), at the source's own 120 BPM." }
+cues = [
+  [14, "teaser"], [28, "teaser"], [34, "horn-1"], [40, "verse-1a"], [44, "verse-1b"],
+  [48, "verse-1c"], [52, "pre-1"], [60, "hook-1a"], [64, "hook-1b"], [68, "hook-1c"],
+  [72, "vamp"], [84, "bridge"], [96, "pre-2"], [104, "hook-2a"], [110, "horn-2"],
+  [116, "hook-2b"], [120, "hook-2c"], [124, "hook-1a"], [130, "verse-2a"], [134, "verse-2b"],
+  [138, "verse-2c"], [144, "pre-1"], [152, "hook-2a"], [156, "hook-2b"], [160, "hook-2c"],
+  [164, "adlib-1"], [168, "adlib-2"], [172, "adlib-3"], [180, "tag"], [194, "horn-2"],
+  [200, "hook-1a"],
+]
+
+[voices.vox.clips]
+horn-1 = [10, 13]
+verse-1a = [36, 39]
+verse-1b = [40, 43]
+verse-1c = [44, 47]
+pre-1 = [48, 55]
+teaser = [56, 57]
+hook-1a = [56, 59]
+hook-1b = [60, 63]
+hook-1c = [64, 67]
+vamp = [68, 77]
+bridge = [84, 91]
+verse-2a = [110, 113]
+verse-2b = [114, 117]
+verse-2c = [118, 121]
+pre-2 = [122, 129]
+hook-2a = [130, 133]
+hook-2b = [134, 137]
+hook-2c = [138, 141]
+adlib-1 = [142, 145]
+adlib-2 = [146, 149]
+adlib-3 = [150, 153]
+tag = [158, 163]
+horn-2 = [164, 167]
+
+[voices.vox.mix]
+highpass = 110
+send = { echo = -inf, hall = -18 }
+
+# The teaser filtered thin, the outro's hook line too; the last word of every
+# line thrown into the echo, and the outro's line riding it all through.
+[voices.vox.automate]
+highpass = [[1, 110], [14, 110], [14, 1200], [16, 1200], [16, 110], [28, 110], [28, 1200], [30, 1200], [30, 110], [200, 110], [200, 500], [204, 500], [204, 110]]
+hall = [[1, -18], [200, -18], [200, -8]]
+echo = [
+  [1, -inf], [15.5, -inf], [15.5, 0], [16, 0],
+  [16, -inf], [29.5, -inf], [29.5, 0], [30, 0],
+  [30, -inf], [43.25, -inf], [43.25, 0], [43.5, 0],
+  [43.5, -inf], [47.25, -inf], [47.25, 0], [47.5, 0],
+  [47.5, -inf], [51.25, -inf], [51.25, 0], [51.5, 0],
+  [51.5, -inf], [59, -inf], [59, 0], [59.25, 0],
+  [59.25, -inf], [63, -inf], [63, 0], [63.25, 0],
+  [63.25, -inf], [67, -inf], [67, 0], [67.25, 0],
+  [67.25, -inf], [71, -inf], [71, 0], [71.25, 0],
+  [71.25, -inf], [81, -inf], [81, 0], [81.25, 0],
+  [81.25, -inf], [91.25, -inf], [91.25, 0], [91.5, 0],
+  [91.5, -inf], [103, -inf], [103, 0], [103.25, 0],
+  [103.25, -inf], [107, -inf], [107, 0], [107.25, 0],
+  [107.25, -inf], [119, -inf], [119, 0], [119.25, 0],
+  [119.25, -inf], [123, -inf], [123, 0], [123.25, 0],
+  [123.25, -inf], [127, -inf], [127, 0], [127.25, 0],
+  [127.25, -inf], [133.25, -inf], [133.25, 0], [133.5, 0],
+  [133.5, -inf], [137.25, -inf], [137.25, 0], [137.5, 0],
+  [137.5, -inf], [141.25, -inf], [141.25, 0], [141.5, 0],
+  [141.5, -inf], [151, -inf], [151, 0], [151.25, 0],
+  [151.25, -inf], [155, -inf], [155, 0], [155.25, 0],
+  [155.25, -inf], [159, -inf], [159, 0], [159.25, 0],
+  [159.25, -inf], [163, -inf], [163, 0], [163.25, 0],
+  [163.25, -inf], [166, -inf], [166, 0], [166.25, 0],
+  [166.25, -inf], [170, -inf], [170, 0], [170.25, 0],
+  [170.25, -inf], [174, -inf], [174, 0], [174.25, 0],
+  [174.25, -inf], [185.5, -inf], [185.5, 0], [185.75, 0],
+  [185.75, -inf], [200, -inf], [200, -9], [203, -9],
+  [203, 0], [203.5, 0], [203.5, -inf],
+]
+
+# The train's horn from the "other" stem: it swells, peaks and bends across
+# the bar where each section drops.
+[voices.siren]
+sound = { role = "track", hash = "4ed4ea4d21f7ca9718a3ee67823eb11f4d762f5023eadcd332b02eca6e44b2c7", why = "Love Train's train horn: Demucs' \"other\" stem of Dean's FLAC (htdemucs_ft), where the horn sits on its own." }
+cues = [[34, "horn-1"], [110, "horn-2"], [194, "horn-2"]]
+
+[voices.siren.clips]
+horn-1 = [10, 13]
+horn-2 = [164, 167]
+
+[voices.siren.mix]
+highpass = 90
+send = { echo = -inf, hall = -10 }
+
+# Each bend thrown into the echo as it lands the drop.
+[voices.siren.automate]
+echo = [[1, -inf], [36.5, -inf], [36.5, -4], [37.25, -4], [37.25, -inf], [112.5, -inf], [112.5, -4], [113.25, -4], [113.25, -inf], [196.5, -inf], [196.5, -4], [197.25, -4], [197.25, -inf]]
+
+# --- the mix (spec/components/mix.md) ---
+
+# A dub echo on a dotted eighth, alternating left and right, fading into the hall.
+[sends.echo]
+kind = "delay"
+beats = 0.75
+feedback = 0.45
+lowpass = 2800
+pingpong = true
+highpass = 300
+level = -2
+send = { hall = -10 }
+
+[sends.hall]
+kind = "reverb"
+decay_s = 3.2
+damping = 6000
+predelay_ms = 25
+highpass = 250
+level = -4
+
+[master]
+highpass = 25
+
+# The kick ducks the parts that hold under it: the bass, the organ bass and
+# the strings. The stabs sit on the off-beats and need none.
+[sidechain]
+trigger = "kick"
+targets = ["bass", "organ", "strings_a", "strings_b"]
+depth_db = 12.0
+attack_ms = 2.0
+hold_ms = 40.0
+release_ms = 330.0

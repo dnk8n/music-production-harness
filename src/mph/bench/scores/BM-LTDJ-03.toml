@@ -1,7 +1,7 @@
-# spec/tracks/love-train.md#bm-ltdj-03: bars 125-152 of remix 1 (BM-LTDJ-05):
-# the breakdown and the second departure, whose first clip starts before the block does.
+# spec/tracks/love-train.md#bm-ltdj-03: bars 97-128 of remix 1 (BM-LTDJ-05):
+# the breakdown, the second horn and the peak.
 id = "BM-LTDJ-03"
-title = "Remix 1, bars 125-152: breakdown, the train again and the peak"
-hear = "the last four bars of the second verse, cued from the bar the track has reached, then twelve bars of the third verse. The train plays alone again and drops the chorus at bar 21 of the block."
+title = "Remix 1, bars 97-128: breakdown, the horn again and the peak"
+hear = "pre-chorus 2 over floating strings and stabs, with no kick, then a hook line. The second horn rises over rising hats and bends into the peak on bar 17 of the block, where everything plays at once under three hook lines."
 project = "Love Train remix 1: Detroit x Jersey"
-excerpt = { of = "BM-LTDJ-05", bars = [125, 152] }
+excerpt = { of = "BM-LTDJ-05", bars = [97, 128] }

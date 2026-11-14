@@ -12,7 +12,9 @@ sound isn't here, or whistles where a hiss is wanted, the voice searches as
 above, and the reason says what happened to the pick.
 A take Dean passed keeps the sounds he heard when it renders again (REQ-BEN-15).
 A clip voice plays exactly the recording it pins, at the tempo the catalogue
-measured, and nothing else (spec/components/tracks.md, REQ-TRK-02).
+measured, and nothing else (spec/components/tracks.md, REQ-TRK-02). A stem
+plays at the tempo measured for the recording it was separated from
+(REQ-TRK-05).
 """
 
 from __future__ import annotations
@@ -38,6 +40,7 @@ TONAL_FLATNESS = 0.05  # below this, a noise-like sound whistles (spectral flatn
 SHORT_HASH = 12  # hex digits of a hash that name a sound in a reason
 PICKED = "picked: "  # how a reason starts when a score says why it chose the sound
 ASKED_FOR_SYNTH = "the score asks for a synth"
+STEMS = "stems"  # the recipe whose sounds keep their recording's tempo (REQ-TRK-05)
 
 # role -> (synthdef, parameters)
 SYNTHS: dict[str, tuple[str, dict[str, float]]] = {
@@ -199,12 +202,22 @@ def _sample(conn: sqlite3.Connection, data_dir: Path, voice: Voice) -> Choice | 
 
 
 def _best_bpm(conn: sqlite3.Connection, digest: str) -> float:
+    """A sound's tempo; for a stem with none of its own, its recording's
+    (REQ-TRK-05): separation keeps every sample in place."""
     row = conn.execute(
         "SELECT value FROM tag WHERE asset_hash = ? AND name = 'bpm' "
         "ORDER BY confidence DESC, origin != 'analysis' DESC LIMIT 1",
         (digest,),
     ).fetchone()
-    return float(row[0]) if row else 0.0
+    if row:
+        return float(row[0])
+    made = conn.execute(
+        "SELECT d.inputs_json FROM derivation d JOIN recipe r ON r.id = d.recipe_id "
+        "WHERE d.output_hash = ? AND r.kind = ?",
+        (digest, STEMS),
+    ).fetchone()
+    inputs = json.loads(made[0]) if made else []
+    return _best_bpm(conn, str(inputs[0])) if inputs else 0.0
 
 
 def _label(conn: sqlite3.Connection, digest: str) -> str:

@@ -308,6 +308,20 @@ def test_templates_cover_every_distinct_sound() -> None:
     assert all(v.chokes == () for v in replace(score.load("BM-DRUM-06")).voices[:2])
 
 
+@pytest.mark.req("REQ-BEN-01")
+def test_a_template_holds_a_long_note_only_briefly() -> None:
+    # A pad held for a bar would still be ringing out when the next template starts.
+    held = score.load_text(
+        'id = "X"\nbpm = 120\nbars = 1\n[voices.pad]\n'
+        f'notes = "{" ".join(["C4"] * 16)}"\ngate = "x{" -" * 15}"\n'
+        'sound = { synth = "mph_strings" }\n'
+    )
+    found = score.events(held)
+    assert found[0].length_s > render.TEMPLATE_HOLD_S
+    assert [e.length_s for e in render.template_events(held, found)] == [render.TEMPLATE_HOLD_S]
+    assert [e.length_s for e in render.spaced_templates(held, found)] == [render.TEMPLATE_HOLD_S]
+
+
 # --- commands -------------------------------------------------------------------------
 
 

@@ -348,7 +348,8 @@ def sidechain(
         Check(f"{name} dip reached (ms)", round(reach, 2), f"<= {DUCK_REACH_MS:g}",
               reach <= DUCK_REACH_MS),
         Check(f"{name} level {after_ms:g} ms after the release (dB)", round(level, 2),
-              f">= {DUCK_RECOVERED_DB:g}", level >= DUCK_RECOVERED_DB),
+              f">= {DUCK_RECOVERED_DB:g}", level >= DUCK_RECOVERED_DB,
+              f"{len(recovered)} of {len(dips)} dips ran their course before the next hit"),
         Check(f"{name} biggest step on the way back (dB per 0.5 ms)", round(step, 3),
               f"<= {DUCK_STEP_DB:g}", step <= DUCK_STEP_DB),
     ]  # fmt: skip

@@ -96,3 +96,13 @@ rules, search or kit choice.
   bare hashes for them, and a sound right inside a pack folder made a group
   of its own (2026-11-12).
 - **Verify:** inspect (run it on the Mac); test for what it prints
+
+### REQ-ENG-09: Passing tests leave no temporary files
+pytest deletes a test's `tmp_path` folder as soon as the test passes
+(`tmp_path_retention_policy = "failed"`). A failing test's folder stays so
+it can be looked at, and pytest keeps the folders of at most three runs.
+- **Why:** render tests write 96 kHz float stems and masters, about 2.5 GB
+  a run on the Mac, and pytest's default kept every test's folder from the
+  last three runs. On 2026-11-14 that helped fill Dean's disk and broke a
+  Mac check (issue #61).
+- **Verify:** test

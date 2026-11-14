@@ -1,0 +1,7 @@
+# spec/tracks/love-train.md#bm-ltdj-02: bars 65-96 of remix 1 (BM-LTDJ-05):
+# the verse and chorus, where the vocal will meet the new bass and chords.
+id = "BM-LTDJ-02"
+title = "Remix 1, bars 65-96: verse and chorus"
+hear = "the original's first verse and chorus, untouched in this version. Later versions put the organ bass and stabs under the vocal here."
+project = "Love Train remix 1: Detroit x Jersey"
+excerpt = { of = "BM-LTDJ-05", bars = [65, 96] }

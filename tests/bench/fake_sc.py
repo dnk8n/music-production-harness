@@ -7,18 +7,22 @@ is a harmonic tone at that pitch, held until its /n_set gate 0; an /n_set of
 ``freq`` changes its pitch there (a slide), and an accent makes it louder
 and brighter. An ``mph_duck`` starts a dip on its bus at its sample, and an
 ``mph_ducker`` scales its channels by the dips, as the real synths do
-(REQ-BEN-12). That's enough for the matching, swing, choke, accent, slide,
-sidechain and determinism checks to mean something.
+(REQ-BEN-12). A clip (a buffer played from a ``start`` frame for ``dur``
+seconds at its own rate, REQ-TRK-02) plays the real recording, resampled to
+the render's rate. That's enough for the matching, swing, choke, accent,
+slide, sidechain, clip and determinism checks to mean something.
 """
 
 from __future__ import annotations
 
 import zlib
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
+import soundfile
+import soxr
 
 from mph.bench import audio, osc
 from mph.proc import Result
@@ -55,6 +59,17 @@ class _Note:
         data[self.start : end, self.channel + 1] += wave
 
 
+@dataclass
+class _Playing:
+    """What the score has started so far."""
+
+    nodes: dict[int, tuple[int, int, int]] = field(default_factory=dict)  # (start, end, channel)
+    buffers: dict[int, str] = field(default_factory=dict)  # the file each buffer was read from
+    notes: dict[int, _Note] = field(default_factory=dict)
+    ducks: Started = field(default_factory=list)
+    duckers: Started = field(default_factory=list)
+
+
 def _pairs(pairs: Sequence[object]) -> dict[str, float]:
     return {str(pairs[i]): float(pairs[i + 1]) for i in range(0, len(pairs), 2)}  # type: ignore[arg-type]
 
@@ -71,6 +86,17 @@ def _hit(name: str, args: dict[str, float], rate: int) -> np.ndarray:
     return (args.get("amp", 1.0) * np.sin(2 * np.pi * freq * t) * np.exp(-t * 40)).astype(
         np.float32
     )
+
+
+def _clip(path: str, args: dict[str, float], rate: int) -> np.ndarray:
+    """A buffer played from its ``start`` frame for ``dur`` seconds, at its own speed."""
+    data, native = soundfile.read(path, dtype="float32", always_2d=True)
+    if data.shape[1] == 1:
+        data = np.repeat(data, 2, axis=1)
+    first = int(args["start"])
+    piece = data[first : first + round(args["dur"] * native)]
+    moved = soxr.resample(piece, native, rate, quality="VHQ") if native != rate else piece
+    return (np.asarray(moved) * args.get("amp", 1.0)).astype(np.float32)
 
 
 def _note_message(message: osc.Message, at: int, rate: int, notes: dict[int, _Note]) -> bool:
@@ -115,25 +141,36 @@ def _sidechain(message: osc.Message, at: int, ducks: Started, duckers: Started) 
 
 
 def _hit_message(
-    message: osc.Message,
-    at: int,
-    rate: int,
-    data: np.ndarray,
-    nodes: dict[int, tuple[int, int, int]],
+    message: osc.Message, at: int, rate: int, data: np.ndarray, playing: _Playing
 ) -> None:
-    """A drum hit starts (/s_new) or is choked (/n_set gate 0)."""
+    """A drum hit or a clip starts (/s_new), or a hit is choked (/n_set gate 0).
+    A clip is a buffer played from a start frame at its own speed: a break's
+    slice sets a playback rate too."""
     if message.address == "/s_new":
         args = _args(message)
-        wave = _hit(str(message.args[0]), args, rate)[: max(len(data) - at, 0)]
+        buffer = playing.buffers.get(int(args.get("buf", -1)), "")
+        if buffer and "start" in args and "rate" not in args:
+            wave = _clip(buffer, args, rate)
+        else:
+            wave = np.repeat(_hit(str(message.args[0]), args, rate)[:, None], 2, axis=1)
+        wave = wave[: max(len(data) - at, 0)]
         channel = int(args["out"])
-        data[at : at + len(wave), channel] += wave
-        data[at : at + len(wave), channel + 1] += wave
-        nodes[int(message.args[1])] = (at, at + len(wave), channel)
+        data[at : at + len(wave), channel : channel + 2] += wave
+        playing.nodes[int(message.args[1])] = (at, at + len(wave), channel)
     elif message.address == "/n_set":
-        start, end, channel = nodes[int(message.args[0])]
+        start, end, channel = playing.nodes[int(message.args[0])]
         cut = max(at + round(CHOKE_RELEASE_S * rate), start)
         if cut < end:
             data[cut:end, channel : channel + 2] = 0.0
+
+
+def _play(message: osc.Message, at: int, rate: int, data: np.ndarray, playing: _Playing) -> None:
+    if message.address == "/b_allocRead":
+        playing.buffers[int(message.args[0])] = str(message.args[1])
+    elif not _sidechain(message, at, playing.ducks, playing.duckers) and not _note_message(
+        message, at, rate, playing.notes
+    ):
+        _hit_message(message, at, rate, data, playing)
 
 
 def fake_scsynth(argv: Sequence[str]) -> Result:
@@ -145,21 +182,15 @@ def fake_scsynth(argv: Sequence[str]) -> Result:
     bundles = osc.decode_score(score_file.read_bytes())
     length = round(bundles[-1].time_s * rate)
     data = np.zeros((length, channels), dtype=np.float32)
-    nodes: dict[int, tuple[int, int, int]] = {}  # node -> (start, end, channel)
-    notes: dict[int, _Note] = {}
-    ducks: Started = []
-    duckers: Started = []
+    playing = _Playing()
     for bundle in bundles:
         at = round(bundle.time_s * rate)
         for message in bundle.messages:
-            if _sidechain(message, at, ducks, duckers):
-                continue
-            if not _note_message(message, at, rate, notes):
-                _hit_message(message, at, rate, data, nodes)
-    for note in notes.values():
+            _play(message, at, rate, data, playing)
+    for note in playing.notes.values():
         note.play(data, rate)
-    taken = _dips(length, rate, ducks)
-    for _, args in duckers:
+    taken = _dips(length, rate, playing.ducks)
+    for _, args in playing.duckers:
         channel = int(args["out"])
         gain = (1 - np.clip(taken, 0, args["depth"])).astype(np.float32)
         data[:, channel : channel + 2] *= gain[:, None]

@@ -11,6 +11,8 @@ picked it (a fresh take, REQ-BEN-16). It plays exactly that sound; if the
 sound isn't here, or whistles where a hiss is wanted, the voice searches as
 above, and the reason says what happened to the pick.
 A take Dean passed keeps the sounds he heard when it renders again (REQ-BEN-15).
+A clip voice plays exactly the recording it pins, at the tempo the catalogue
+measured, and nothing else (spec/components/tracks.md, REQ-TRK-02).
 """
 
 from __future__ import annotations
@@ -226,9 +228,11 @@ def _exact(conn: sqlite3.Connection, data_dir: Path, voice: Voice, digest: str) 
     path = provenance.locate(conn, data_dir, digest)
     if path is None or not path.is_file():
         return "isn't on disk"
-    bpm = _best_bpm(conn, digest) if voice.slices else 0.0
-    if voice.slices and not bpm:
-        return "has no known tempo to slice it by"
+    timed = bool(voice.slices or voice.clips)  # a break is sliced by its tempo, clips placed by it
+    bpm = _best_bpm(conn, digest) if timed else 0.0
+    if timed and not bpm:
+        use = "slice it by" if voice.slices else "place its clips by"
+        return f"has no known tempo to {use}"
     return _Found(digest, path, _label(conn, digest), f"mph_play{row[1]}", bpm)
 
 
@@ -287,6 +291,22 @@ def _catalogued(
     return _sample(conn, data_dir, voice), picked
 
 
+def _recording(
+    score: Score, voice: Voice, conn: sqlite3.Connection | None, data_dir: Path
+) -> Choice:
+    """A clip voice's recording: the sound it pins and no other (REQ-TRK-02)."""
+    problem = "needs the catalogue" if conn is None else ""
+    if conn is not None:
+        picked = _picked(conn, data_dir, voice)
+        if isinstance(picked, Choice):
+            return picked
+        problem = picked
+    raise KitError(
+        f"{score.id}: {voice.name} plays clips of {voice.sound.hash[:SHORT_HASH]}, which "
+        f"{problem}: scan and analyse the folder it is in (mph catalogue scan, analyse)"
+    )
+
+
 def _fallback(score: Score, voice: Voice, conn: sqlite3.Connection | None) -> Choice:
     """A synth voice, when the catalogue has nothing for this voice."""
     if voice.slices:
@@ -308,6 +328,9 @@ def choose(
     keep = keep or {}
     choices = []
     for voice in score.voices:
+        if voice.clips:
+            choices.append(_recording(score, voice, conn, data_dir))
+            continue
         if voice.sound.synth:
             why = voice.sound.why
             choices.append(synth_for(voice, f"{PICKED}{why}" if why else ASKED_FOR_SYNTH))

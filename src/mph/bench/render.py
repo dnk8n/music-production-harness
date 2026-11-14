@@ -11,6 +11,12 @@ voice (BM-BASS-01) always renders in SuperCollider, because its glides and
 per-note filter envelopes can't be one-shot samples yet. Either way, each voice is
 also rendered alone as a *template* for measuring. Everything for one render
 lives in ``data_dir/renders/<id>/<score hash>/``.
+
+A track's clip voices (spec/components/tracks.md, REQ-TRK-02) play bars of a
+recording at its own tempo and level: Renoise loads each clip cut, sample for
+sample, into ``work/clips``; SuperCollider plays the recording from each
+clip's first frame. Each cue is checked against the recording itself rather
+than a template.
 """
 
 from __future__ import annotations
@@ -31,13 +37,16 @@ from mph import __version__, checkout, retention
 from mph.bench import audio, checks, feedback, kit, levels, rerender, sc
 from mph.bench.score import (
     Event,
+    Play,
     Score,
     Variant,
     Voice,
     all_variants,
+    clip_start_s,
     events,
     load,
     midi,
+    plays,
     variant_of,
 )
 from mph.catalogue.scanner import utc_now
@@ -70,8 +79,13 @@ RENDERS = "renders"
 ONESHOT_S = 2.0  # room for a synth voice's one-shot
 ONESHOT_FLOOR = 10 ** (-100 / 20)  # trailing silence below this is trimmed
 ENGINES = ("auto", "renoise", "supercollider")
-RENOISE_TIMEOUT_S = 600.0
+RENOISE_TIMEOUT_S = 600.0  # to start, build and save a job's songs
+RENOISE_SECONDS_PER_SECOND = 1.0  # and each second it renders may take this long again
 RENOISE_NULL_DB = -120.0  # REQ-AUD-05: Renoise renders null-test, not bit-identical
+CLIP_TEMPO_SLACK_BPM = 0.01  # REQ-TRK-02: a clip plays at its recording's own tempo
+CLIP_WINDOW_S = 0.5  # each cue is checked over this long near its start and its end
+CLIP_EDGE_S = 0.02  # clear of the fades at a cue's ends
+CLIP_SEARCH_S = 0.01  # how far either way a cue is looked for
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,10 +174,16 @@ def _kinds(own: Sequence[Event]) -> list[Event]:
     return [seen[k] for k in sorted(seen)]
 
 
+def _templated(score: Score) -> list[Voice]:
+    """The voices measured against templates: all but clip voices, which are
+    checked against their recording (REQ-TRK-02)."""
+    return [v for v in score.voices if not v.clips]
+
+
 def template_events(score: Score, found: Sequence[Event]) -> list[Event]:
     """Each voice's distinct sounds, alone, at full velocity, one per gap."""
     out = []
-    for voice in score.voices:
+    for voice in _templated(score):
         kinds = _kinds([e for e in found if e.voice == voice.name])
         out += [
             replace(e, step=0, time_s=n * TEMPLATE_GAP_S, velocity=1.0) for n, e in enumerate(kinds)
@@ -172,17 +192,19 @@ def template_events(score: Score, found: Sequence[Event]) -> list[Event]:
 
 
 def template_score(score: Score, templates: Sequence[Event]) -> Score:
-    longest = max(e.time_s for e in templates) + TEMPLATE_GAP_S
+    longest = max((e.time_s for e in templates), default=0.0) + TEMPLATE_GAP_S
     voices = tuple(replace(v, chokes=()) for v in score.voices)
     # Templates sit side by side, so a sidechain would duck one with another's hit.
-    return replace(score, bars=0, tail_s=longest, voices=voices, sidechain=None)
+    return replace(
+        score, bars=0, tail_s=longest, voices=voices, sidechain=None, sections=(), lead_bars=0
+    )
 
 
 def spaced_templates(score: Score, found: Sequence[Event]) -> list[Event]:
     """Templates one after another on whole lines, so one Renoise render holds them all."""
     lines = math.ceil(TEMPLATE_GAP_S / score.step_s)
     out: list[Event] = []
-    for voice in score.voices:
+    for voice in _templated(score):
         for kind in _kinds([e for e in found if e.voice == voice.name]):
             slot = len(out)
             out.append(replace(kind, step=0, time_s=slot * lines * score.step_s, velocity=1.0))
@@ -216,7 +238,7 @@ def measure(
 ) -> list[checks.Check]:
     matches: dict[str, list[audio.Match]] = {}
     peaks: dict[str, float] = {}
-    for voice in score.voices:
+    for voice in _templated(score):
         own = [e for e in found if e.voice == voice.name]
         onsets = _onsets(own)
         times = [e.time_s for e in own]
@@ -385,7 +407,7 @@ def _probe_render(
     """Some notes from one voice, alone, with that voice's controls set as given."""
     voices = tuple(voice if v.name == voice.name else v for v in plan.score.voices)
     length = max(e.time_s + e.length_s for e in notes) + PROBE_TAIL_S
-    score = replace(plan.score, voices=voices, bars=0, tail_s=length)
+    score = replace(plan.score, voices=voices, bars=0, tail_s=length, sections=(), lead_bars=0)
     data, _ = audio.read(sc.render(runner, tools, replace(plan, score=score), notes, out))
     return audio.split(data, [v.name for v in voices])[voice.name]
 
@@ -428,7 +450,10 @@ def probe(runner: Runner, tools: sc.Tools, plan: sc.Plan, work: Path) -> list[ch
     return found
 
 
-def renoise_tracks(setup: Setup) -> list[song_plan.Track]:
+def renoise_tracks(
+    setup: Setup, clips: dict[str, list[Path]] | None = None
+) -> list[song_plan.Track]:
+    """One track per voice. A clip voice's track loads its cut clips (REQ-TRK-02)."""
     plan = setup.plan
     tracks = []
     for n, (voice, choice) in enumerate(zip(setup.score.voices, setup.choices, strict=True)):
@@ -436,21 +461,46 @@ def renoise_tracks(setup: Setup) -> list[song_plan.Track]:
         if voice.slices:
             semitones = 12 * math.log2(plan.slice_rate)
             starts = tuple(s.start for s in plan.slices)
+        cut = (clips or {}).get(voice.name, [])
         tracks.append(
             song_plan.Track(
                 name=voice.name,
-                sample=str(setup.sounds[choice.voice]),
+                sample="" if voice.clips else str(setup.sounds[choice.voice]),
                 gain=plan.gains[n] if plan.gains else 1.0,
                 semitones=semitones,
                 slices=starts,
+                clips=tuple((str(f), c.name) for f, c in zip(cut, voice.clips, strict=True))
+                if voice.clips
+                else None,
             )
         )
     return tracks
 
 
-def renoise_job(setup: Setup) -> tuple[dict[str, Any], list[Event]]:
+def cut_clips(setup: Setup) -> dict[str, list[Path]]:
+    """Each clip of each clip voice cut from its recording, sample for sample at
+    the recording's own rate, into ``work/clips`` (REQ-TRK-02, REQ-AUD-02)."""
+    score, folder = setup.score, setup.folder / "work" / "clips"
+    found: dict[str, list[Path]] = {}
+    for voice in (v for v in score.voices if v.clips):
+        rate = setup.plan.clip_rates[voice.name]
+        found[voice.name] = []
+        for n, clip in enumerate(voice.clips, start=1):
+            first = round(clip_start_s(score, voice, clip) * rate)
+            data = audio.read_frames(
+                setup.sounds[voice.name], first, round(clip.bars * score.bar_s * rate)
+            )
+            path = folder / voice.name / f"{n:02d}.wav"
+            audio.write_float(path, data, rate)
+            found[voice.name].append(path)
+    return found
+
+
+def renoise_job(
+    setup: Setup, clips: dict[str, list[Path]] | None = None
+) -> tuple[dict[str, Any], list[Event]]:
     score, folder, work = setup.score, setup.folder, setup.folder / "work"
-    tracks = renoise_tracks(setup)
+    tracks = renoise_tracks(setup, clips)
     # The first render of a freshly built song starts ~30 samples late, so warm up first.
     warm_up: dict[str, Any] = {"file": str(work / "warm-up.wav")}
     renders: list[Any] = [
@@ -475,13 +525,24 @@ def renoise_job(setup: Setup) -> tuple[dict[str, Any], list[Event]]:
     reference = song_plan.song(
         solo_score,
         templates,
-        tracks,
+        [replace(t, clips=()) if t.clips else t for t in tracks],  # clips have no templates
         rate=setup.rate,
         save=str(work / "templates.xrns"),
         renders=[warm_up, {"file": str(work / "templates.wav")}],
         seconds=solo_score.length_s,
     )
     return {"songs": [main, reference]}, templates
+
+
+def renoise_timeout_s(job: dict[str, Any]) -> float:
+    """How long a job may take: time to start and save, and time for each
+    second of audio it renders, so an 8-minute track gets longer than a
+    benchmark (spec/components/tracks.md)."""
+    rendered_s = sum(
+        len(song["renders"]) * float(song["lines"]) * 60.0 / song["bpm"] / song["lpb"]
+        for song in job["songs"]
+    )
+    return RENOISE_TIMEOUT_S + RENOISE_SECONDS_PER_SECOND * float(rendered_s)
 
 
 def _render_renoise(
@@ -495,10 +556,10 @@ def _render_renoise(
 ) -> Rendered:
     score, work = setup.score, setup.folder / "work"
     work.mkdir(parents=True, exist_ok=True)
-    job, templates = renoise_job(setup)
+    job, templates = renoise_job(setup, cut_clips(setup))
     name = f"{score.id}-{setup.folder.name}"
     outcome = bridge.run_job(
-        cfg, runner, home, name, job, timeout_s=RENOISE_TIMEOUT_S, clock=clock, session=session
+        cfg, runner, home, name, job, timeout_s=renoise_timeout_s(job), clock=clock, session=session
     )
     frames = round(score.length_s * setup.rate)
 
@@ -564,14 +625,99 @@ def synth_oneshots(runner: Runner, tools: sc.Tools, plan: sc.Plan, folder: Path)
 
 
 def level_gains(score: Score, sounds: dict[str, Path]) -> dict[str, float]:
+    """Each voice's gain to its role's level (REQ-BEN-09). A clip voice keeps its
+    recording's level, plus its own gain (REQ-TRK-02)."""
     gains = {}
     for voice in score.voices:
+        if voice.clips:
+            gains[voice.name] = voice.gain_db
+            continue
         data, rate = audio.read(sounds[voice.name])
         gains[voice.name] = levels.gain_db(voice, levels.hit_loudness(data, rate))
     return gains
 
 
+def clip_rates(score: Score, choices: Sequence[kit.Choice]) -> dict[str, int]:
+    """Each clip voice's recording rate, once its tempo is the score's and every
+    clip is inside it (REQ-TRK-02)."""
+    found = {}
+    for voice, choice in zip(score.voices, choices, strict=True):
+        if not voice.clips:
+            continue
+        if abs(choice.bpm - score.bpm) > CLIP_TEMPO_SLACK_BPM:
+            raise sc.RenderError(
+                f"{voice.name}'s recording is {choice.bpm:g} BPM, and clips are never "
+                f"stretched, so the score must be {choice.bpm:g} BPM, not {score.bpm:g}"
+            )
+        rate, frames = audio.info(Path(choice.path))
+        for clip in voice.clips:
+            end_s = clip_start_s(score, voice, clip) + clip.bars * score.bar_s
+            if round(end_s * rate) > frames:
+                raise sc.RenderError(
+                    f"{voice.name}'s clip {clip.name} runs to {end_s:.2f} s, past the end "
+                    f"of its recording ({frames / rate:.2f} s)"
+                )
+        found[voice.name] = rate
+    return found
+
+
+def clip_checks(setup: Setup, stems: dict[str, audio.Audio]) -> list[checks.Check]:
+    """Each cue against the recording itself, near its start and its end: where
+    it lines up, and how far the stem cancels against it (REQ-TRK-02)."""
+    found: list[checks.Check] = []
+    for voice in (v for v in setup.score.voices if v.clips):
+        native = setup.plan.clip_rates[voice.name]
+        heard = []
+        for play in (p for p in plays(setup.score) if p.voice == voice.name):
+            heard += _cue_heard(setup, voice, play, stems[voice.name], native)
+        found += checks.clips(voice.name, heard)
+    return found
+
+
+def _cue_heard(
+    setup: Setup, voice: Voice, play: Play, stem: audio.Audio, native: int
+) -> list[tuple[int, float, float, float]]:
+    """One cue, near its start and its end: (bar, offset in ms, dB left, level).
+    The windows start a whole number of samples into the cue at both rates, so
+    the recording's samples, resampled, fall exactly where the render's do."""
+    score, rate = setup.score, setup.rate
+    step = audio.common_step_s(native, rate)
+
+    def on_grid(seconds: float) -> float:
+        return math.floor(round(seconds / step, 6)) * step
+
+    first = round(clip_start_s(score, voice, voice.clips[play.clip]) * native)
+    cue = round((play.bar - 1) * score.bar_s * rate)
+    length_s = play.bars * score.bar_s
+    window = on_grid(min(CLIP_WINDOW_S, length_s / 2 - CLIP_EDGE_S))
+    gain = levels.linear(voice.gain_db)
+    found = []
+    for into in (on_grid(CLIP_EDGE_S), on_grid(length_s - CLIP_EDGE_S - window)):
+        wanted = audio.excerpt_at(
+            setup.sounds[voice.name], native, first + round(into * native),
+            round(window * native), rate,
+        )  # fmt: skip
+        at, reach = cue + round(into * rate), round(CLIP_SEARCH_S * rate)
+        lag, left, level = audio.aligned(stem, wanted * gain, at, reach)
+        found.append((play.bar, 1000 * lag / rate, left, level))
+    return found
+
+
 # --- the whole render -----------------------------------------------------------------
+
+
+def _arrangement(score: Score) -> dict[str, object]:
+    """A track's sections and an excerpt's place in its track, for the report
+    (REQ-TRK-01, REQ-TRK-03); nothing for a benchmark."""
+    found: dict[str, object] = {}
+    if score.sections:
+        found["sections"] = [{"name": s.name, "bars": [s.first, s.last]} for s in score.sections]
+    if score.excerpt is not None:
+        found["excerpt"] = {
+            "of": score.excerpt.of,
+            "bars": [score.excerpt.first, score.excerpt.last],
+        }
+    return found
 
 
 def _ceiling_gain(master: audio.Audio, rate: int) -> float:
@@ -589,7 +735,16 @@ def _prepare(
     rate = cfg.audio.production_sample_rate
     slices, slice_rate, break_rate = _slicing(score, choices)
     synthdefs = sc.compile_synthdefs(runner, tools, cfg.data_dir) if tools else Path()
-    plan = sc.Plan(score, choices, rate, synthdefs, slices, slice_rate, break_rate)
+    plan = sc.Plan(
+        score,
+        choices,
+        rate,
+        synthdefs,
+        slices,
+        slice_rate,
+        break_rate,
+        clip_rates=clip_rates(score, choices),
+    )
     staging = renders_dir(cfg) / score.id / "staging"
     oneshots = synth_oneshots(runner, tools, plan, staging) if tools else {}
     sounds = {c.voice: Path(c.path) if c.is_sample else oneshots[c.voice] for c in choices}
@@ -654,6 +809,7 @@ def run(
         as_scored=chosen_variant.as_scored,
     )
     found_checks += rendered.extra_checks
+    found_checks += clip_checks(setup, rendered.stems)
     null_limit = RENOISE_NULL_DB if chosen == "renoise" else None
     found_checks.append(
         checks.determinism(rendered.master, rendered.again, null_limit_db=null_limit)
@@ -684,6 +840,7 @@ def run(
         "production_rate": rate,
         "bpm": score.bpm,
         "bars": score.bars,
+        **_arrangement(score),
         "swing": score.swing,
         "kit": [
             {

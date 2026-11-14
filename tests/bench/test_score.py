@@ -9,12 +9,16 @@ import pytest
 from mph.bench import score
 from mph.bench.score import ScoreError
 
-SPEC = Path(__file__).resolve().parents[2] / "spec" / "components" / "benchmarks.md"
-SECTION = re.compile(r"^### (BM-[A-Z]+-\d+): .*?(?=^### |\Z)", re.MULTILINE | re.DOTALL)
+SPEC_DIR = Path(__file__).resolve().parents[2] / "spec"
+# Benchmarks, and the tracks with their blocks (spec/components/tracks.md).
+SPECS = [SPEC_DIR / "components" / "benchmarks.md", *sorted((SPEC_DIR / "tracks").glob("*.md"))]
+SECTION = re.compile(r"^### (BM-[A-Z]+-\d+): .*?(?=^### |^## |\Z)", re.MULTILINE | re.DOTALL)
 
 
 def spec_sections() -> dict[str, str]:
-    return {m.group(1): m.group(0) for m in SECTION.finditer(SPEC.read_text("utf-8"))}
+    return {
+        m.group(1): m.group(0) for spec in SPECS for m in SECTION.finditer(spec.read_text("utf-8"))
+    }
 
 
 def spec_grid(section: str) -> dict[str, str]:
@@ -376,7 +380,9 @@ def test_melodic_variants_change_synth_controls() -> None:
 @pytest.mark.req("REQ-BEN-11")
 @pytest.mark.parametrize("benchmark_id", score.available())
 def test_every_score_names_the_project_it_is_written_under(benchmark_id: str) -> None:
-    text = SPEC.read_text("utf-8")
+    text = next(
+        s.read_text("utf-8") for s in SPECS if f"### {benchmark_id}:" in s.read_text("utf-8")
+    )
     heading = text.index(f"### {benchmark_id}:")
     section = re.findall(r"^## (.+)$", text[:heading], re.MULTILINE)[-1]
     assert score.load(benchmark_id).project == section
@@ -442,6 +448,7 @@ def test_variants_can_change_a_drum_grid_or_the_feel() -> None:
 
 
 @pytest.mark.req("REQ-BEN-06")
+@pytest.mark.req("REQ-TRK-01")
 @pytest.mark.parametrize(
     ("benchmark_id", "digest"),
     [("BM-DRUM-01", "a04d3a85636c9254"), ("BM-BASS-01", "e7de9642d67aaa1b")],
@@ -450,7 +457,8 @@ def test_score_hashes_stay_put_when_a_new_field_keeps_its_default(
     benchmark_id: str, digest: str
 ) -> None:
     # Renders and Dean's verdicts are filed under these hashes, so a new score
-    # field (feel, sidechain) must leave scores that don't use it hashed as before.
+    # field (feel, sidechain, sections, clips, an excerpt's lead) must leave
+    # scores that don't use it hashed as before.
     assert score.load(benchmark_id).digest() == digest
 
 

@@ -41,6 +41,7 @@
 | catalogue | Index sources, analyse, search, track provenance | [catalogue.md](components/catalogue.md) | 2 |
 | audio policy | Formats, rates, dither, determinism | [audio-policy.md](components/audio-policy.md) | 1 (rules), 3 (enforcement) |
 | benchmarks | Listening tests and measurements | [benchmarks.md](components/benchmarks.md) | 3 |
+| tracks | Long arranged scores: sections, clips of a recording, blocks rated on their own | [tracks.md](components/tracks.md) | 3 |
 | feedback | Local web page, ratings and ideas, work for agents, AI loop | [feedback.md](components/feedback.md) | 3 |
 | renoise bridge | Generate, control and render Renoise songs | [renoise.md](components/renoise.md) | 4 |
 | retention | Keep fresh renders, prune the rest, render again on demand | [retention.md](components/retention.md) | 3 |

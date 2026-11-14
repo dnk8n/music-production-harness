@@ -57,7 +57,9 @@ local function new_sample()
     fine_tune = 0,
     interpolation_mode = 3,
     slice_markers = {},
-    sample_mapping = { base_note = 48 },
+    autoseek = false,
+    autofade = false,
+    sample_mapping = { base_note = 48, note_range = { 0, 119 } },
     sample_buffer = {},
   }
   function sample.sample_buffer:load_from(path)
@@ -114,7 +116,7 @@ function fake.new_song(file_name)
     tracks = {},
     instruments = { new_instrument() },
     patterns = { new_pattern() },
-    sequencer = { pattern_sequence = { 1 } },
+    sequencer = { pattern_sequence = { 1 }, sections = {} },
   }
   for n = 1, 8 do
     song.tracks[n] = new_track("Track 0" .. n)
@@ -151,6 +153,15 @@ function fake.new_song(file_name)
   end
   function sequencer:delete_sequence_at(position)
     table.remove(self.pattern_sequence, position)
+  end
+  -- Section starts and their names, by position in the sequence.
+  function sequencer:set_sequence_is_start_of_section(position, is_section)
+    assert(position >= 1 and position <= #self.pattern_sequence, "no such sequence slot")
+    self.sections[position] = is_section and (self.sections[position] or "") or nil
+  end
+  function sequencer:set_sequence_section_name(position, name)
+    assert(self.sections[position], "only a section's start has a name")
+    self.sections[position] = name
   end
   function song:render(options, file, done)
     local active = {}

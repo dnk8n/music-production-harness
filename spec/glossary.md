@@ -22,6 +22,10 @@
 | **Idea** | A project, benchmark or variant Dean asked for on the page, until agents build it as spec and score (REQ-FBK-08). |
 | **Verdict** | Retired 2026-11-13: pass, close or fail on a render, before ratings. Carried over into ratings (REQ-FBK-07). |
 | **Take** | One way of making a benchmark (engine, sounds, levels): a variant. All takes are equal. |
+| **Track** | A long score in a project of its own, such as a remix, arranged in sections (spec/components/tracks.md). |
+| **Section** | Bars of a track and the voices that play in them, named in the Renoise song's sequence (REQ-TRK-01). |
+| **Clip** | Whole bars of a recording, such as a full track or a stem, that a section cues as it is: never stretched (REQ-TRK-02). |
+| **Excerpt** | A block of a track's bars that renders and is rated on its own, before the track is finished (REQ-TRK-03). |
 | **Triplet grid** | A 12-step grid: eighth-note triplets, three to a beat, playing alongside 16-step grids (REQ-BEN-13). |
 | **Feel** | Where a beat's three triplet pulses fall, as shares of the beat: even, or uneven like the long-short-short of jembe drumming (REQ-BEN-13). |
 | **Timeline** | The repeating bell pattern that organises an African drum ensemble, such as the standard bell pattern in BM-AFRO-01. |

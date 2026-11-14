@@ -23,10 +23,15 @@ end
 local function describe(song)
   local out = { bpm = song.transport.bpm, lpb = song.transport.lpb, tracks = {}, notes = {} }
   out.patterns = {}
+  out.sections = {}
   local offset = 0 -- lines in the patterns before this one
   for position, index in ipairs(song.sequencer.pattern_sequence) do
     local pattern = song.patterns[index]
     out.patterns[position] = pattern.number_of_lines
+    local section = song.sequencer.sections[position]
+    if section then
+      out.sections[#out.sections + 1] = { position = position, line = offset, name = section }
+    end
     for track_index, track in pairs(pattern.tracks) do
       for line_index, line in pairs(track.lines) do
         local column = line.columns[1]
@@ -53,12 +58,28 @@ local function describe(song)
   for index = 1, song.sequencer_track_count do
     local track = song.tracks[index]
     local instrument = song.instruments[index]
-    local sample = instrument.samples[1]
+    local sample = instrument.samples[1] or { sample_mapping = {} } -- a clip track may load none
     local devices = {}
     for _, device in ipairs(track.devices) do
       devices[#devices + 1] = { name = device.name, active = device.is_active }
     end
+    local zones = {}
+    for _, each in ipairs(instrument.samples) do
+      local mapping = each.sample_mapping
+      if mapping.note_range[1] == mapping.note_range[2] then -- a sample on a key of its own
+        zones[#zones + 1] = {
+          name = each.name,
+          sample = each.loaded,
+          base_note = mapping.base_note,
+          note_range = mapping.note_range,
+          volume = each.volume,
+          autoseek = each.autoseek,
+          autofade = each.autofade,
+        }
+      end
+    end
     out.tracks[index] = {
+      zones = zones,
       name = track.name,
       devices = devices,
       volume_column = track.volume_column_visible,

@@ -13,8 +13,9 @@ import pytest
 
 from mph import config
 from mph.proc import Result
-from mph.renoise import bridge
+from mph.renoise import bridge, luadata
 from tests.fakes import FakeRunner
+from tests.renoise import lua
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "renoise_check.py"
 
@@ -163,3 +164,18 @@ def test_the_check_reports_a_job_that_fails(
     fresh = Renoise(cfg)
     assert renoise_check.check(cfg, fresh.runner(), nowhere, fresh.clock()) == 1
     assert "open Renoise once" in capsys.readouterr().out
+
+
+@pytest.mark.lua
+@pytest.mark.req("REQ-TRK-04")
+def test_the_checks_songs_build_with_the_tool(renoise_check: ModuleType, tmp_path: Path) -> None:
+    # The check builds its songs by hand, so they must keep up with the plan the
+    # tool reads, or the real-Renoise check fails for the wrong reason.
+    sample = renoise_check.blip(tmp_path / "blip.wav")
+    plan = tmp_path / "plan.lua"
+    plan.write_text(luadata.document(renoise_check.song(tmp_path, sample, "A")), "utf-8")
+    built = lua.run("build", str(plan))
+    assert built["sections"] == [{"position": 1, "line": 0, "name": "A"}]
+    assert [t["name"] for t in built["tracks"]] == ["blip", "clip"]
+    zone = built["tracks"][1]["zones"][0]
+    assert (zone["name"], zone["base_note"], zone["autoseek"]) == ("blip", 48, True)

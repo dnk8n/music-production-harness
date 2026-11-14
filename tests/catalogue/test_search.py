@@ -329,11 +329,16 @@ def test_what_files_say_about_themselves_counts_in_search(conn: sqlite3.Connecti
             ("key", "E:major", "analysis", 0.9),
         ],
     )
-    add(  # a loop whose file kept its loop tool's default tempo; its name knows better
+    add(  # a loop whose tags disagree with its name: the name wins
         conn,
-        "default",
-        "Pack/Loops/Groove 124bpm.wav",
-        [("bpm", "124", "filename", 0.6), ("bpm", "120", "embedded", 0.5)],
+        "tagged",
+        "Pack/Loops/Groove 124bpm Am.wav",
+        [
+            ("bpm", "124", "filename", 0.6),
+            ("bpm", "120", "embedded", 0.35),
+            ("key", "A:minor", "filename", 0.6),
+            ("key", "F:minor", "embedded", 0.35),
+        ],
     )
     add(
         conn,
@@ -348,9 +353,10 @@ def test_what_files_say_about_themselves_counts_in_search(conn: sqlite3.Connecti
     )
     keyed = search.search(conn, Query(key="F:minor"))
     assert keyed.hits[0].reasons == ("key F:minor (embedded)",)  # the file's label wins
+    assert "tagged" not in {hit.digest for hit in keyed.hits}  # its name's A minor wins
     tempo = {hit.digest: hit for hit in search.search(conn, Query(bpm=124)).hits}
-    assert tempo["default"].reasons == ("124 BPM (filename)",)
-    assert tempo["default"].facts == {"bpm": "124"}
+    assert tempo["tagged"].reasons == ("124 BPM (filename)",)
+    assert tempo["tagged"].facts == {"bpm": "124", "key": "A:minor"}
     assert tempo["own"].reasons == ("126 BPM (embedded)",)
     for words in (("somebodies",), ("example records",), ("night", "drive")):
         assert paths(search.search(conn, Query(text=words))) == ["full_tracks/01 night-drive.flac"]

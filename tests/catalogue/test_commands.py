@@ -152,7 +152,7 @@ def test_analyse_reports_agreement_with_names_and_files_apart(
         conn.execute("INSERT INTO asset (hash, bytes, origin) VALUES ('a', 1, 'source')")
         conn.executemany(
             "INSERT INTO tag VALUES ('a', 'bpm', ?, ?, ?)",
-            [("128", "filename", 0.6), ("120", "embedded", 0.5), ("128.1", "analysis", 0.9)],
+            [("128", "filename", 0.6), ("120", "embedded", 0.35), ("128.1", "analysis", 0.9)],
         )
     monkeypatch.setattr(analysis, "run", lambda *args, **kwargs: analysis.AnalysisRun(cached=1))
     assert commands.cmd_analyse(cfg, [], [], None, 1, force=False) == 0

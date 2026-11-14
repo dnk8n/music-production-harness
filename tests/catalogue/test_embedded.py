@@ -60,15 +60,20 @@ def test_an_acid_tempo_whose_beats_fill_the_file_is_sure() -> None:
 
 
 @pytest.mark.req("REQ-CAT-12")
-def test_acids_default_120_on_a_loop_it_doesnt_fit_ranks_below_names() -> None:
-    found = loop(an_acid(tempo=120.0, beats=8), seconds=3.75)  # really 128 BPM
-    assert labelled(found) == {"bpm": ("120", 0.5)}  # no form: the beats don't fill it
+def test_an_acid_chunk_that_doesnt_fit_its_loop_was_stamped_so_gives_nothing() -> None:
+    # As on Dean's Mac: a pack's template, 16 beats at 120 and note 53, on every loop
+    stamped = an_acid(tempo=120.0, beats=16, root_note=53)
+    assert labelled(loop(stamped, seconds=7.5)) == {}  # really 128 BPM: no tempo, form or root
+    tagged = loop(stamped, seconds=7.5, TBPM="128")  # the file's other labels still count
+    assert labelled(tagged) == {"bpm": ("128", 0.35)}
 
 
 @pytest.mark.req("REQ-CAT-12")
 def test_a_one_shot_has_no_tempo_even_when_tagged() -> None:
     found = loop(an_acid(one_shot=True, beats=1, tempo=120.0), seconds=0.5, TBPM="128")
     assert labelled(found) == {"form": ("oneshot", 0.8)}
+    note = loop(an_acid(one_shot=True, beats=1, tempo=120.0, root_note=48), seconds=0.5)
+    assert labelled(note) == {"form": ("oneshot", 0.8), "root": ("C", 0.8)}  # its note counts
 
 
 def test_an_acid_chunk_with_no_beats_or_an_odd_tempo_gives_no_tempo() -> None:
@@ -84,7 +89,7 @@ def test_an_acid_chunk_with_no_beats_or_an_odd_tempo_gives_no_tempo() -> None:
     [("120", "120"), ("120.00", "120"), ("122,5", "122.5"), ("128 BPM", "128"), ("174", "174")],
 )
 def test_bpm_tags(written: str, bpm: str) -> None:
-    assert labelled(Found(tags={"TBPM": written}))["bpm"] == (bpm, 0.7)
+    assert labelled(Found(tags={"TBPM": written}))["bpm"] == (bpm, 0.35)  # below names
 
 
 @pytest.mark.parametrize("written", ["0", "", "fast", "999", "45"])
@@ -117,7 +122,7 @@ def test_bpm_tags_that_give_none(written: str) -> None:
 )
 def test_key_tags_in_every_common_notation(written: str, key: str) -> None:
     assert embedded.parse_key(written) == key
-    assert labelled(Found(tags={"INITIALKEY": written}))["key"] == (key, 0.7)
+    assert labelled(Found(tags={"INITIALKEY": written}))["key"] == (key, 0.35)  # below names
 
 
 @pytest.mark.parametrize("written", ["o", "", "none", "13A", "H"])
@@ -139,7 +144,7 @@ def test_key_tags_that_give_none(written: str) -> None:
 )
 def test_ikey_is_keywords_so_only_a_clear_key_counts(written: str, key: str | None) -> None:
     found = labelled(Found(tags={"IKEY": written}))
-    assert found.get("key") == ((key, 0.7) if key else None)
+    assert found.get("key") == ((key, 0.35) if key else None)
 
 
 @pytest.mark.req("REQ-CAT-12")
@@ -178,9 +183,9 @@ def test_sampler_notes_count_unless_they_look_untouched() -> None:
 
 
 def test_a_root_found_twice_counts_once_at_its_surest() -> None:
-    found = loop(an_acid(root_note=57, beats=0))
-    found = Found(chunks=Chunks(acid=found.chunks.acid, smpl=Sampler(45, 0.0, ())))
-    assert embedded.labels(found) == [Label("root", "A", 0.8)]
+    acid = an_acid(root_note=57, one_shot=True, beats=1)
+    found = Found(chunks=Chunks(acid=acid, smpl=Sampler(45, 0.0, ())), duration_s=0.5)
+    assert labelled(found) == {"form": ("oneshot", 0.8), "root": ("A", 0.8)}
 
 
 @pytest.mark.req("REQ-CAT-12")

@@ -106,11 +106,11 @@ def test_relative_key(key: str, relative: str) -> None:
 
 @pytest.mark.req("REQ-CAT-12")
 def test_the_files_own_labels_are_measured_apart_from_names(conn: sqlite3.Connection) -> None:
-    # The pack names the loop well, but the file keeps its loop tool's default tempo.
+    # The pack names the loop well, but the file's BPM tag is wrong.
     tag(conn, "a", "bpm", "128", "filename", confidence=0.6)
-    tag(conn, "a", "bpm", "120", "embedded", confidence=0.5)
+    tag(conn, "a", "bpm", "120", "embedded", confidence=0.35)
     tag(conn, "a", "bpm", "128.2", "analysis")
-    tag(conn, "b", "key", "A:minor", "embedded", confidence=0.7)
+    tag(conn, "b", "key", "A:minor", "embedded", confidence=0.35)
     tag(conn, "b", "key", "C:major", "analysis")  # the relative key: forgiven
     names = {r.field: r for r in agreement.measure(conn, ["a", "b"])}
     own = {r.field: r for r in agreement.measure(conn, ["a", "b"], agreement.OWN)}

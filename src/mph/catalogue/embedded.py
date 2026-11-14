@@ -8,17 +8,20 @@ in the ``embedded`` table as JSON. The labels drawn from it are tags with
 How sure each label is, from the spec:
 
 - ``bpm`` 0.9 from an ACID tempo whose beats fill the file to within 2%, or
-  an Apple Loop's beats over its length; 0.7 from a BPM tag; 0.5 from any
-  other ACID tempo, which is often a tool's default 120. A one-shot has no
-  tempo, and only 60 to 200 BPM counts.
-- ``key`` 0.8 from an Apple Loop's root and scale; 0.7 from a key tag in any
-  common notation. ``IKEY`` is RIFF INFO's keywords, so there only a key with
-  a mode or a sharp or flat counts, never a lone letter.
+  an Apple Loop's beats over its length; 0.35 from a BPM tag, below a tempo
+  in the file's name. A one-shot has no tempo, and only 60 to 200 BPM counts.
+- ``key`` 0.8 from an Apple Loop's root and scale; 0.35 from a key tag in any
+  common notation, below a key in the file's name. ``IKEY`` is RIFF INFO's
+  keywords, so there only a key with a mode or a sharp or flat counts, never
+  a lone letter.
 - ``form`` 0.8: one-shot when a chunk says so; loop when it says loop and its
   beats at its tempo fill the file.
 - ``root`` 0.8 from ACID (when it says the note is set) or an Apple Loop with
   a scale; 0.6 from a sampler chunk, unless it looks untouched (60, no
   tuning, no loops).
+- An ACID chunk on a loop whose beats don't fill the file was stamped from a
+  tool's template, not set for that file, so its tempo and root note give
+  nothing: on Dean's library 1,027 of them all said 120 BPM.
 - ``title``, ``artist``, ``album``, ``genre``, ``record_label``,
   ``catalogue_number``, ``year`` and ``track`` 1, as the tags write them.
 
@@ -46,8 +49,9 @@ ORIGIN = "embedded"
 MAX_VALUE = 1000  # characters kept of any one tag
 FILLS = 0.02  # beats at the tempo fill the file to within this share of its length
 TEMPO_RANGE = names.BPM_RANGE
-FITTED_TEMPO, TAGGED_TEMPO, LOOSE_TEMPO = 0.9, 0.7, 0.5
-LOOP_KEY, TAGGED_KEY = 0.8, 0.7
+FITTED_TEMPO = 0.9
+LOOP_KEY = 0.8
+TAGGED_TEMPO = TAGGED_KEY = 0.35  # below names (0.6) and near folders, above bare numbers (0.3)
 FORM = 0.8
 ROOT, SAMPLER_ROOT = 0.8, 0.6
 AS_WRITTEN = 1.0
@@ -145,7 +149,7 @@ def labels(found: Found) -> list[Label]:
         *_tempos(found),
         *_forms(found),
         *_keys(found),
-        *_roots(found.chunks),
+        *_roots(found),
         *_described(found.tags),
     ]
     best: dict[tuple[str, str], float] = {}
@@ -174,6 +178,15 @@ def _fills(beats: int, bpm: float, duration_s: float | None) -> bool:
     return abs(beats * 60 / bpm - duration_s) <= FILLS * duration_s
 
 
+def _acid_fits(found: Found) -> bool:
+    """Whether the ACID chunk was set for this file: a one-shot, or a loop whose
+    beats at its tempo fill it. Any other was stamped from a template."""
+    acid = found.chunks.acid
+    if acid is None:
+        return False
+    return acid.one_shot or _fills(acid.beats, acid.tempo, found.duration_s)
+
+
 def _apple_tempo(found: Found) -> float | None:
     """An Apple Loop's tempo: its beats over its length, as Logic works it out."""
     basc = found.chunks.basc
@@ -188,9 +201,8 @@ def _tempos(found: Found) -> list[Label]:
         return []
     made = []
     acid = found.chunks.acid
-    if acid is not None and acid.beats >= 1 and _in_range(acid.tempo):
-        sure = _fills(acid.beats, acid.tempo, found.duration_s)
-        made.append(Label("bpm", _tempo_text(acid.tempo), FITTED_TEMPO if sure else LOOSE_TEMPO))
+    if acid is not None and _acid_fits(found) and _in_range(acid.tempo):
+        made.append(Label("bpm", _tempo_text(acid.tempo), FITTED_TEMPO))
     apple = _apple_tempo(found)
     if apple is not None and _in_range(apple):
         made.append(Label("bpm", _tempo_text(apple), FITTED_TEMPO))
@@ -206,7 +218,7 @@ def _forms(found: Found) -> list[Label]:
     if acid is not None:
         if acid.one_shot:
             made.append(Label("form", "oneshot", FORM))
-        elif _fills(acid.beats, acid.tempo, found.duration_s):
+        elif _acid_fits(found):
             made.append(Label("form", "loop", FORM))
     if basc is not None:
         if basc.one_shot:
@@ -228,9 +240,10 @@ def _keys(found: Found) -> list[Label]:
     return made
 
 
-def _roots(chunks: Chunks) -> list[Label]:
+def _roots(found: Found) -> list[Label]:
     made = []
-    if chunks.acid is not None and chunks.acid.root_note is not None:
+    chunks = found.chunks
+    if chunks.acid is not None and chunks.acid.root_note is not None and _acid_fits(found):
         made.append(Label("root", _pitch(chunks.acid.root_note), ROOT))
     if chunks.basc is not None and chunks.basc.scale not in ("neither", "unknown"):
         made.append(Label("root", _pitch(chunks.basc.root_note), ROOT))

@@ -279,12 +279,11 @@ What a file says gives it labels with `origin=embedded`:
 | Label | From | Confidence |
 |---|---|---|
 | `bpm` | an ACID tempo whose beats fill the file to within 2%; an Apple Loop's beats over its length | 0.9 |
-| `bpm` | a BPM tag (`TBPM`, `BPM`, `TEMPO`, `tmpo`) | 0.7 |
-| `bpm` | any other ACID tempo | 0.5 |
+| `bpm` | a BPM tag (`TBPM`, `BPM`, `TEMPO`, `tmpo`) | 0.35 |
 | `key` | an Apple Loop's root note and scale, when the scale is major or minor | 0.8 |
-| `key` | a key tag (`TKEY`, `INITIALKEY`, `KEY`, `IKEY`) written as Am, A minor, A min, Camelot (8A) or Open Key (1m) | 0.7 |
+| `key` | a key tag (`TKEY`, `INITIALKEY`, `KEY`, `IKEY`) written as Am, A minor, A min, Camelot (8A) or Open Key (1m) | 0.35 |
 | `form` | `oneshot` when an ACID or Apple Loops chunk says one-shot; `loop` when it says loop and its beats at its tempo fill the file to within 2% | 0.8 |
-| `root` | the note an ACID chunk names when it says its root note is set, or an Apple Loop's when it has a scale | 0.8 |
+| `root` | the note an ACID chunk names when it says its root note is set and the chunk is a one-shot or its beats fill the file; an Apple Loop's when it has a scale | 0.8 |
 | `root` | a sampler chunk's (`smpl`, `inst`, `INST`) unity or base note, unless it looks untouched: 60 (middle C) with no tuning and no loops | 0.6 |
 | `title`, `artist`, `album`, `genre`, `record_label`, `catalogue_number`, `year`, `track` | tags, as written | 1 |
 
@@ -296,14 +295,19 @@ RIFF INFO meant for keywords and some packs use for keys, where only a key
 with a mode or a sharp or flat counts. Words search finds the tag labels
 (REQ-CAT-05): a track by its title, artist, album or label.
 
-These labels rank above most names, which guess, but they are not
-measurements. A tempo that fills the file to within 2% is the producer's
-own, confirmed by the file's length. One that doesn't is often a tool's
-default: some packs leave every loop at ACID's 120 BPM, so it ranks below a
-tempo in the file's name (0.6). Analysis still measures every sound, both
-are kept, and `mph catalogue analyse` reports how often analysis agrees with
-the files' own tempo and key, apart from names. A measured form still wins
-over a labelled one in search, as it does over names.
+A loop chunk that fits its file ranks above the file's name, and a text tag
+ranks below it. A tempo whose beats fill the file to within 2% is the
+producer's own, confirmed by the file's length, so it ranks above a tempo in
+the name (0.6). An ACID chunk on a loop whose beats don't fill the file was
+stamped from a tool's template rather than set for that file, so its tempo
+and root note give no label (it is still kept, and shown). Tempo and key
+tags rank below a tempo or key in the file's name (0.6) or in its two
+nearest folders' names (0.5, 0.4), and above a bare number that might be a
+tempo (0.3): packs fill them in by batch, and they are often wrong. None of
+these labels is a measurement. Analysis still measures every sound, both are kept, and
+`mph catalogue analyse` reports how often analysis agrees with the files'
+own tempo and key, apart from names. A measured form still wins over a
+labelled one in search, as it does over names.
 
 Text inside a file never gives a role or a form. Titles, artists, albums,
 labels, genres and comments are the names and genres REQ-CAT-03 keeps from
@@ -329,4 +333,14 @@ hashes depend on the audio alone.
   samplers can play it at the right note: the producer's own facts, better
   than guesses from names. But tools also write defaults nobody set (120
   BPM, middle C), so these labels sit beside analysis rather than replace it.
+  The first Mac kit-diff (2026-11-14) bore both out. The 182 ACID and Apple
+  Loops tempos that fill their files agreed with analysis 96 times in 97 (97
+  in 97 allowing half and double time), and Love Train's tags all came
+  through. But 1,027 ACID loops whose beats didn't fill the file all said
+  120 BPM and agreed with analysis 4 times in 507. At 0.5 they became the
+  best tempo of 617 sounds (ROB_140_Gbm_SynthLoop_010.wav went from 140 to
+  120) and moved one benchmark break's slicing tempo from 125 to 120. Two of
+  the three key tags said F minor on hits whose names say E minor and C
+  minor. So a chunk that doesn't fit its file gives no tempo or root, and
+  text tags rank below names.
 - **Verify:** test; inspect on the Mac: kit-diff against main, and the first scan of Dean's library

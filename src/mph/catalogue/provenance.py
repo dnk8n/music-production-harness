@@ -8,10 +8,16 @@ Everything here writes under ``data_dir`` only:
   the cache never touches it.
 
 Sources are only ever read (REQ-CAT-01). Recipes run through
-``mph.proc.Runner`` with ffmpeg's ``-bitexact`` flag, so the same recipe on the
-same inputs gives the same bytes and therefore the same hash (REQ-AUD-05).
-Outputs are 32-bit float WAV at the input's own rate: an edit, never a
-resample (REQ-AUD-01, REQ-AUD-02).
+``mph.proc.Runner`` in a way that makes the same bytes from the same inputs,
+and therefore the same hash: ffmpeg with ``-bitexact``, Demucs on the CPU
+with no random shifts (REQ-AUD-05). Outputs are 32-bit float WAV at the
+input's own rate: an edit or a separation, never a resample (REQ-AUD-01,
+REQ-AUD-02).
+
+One run of a recipe can make several sounds, like the four stems of a track
+(REQ-CAT-11). Each is recorded with its own recipe, whose ``part`` names it,
+so lineage says which stem a sound is, and rebuilding one stem brings back
+its siblings too.
 """
 
 from __future__ import annotations
@@ -40,7 +46,11 @@ class ProvenanceError(ValueError):
 
 # --- recipes ---------------------------------------------------------------------
 
-ArgvBuilder = Callable[[Mapping[str, float], Sequence[Path], Path], list[str]]
+Param = float | str
+Params = Mapping[str, Param]
+ArgvBuilder = Callable[[Params, Sequence[Path], Path], list[str]]  # writes into a work folder
+OutputFinder = Callable[[Params, Path], dict[str, Path]]  # part -> its file in the work folder
+Checker = Callable[[Mapping[str, object]], dict[str, Param]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,13 +61,34 @@ class RecipeKind:
     inputs: int
     describe: str
     build: ArgvBuilder
+    outputs: OutputFinder  # {"": file} for a recipe that makes one sound
+    check: Checker  # validated, typed params
+    rate: int | None = None  # the one input rate it takes, when it would resample others
 
 
 FFMPEG_OUT = ("-map_metadata", "-1", "-c:a", "pcm_f32le", "-bitexact", "-f", "wav")
+ONE = "out.wav"
 
 
-def _trim(params: Mapping[str, float], inputs: Sequence[Path], output: Path) -> list[str]:
-    start, end = params["start"], params["end"]
+def _number(value: object) -> float:
+    if isinstance(value, int | float) or (isinstance(value, str) and value.strip()):
+        try:
+            return float(value)
+        except ValueError:
+            pass
+    raise ProvenanceError(f"not a number: {value!r}")
+
+
+def _numbers(params: Mapping[str, object]) -> dict[str, Param]:
+    return {name: _number(value) for name, value in params.items()}
+
+
+def _one_output(params: Params, work: Path) -> dict[str, Path]:
+    return {"": work / ONE}
+
+
+def _trim(params: Params, inputs: Sequence[Path], work: Path) -> list[str]:
+    start, end = float(params["start"]), float(params["end"])
     if not 0 <= start < end:
         raise ProvenanceError(f"trim needs 0 <= start < end (got {start:g}..{end:g})")
     return [
@@ -75,13 +106,79 @@ def _trim(params: Mapping[str, float], inputs: Sequence[Path], output: Path) -> 
         "-map",
         "0:a:0",
         *FFMPEG_OUT,
-        str(output),
+        str(work / ONE),
     ]
+
+
+# Demucs models and the stems each makes (REQ-CAT-11). All work at 44.1 kHz.
+DEMUCS_MODELS: dict[str, tuple[str, ...]] = {
+    "htdemucs_ft": ("drums", "bass", "other", "vocals"),  # fine-tuned: best, ~4x slower
+    "htdemucs": ("drums", "bass", "other", "vocals"),
+    "htdemucs_6s": ("drums", "bass", "other", "vocals", "guitar", "piano"),
+}
+DEFAULT_MODEL = "htdemucs_ft"
+DEMUCS_RATE = 44100
+
+
+def _stem_params(params: Mapping[str, object]) -> dict[str, Param]:
+    model, part = str(params["model"]), str(params["part"])
+    parts = DEMUCS_MODELS.get(model)
+    if parts is None:
+        raise ProvenanceError(f"unknown Demucs model {model!r}; known: {', '.join(DEMUCS_MODELS)}")
+    if part not in parts:
+        raise ProvenanceError(f"{model} makes {', '.join(parts)}, not {part!r}")
+    return {"model": model, "part": part}
+
+
+def _stems(params: Params, inputs: Sequence[Path], work: Path) -> list[str]:
+    """Every stem in one run, on the CPU, without random shifts or rescaling."""
+    return [
+        "demucs",
+        "-n",
+        str(params["model"]),
+        "-d",
+        "cpu",
+        "--shifts",
+        "0",
+        "--overlap",
+        "0.25",
+        "--float32",
+        "--clip-mode",
+        "none",
+        "-o",
+        str(work),
+        "--filename",
+        "{stem}.{ext}",
+        str(inputs[0]),
+    ]
+
+
+def _stem_files(params: Params, work: Path) -> dict[str, Path]:
+    model = str(params["model"])  # Demucs writes into a folder named after the model
+    return {part: work / model / f"{part}.wav" for part in DEMUCS_MODELS[model]}
 
 
 RECIPES: dict[str, RecipeKind] = {
     "trim": RecipeKind(
-        "trim", 1, ("start", "end"), 1, "cut start..end seconds, native rate, float", _trim
+        "trim",
+        1,
+        ("start", "end"),
+        1,
+        "cut start..end seconds, native rate, float",
+        _trim,
+        _one_output,
+        _numbers,
+    ),
+    "stems": RecipeKind(
+        "stems",
+        1,
+        ("model", "part"),
+        1,
+        "separate with Demucs into drums, bass, other and vocals; 44.1 kHz float",
+        _stems,
+        _stem_files,
+        _stem_params,
+        rate=DEMUCS_RATE,
     ),
 }
 
@@ -89,7 +186,15 @@ RECIPES: dict[str, RecipeKind] = {
 @dataclass(frozen=True, slots=True)
 class Recipe:
     kind: RecipeKind
-    params: dict[str, float]
+    params: dict[str, Param]
+
+    @property
+    def part(self) -> str:
+        """Which of the run's sounds this recipe names; "" when it makes one."""
+        return str(self.params.get("part", ""))
+
+    def with_part(self, part: str) -> Recipe:
+        return Recipe(self.kind, {**self.params, "part": part}) if part else self
 
     @property
     def canonical(self) -> str:
@@ -101,7 +206,7 @@ class Recipe:
         return hashlib.blake2b(self.canonical.encode(), digest_size=16).hexdigest()
 
 
-def recipe(kind: str, params: Mapping[str, float]) -> Recipe:
+def recipe(kind: str, params: Mapping[str, object]) -> Recipe:
     found = RECIPES.get(kind)
     if found is None:
         raise ProvenanceError(f"unknown recipe {kind!r}; known: {', '.join(sorted(RECIPES))}")
@@ -109,7 +214,14 @@ def recipe(kind: str, params: Mapping[str, float]) -> Recipe:
     extra = set(params) - set(found.params)
     if missing or extra:
         raise ProvenanceError(f"{kind} takes {', '.join(found.params)}")
-    return Recipe(found, {name: float(params[name]) for name in found.params})
+    return Recipe(found, found.check({name: params[name] for name in found.params}))
+
+
+def parts(kind: str, params: Mapping[str, object]) -> tuple[str, ...]:
+    """The sounds one run of a recipe makes: ("",) for one, a stem per part for stems."""
+    if kind == "stems":
+        return DEMUCS_MODELS.get(str(params.get("model")), ())
+    return ("",)
 
 
 # --- locating assets ---------------------------------------------------------------
@@ -189,8 +301,10 @@ class Workshop:
         existing = self._existing(made_by, inputs)
         if existing and (path := locate(self._conn, self._data_dir, existing)):
             return Derived(existing, path, reused=True)
-        digest, path = self._run(made_by, inputs)
-        self._record(made_by, inputs, digest, path)
+        made = self._run(made_by, inputs)
+        for part, (digest, path) in made.items():  # a run's other sounds are kept too
+            self._record(made_by.with_part(part), inputs, digest, path)
+        digest, path = made[made_by.part]
         return Derived(digest, path, reused=False)
 
     def rebuild(self, digest: str) -> Path:
@@ -208,12 +322,17 @@ class Workshop:
         for item in inputs:  # inputs may themselves be purged derivatives
             if locate(self._conn, self._data_dir, item) is None:
                 self.rebuild(item)
-        made, path = self._run(recipe(row[0], json.loads(row[1])), inputs)
-        if made != digest:
-            path.unlink()
+        made_by = recipe(row[0], json.loads(row[1]))
+        made = self._run(made_by, inputs)
+        for part, (output, path) in made.items():  # keep only what matches its record
+            if self._existing(made_by.with_part(part), inputs) != output:
+                path.unlink(missing_ok=True)
+        output, path = made[made_by.part]
+        if output != digest:
             raise ProvenanceError(
-                f"{digest[:12]} rebuilt as {made[:12]}: the tool's output changed "
-                "(new ffmpeg?). Bump the recipe version to accept the new bytes."
+                f"{digest[:12]} rebuilt as {output[:12]}: the tool's output changed "
+                f"(a new {made_by.kind.name} tool?). Bump the recipe version to accept "
+                "the new bytes."
             )
         return path
 
@@ -224,24 +343,46 @@ class Workshop:
         ).fetchone()
         return str(row[0]) if row else None
 
-    def _run(self, made_by: Recipe, inputs: Sequence[str]) -> tuple[str, Path]:
-        paths = []
-        for item in inputs:
-            path = locate(self._conn, self._data_dir, item)
-            if path is None:
-                raise ProvenanceError(f"input {item[:12]} is not available on this machine")
-            paths.append(path)
-        scratch = self._data_dir / CACHE / f".building-{os.getpid()}.wav"
-        scratch.parent.mkdir(parents=True, exist_ok=True)
-        result = self._runner.run(made_by.kind.build(made_by.params, paths, scratch))
-        if not result.ok or not scratch.is_file():
-            scratch.unlink(missing_ok=True)
-            reason = result.stderr.strip()[:300] or f"exit {result.code}"
-            raise ProvenanceError(f"{made_by.kind.name} failed: {reason}")
-        digest = blake2b_file(scratch)
+    def _run(self, made_by: Recipe, inputs: Sequence[str]) -> dict[str, tuple[str, Path]]:
+        """Run a recipe once and move each sound it made into the cache, by part."""
+        paths = [self._input(item, made_by.kind) for item in inputs]
+        work = self._data_dir / CACHE / f".building-{os.getpid()}"
+        shutil.rmtree(work, ignore_errors=True)
+        work.mkdir(parents=True)
+        try:
+            result = self._runner.run(made_by.kind.build(made_by.params, paths, work))
+            files = made_by.kind.outputs(made_by.params, work)
+            missing = [part or "output" for part, path in files.items() if not path.is_file()]
+            if not result.ok or missing:
+                reason = result.stderr.strip()[-300:] or (
+                    f"exit {result.code}" if not result.ok else f"made no {', '.join(missing)}"
+                )
+                raise ProvenanceError(f"{made_by.kind.name} failed: {reason}")
+            return {part: self._keep(path) for part, path in files.items()}
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+
+    def _input(self, item: str, kind: RecipeKind) -> Path:
+        path = locate(self._conn, self._data_dir, item)
+        if path is None:
+            raise ProvenanceError(f"input {item[:12]} is not available on this machine")
+        if kind.rate is not None:
+            row = self._conn.execute(
+                "SELECT sample_rate FROM asset WHERE hash = ?", (item,)
+            ).fetchone()
+            rate = row[0] if row and row[0] else probe(self._runner, path).sample_rate
+            if rate != kind.rate:
+                raise ProvenanceError(
+                    f"{kind.name} works at {kind.rate} Hz and {item[:12]} is {rate} Hz: "
+                    "it would be resampled, so it is refused (REQ-AUD-01)"
+                )
+        return path
+
+    def _keep(self, path: Path) -> tuple[str, Path]:
+        digest = blake2b_file(path)
         final = cache_path(self._data_dir, digest)
         final.parent.mkdir(parents=True, exist_ok=True)
-        scratch.replace(final)
+        path.replace(final)
         return digest, final
 
     def _record(self, made_by: Recipe, inputs: Sequence[str], digest: str, path: Path) -> None:
@@ -365,7 +506,10 @@ def lineage_tree(conn: sqlite3.Connection, digest: str) -> Node:
             (digest,),
         ).fetchone()
         return Node(digest, path[0] if path else "(gone)", "source" if path else "missing")
-    params = ", ".join(f"{k}={v:g}" for k, v in json.loads(row[1]).items())
+    params = ", ".join(
+        f"{k}={v:g}" if isinstance(v, int | float) else f"{k}={v}"
+        for k, v in json.loads(row[1]).items()
+    )
     parents = tuple(lineage_tree(conn, parent) for parent in json.loads(row[2]))
     return Node(digest, f"{row[0]}({params})", "derivative", parents)
 

@@ -15,6 +15,10 @@ the folder just inside it, often a kit or a broad category ("80s Synthpop (Dm,
 deeper folder names, or stand in when nothing nearer names a role. A pack
 folder named only for its sounds ("Stab Bass Sample Pack") is a label like any
 other folder.
+
+A "full tracks" folder holds finished tracks, whose names are artists and
+titles: "soul_clap" in a Pillowtalk x Soul Clap track is no clap. Its files
+are tracks, with no role (REQ-CAT-10).
 """
 
 from __future__ import annotations
@@ -24,7 +28,7 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 
 # Bump when parsing rules change: the next scan rebuilds every name-derived tag.
-VERSION = 5
+VERSION = 6  # v6: full tracks (REQ-CAT-10)
 
 FOLDER_CONFIDENCE = 0.5  # the folder directly containing the file
 FOLDER_DECAY = 0.1  # per level further up the tree
@@ -54,6 +58,8 @@ JOINERS = re.compile(r"[&+,]|(?<![a-z])(?:and|n)(?![a-z])", re.IGNORECASE)
 FILLER = frozenset({"a", "the", "of", "for", "with", "sample", "sound", "pack", "kit", "vol"})
 BPM_RANGE = range(60, 201)
 BARE_BPM_RANGE = range(70, 181)  # stricter: a bare number is often an index
+TRACKS = re.compile(r"^full[\s_-]*tracks?$", re.IGNORECASE)  # Full Tracks, full_tracks
+TRACK_CONFIDENCE = 0.9  # Dean put it there: it is a track
 
 # word -> (tag name, value). Plurals are handled by stripping a trailing "s".
 VOCAB: dict[str, tuple[str, str]] = {
@@ -206,4 +212,13 @@ def priors_for(rel_path: str) -> list[Prior]:
         (named if _is_name(index, folder) else priors).update(found)
     priors |= _component_priors(path.stem, "filename", FILENAME_CONFIDENCE)
     priors |= _from_names(named, priors)
+    if any(TRACKS.match(folder) for folder in folders):
+        priors = _as_track(priors)
     return sorted(priors, key=lambda p: (p.name, -p.confidence, p.value, p.origin))
+
+
+def _as_track(priors: set[Prior]) -> set[Prior]:
+    """A full track's names are artists and titles: keep its pack, tempo and
+    key, and nothing that says what kind of sound it is."""
+    kept = {p for p in priors if p.name not in ("role", "form")}
+    return kept | {Prior("form", "track", "folder", TRACK_CONFIDENCE)}

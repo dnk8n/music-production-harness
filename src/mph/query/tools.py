@@ -276,7 +276,7 @@ TOOLS: tuple[Tool, ...] = (
                     "maxLength": 20,
                     "description": "target key, such as Dm, F#, 'Ab minor'",
                 },
-                "form": {"type": "string", "enum": ["oneshot", "loop", "phrase"]},
+                "form": {"type": "string", "enum": ["oneshot", "loop", "phrase", "track"]},
                 "min_lufs": _number(-100, 10, "quietest integrated loudness, LUFS"),
                 "max_lufs": _number(-100, 10, "loudest integrated loudness, LUFS"),
                 "min_seconds": _number(0, 36_000, "shortest length, seconds"),

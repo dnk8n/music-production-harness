@@ -16,6 +16,7 @@ from pathlib import Path
 from mph import __version__, components, config, doctor, retention, secrets, speccheck
 from mph.bench import commands as bench_commands
 from mph.catalogue import commands as catalogue_commands
+from mph.catalogue import provenance
 from mph.components import Context, Stage
 from mph.platform_info import current_host
 from mph.proc import SubprocessRunner
@@ -25,6 +26,7 @@ from mph.query.answers import Library
 from mph.renoise import commands as renoise_commands
 
 RENDER_TIMEOUT_S = 900.0
+RECIPE_TIMEOUT_S = 3600.0  # separating a track's stems on the CPU takes minutes (REQ-CAT-11)
 
 SYMBOL = {
     doctor.Status.OK: "✓",
@@ -123,7 +125,7 @@ def _add_search(cat_sub: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     find.add_argument("--bpm", type=float, help="target tempo; half and double time also match")
     find.add_argument("--bpm-tolerance", type=float, default=3.0, help="percent (default 3)")
     find.add_argument("--key", help="target key, e.g. Dm, F#, 'Ab minor'; neighbours also match")
-    find.add_argument("--form", choices=["oneshot", "loop", "phrase"])
+    find.add_argument("--form", choices=["oneshot", "loop", "phrase", "track"])
     find.add_argument("--min-lufs", type=float, help="quietest integrated loudness")
     find.add_argument("--max-lufs", type=float, help="loudest integrated loudness")
     find.add_argument("--min-seconds", type=float)
@@ -141,11 +143,22 @@ def _add_search(cat_sub: argparse._SubParsersAction[argparse.ArgumentParser]) ->
 
 
 def _add_provenance(cat_sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    der = cat_sub.add_parser("derive", help="make a derivative (cached, with its recipe)")
+    der = cat_sub.add_parser(
+        "derive",
+        help="make a derivative (cached, with its recipe)",
+        description="e.g. mph catalogue derive e9313d trim --end 2, "
+        "or mph catalogue derive full_tracks/song.flac stems",
+    )
     der.add_argument("sound", help="source-relative path or hash prefix")
-    der.add_argument("recipe", choices=["trim"])
-    der.add_argument("--start", type=float, default=0.0, help="seconds")
-    der.add_argument("--end", type=float, required=True, help="seconds")
+    der.add_argument("recipe", choices=sorted(provenance.RECIPES))
+    der.add_argument("--start", type=float, default=0.0, help="trim: seconds")
+    der.add_argument("--end", type=float, help="trim: seconds (required)")
+    der.add_argument(
+        "--model",
+        default=provenance.DEFAULT_MODEL,
+        choices=sorted(provenance.DEMUCS_MODELS),
+        help=f"stems: the Demucs model (default {provenance.DEFAULT_MODEL})",
+    )
     der.add_argument("--stash", metavar="NAME", help="also keep it in this stash")
     keep = cat_sub.add_parser("stash", help="keep a derivative safe from cache purges")
     keep.add_argument("sound")
@@ -222,6 +235,14 @@ def _add_mcp(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     )
 
 
+def _timeout_s(args: argparse.Namespace) -> float:
+    if args.command == "bench":
+        return RENDER_TIMEOUT_S
+    if args.command == "catalogue" and args.action in ("derive", "refresh"):
+        return RECIPE_TIMEOUT_S
+    return 30.0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "spec":
@@ -231,8 +252,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     except config.ConfigError as exc:
         print(exc, file=sys.stderr)
         return 2
-    # Renders and synth compiles can take minutes; everything else should be quick.
-    runner = SubprocessRunner(RENDER_TIMEOUT_S if args.command == "bench" else 30.0)
+    # Renders, synth compiles and stem separation take minutes; the rest should be quick.
+    runner = SubprocessRunner(_timeout_s(args))
     host = current_host()
     store: secrets.SecretStore | None = (
         secrets.KeychainStore(runner, cfg.keychain_service) if host.is_macos else None

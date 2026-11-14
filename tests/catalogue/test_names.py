@@ -193,3 +193,28 @@ def test_a_downloads_title_and_keywords_skip_genres_too() -> None:
 )
 def test_a_pack_folder_named_only_for_its_sounds_labels_them(rel: str, roles: set[str]) -> None:
     assert values(rel, "role") == roles
+
+
+@pytest.mark.req("REQ-CAT-10")
+@pytest.mark.parametrize(
+    "rel",
+    [
+        "full_tracks/pillowtalk_x_soul_clap_ft_greg_paulus_and_crew_love-love_train.flac",
+        "Full Tracks/Kerri Chandler - Bar A Thym.wav",
+        "dj/FULL-TRACK/Deep Loop Bass Groove.aiff",  # loop, bass and groove are a title here
+    ],
+)
+def test_full_tracks_are_tracks_whose_names_give_no_role(rel: str) -> None:
+    labels = {(p.name, p.value) for p in priors_for(rel) if p.name in ("role", "form")}
+    assert labels == {("form", "track")}
+
+
+@pytest.mark.req("REQ-CAT-10")
+def test_a_full_tracks_name_still_gives_its_tempo_and_key() -> None:
+    priors = priors_for("Full Tracks/Moodymann - Shades Of Jae (Am, 118bpm).wav")
+    assert {(p.name, p.value, p.confidence) for p in priors if p.name != "pack"} == {
+        ("form", "track", 0.9),
+        ("key", "A:minor", 0.6),
+        ("bpm", "118", 0.6),
+    }
+    assert ("role", "clap") in {(p.name, p.value) for p in priors_for("Packs/Soul Clap.wav")}

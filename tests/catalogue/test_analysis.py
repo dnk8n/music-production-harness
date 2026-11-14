@@ -250,3 +250,14 @@ def test_real_m4a_decodes_through_ffmpeg(tmp_path: Path) -> None:
     assert rate == SR
     assert samples.shape[1] == 2
     assert abs(samples.shape[0] - SR * 2) < SR * 0.1
+
+
+@pytest.mark.req("REQ-CAT-10")
+def test_a_long_recording_gets_a_tempo_grid() -> None:
+    features = analyse_signal(stereo(click_loop(120, 128)), SR)  # 64 s: a phrase
+    assert (features.form, features.bpm, features.bpm_confidence) == ("phrase", 120.0, 0.9)
+    assert features.beat_s == pytest.approx(0.0, abs=0.005)
+    assert features.drift_ms is not None and features.drift_ms < 10
+    assert ("bpm", "120", 0.9) in tags_from(features)
+    loop = analyse_signal(stereo(click_loop(124, 16)), SR)
+    assert (loop.beat_s, loop.drift_ms) == (None, None)  # a loop's tempo comes from its length

@@ -5,7 +5,8 @@
 Run it on Dean's Mac with Renoise closed. It installs this checkout's bridge
 tool, then, in one Renoise that mph starts:
 
-1. a job builds, renders and saves two tiny throwaway songs, A and B;
+1. a job builds, renders and saves two tiny throwaway songs, A and B, each
+   with a named section and a track that plays a clip (REQ-TRK-02, REQ-TRK-04);
 2. A is opened the way "Open in Renoise" opens a render's song, and a second
    job must keep it as a copy in mph's scratch folder before it builds C;
 3. B is opened the same way, and Renoise is asked to quit.
@@ -71,7 +72,8 @@ def blip(path: Path) -> Path:
 
 
 def song(folder: Path, sample: Path, name: str) -> dict[str, luadata.Data]:
-    """One bar at 120 BPM, a blip on each beat, rendered as a mix and then solo."""
+    """One bar at 120 BPM, a section named after the song: a blip on each beat,
+    and the blip as a clip on the first. Rendered as a mix and then solo."""
     notes: list[luadata.Data] = [
         {"line": line, "delay": 0, "volume": 0x80} for line in (0, 4, 8, 12)
     ]
@@ -84,14 +86,21 @@ def song(folder: Path, sample: Path, name: str) -> dict[str, luadata.Data]:
         "slices": [],
         "notes": notes,
     }
+    clip: dict[str, luadata.Data] = {
+        **track,
+        "name": "clip",
+        "sample": "",
+        "clips": [{"file": str(sample), "name": "blip"}],
+        "notes": [{"line": 0, "delay": 0, "volume": 0x80, "clip": 1}],
+    }
     return {
         "bpm": 120,
         "lpb": 4,
-        "pattern_lines": 16,
+        "patterns": [{"lines": 16, "section": name}],
         "lines": 16,
         "rate": RATE,
         "save": str(folder / f"{name}.xrns"),
-        "tracks": [track],
+        "tracks": [track, clip],
         "renders": [
             {"file": str(folder / f"{name}.wav")},
             {"file": str(folder / f"{name} solo.wav"), "solo": 1},

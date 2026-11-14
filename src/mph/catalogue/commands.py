@@ -13,7 +13,7 @@ from pathlib import Path
 from mph import secrets
 from mph.bench import jit
 from mph.catalogue import agreement, browse, db, provenance, remote, search, stats
-from mph.catalogue.scanner import Scanner, SourceError, utc_now
+from mph.catalogue.scanner import Scanner, ScanStats, SourceError, utc_now
 from mph.config import Config
 from mph.net import Http, UrllibHttp
 from mph.proc import Runner
@@ -77,6 +77,8 @@ def cmd_scan(cfg: Config, runner: Runner, source_ids: list[str], workers: int) -
             f"{result.hashed} hashed, {result.new_assets} new, {result.moved} moved, "
             f"{result.removed} removed; {result.documents} documents"
         )
+        if result.read_inside:
+            print(f"  {inside(result)}")
         for error in result.probe_errors[:MAX_ERRORS_SHOWN]:
             print(f"  ! {error}")
         if len(result.probe_errors) > MAX_ERRORS_SHOWN:
@@ -85,6 +87,30 @@ def cmd_scan(cfg: Config, runner: Runner, source_ids: list[str], workers: int) -
             )
     conn.close()
     return code
+
+
+# What a scan says of the labels files gave themselves (REQ-CAT-12), in this order.
+TOLD = (
+    ("bpm", "{} with a tempo"),
+    ("key", "{} with a key"),
+    ("form", "{} as loop or one-shot"),
+    ("root", "{} with a root note"),
+    ("artist", "{} with an artist"),
+    ("title", "{} with a title"),
+    ("album", "{} with an album"),
+)
+
+
+def inside(result: ScanStats) -> str:
+    """'read the metadata inside 4061 files; it labels 1219 with a tempo, ...'."""
+    count = result.read_inside
+    line = f"read the metadata inside {count} file{'' if count == 1 else 's'}"
+    told = [what.format(result.told[name]) for name, what in TOLD if result.told[name]]
+    if told:
+        line += f"; it labels {', '.join(told)}"
+    if result.unreadable_inside:
+        line += f"; {result.unreadable_inside} couldn't be read"
+    return line
 
 
 def select_assets(
@@ -120,7 +146,10 @@ def cmd_analyse(
         hashes = select_assets(conn, roles, packs, limit)
         print(f"analysing up to {len(hashes)} sounds with {workers} workers ...")
         result = analysis.run(conn, hashes, workers=workers, force=force, clock=utc_now)
-        agreements = agreement.measure(conn, hashes)
+        against = {
+            "names": agreement.measure(conn, hashes),
+            "the files' own labels": agreement.measure(conn, hashes, agreement.OWN),
+        }
     print(
         f"  {result.analysed} analysed, {result.cached} already up to date, "
         f"{result.failed} could not be decoded"
@@ -129,12 +158,13 @@ def cmd_analyse(
         print(f"    {line}")
     if len(result.errors) > MAX_ERRORS_SHOWN:
         print(f"    ... and {len(result.errors) - MAX_ERRORS_SHOWN} more")
-    for item in agreements:
-        if item.compared:
-            print(
-                f"  {item.field}: analysis agrees with names on {item.agreed}/{item.compared} "
-                f"({item.rate:.0%})"
-            )
+    for labels, agreements in against.items():
+        for item in agreements:
+            if item.compared:
+                print(
+                    f"  {item.field}: analysis agrees with {labels} on "
+                    f"{item.agreed}/{item.compared} ({item.rate:.0%})"
+                )
     return 0
 
 

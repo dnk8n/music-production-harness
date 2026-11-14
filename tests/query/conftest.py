@@ -260,6 +260,57 @@ def wider(full: Library) -> Library:
     return full
 
 
+READ_AT = "2026-11-14T10:00Z"
+BASS_SAYS: dict[str, Any] = {  # an Apple Loop with tags and cover art
+    "tags": {"title": "Bass 1", "genre": "Synthpop"},
+    "basc": {"one_shot": False, "beats": 16, "root_note": 38, "scale": "minor", "meter": [4, 4]},
+    "inst": {
+        "base_note": 38,
+        "detune": -3,
+        "notes": [0, 127],
+        "velocities": [1, 127],
+        "gain_db": 0,
+        "sustain": {"start": 0, "end": 88200, "mode": "forward"},
+        "release": None,
+    },
+    "picture": {"codec": "png", "width": 300, "height": 300},
+}
+RAIN_SAYS: dict[str, Any] = {  # ACID and sampler chunks, one chunk too short to read
+    "tags": {},
+    "acid": {"one_shot": True, "root_note": None, "beats": 0, "meter": [4, 4], "tempo": 120.0},
+    "smpl": {
+        "unity_note": 60,
+        "cents": 0.0,
+        "loops": [{"start": 0, "end": 1000, "mode": "forward"}],
+    },
+    "skipped": ["inst: 3 bytes, wanted at least 7"],
+}
+
+
+@pytest.fixture
+def told(full: Library) -> Library:
+    """``full``, after a scan that read what its files say about themselves
+    (REQ-CAT-12); the kick wasn't read yet, and the hat couldn't be."""
+    with closing(db.connect(full.catalogue)) as conn, conn:
+        conn.executemany(
+            "INSERT INTO embedded VALUES (?, 1, ?, ?, ?)",
+            [
+                (BASS, READ_AT, json.dumps(BASS_SAYS), None),
+                (RAIN, READ_AT, json.dumps(RAIN_SAYS), None),
+                (HAT, READ_AT, "{}", "cannot read Hat.wav: Permission denied"),
+            ],
+        )
+        conn.executemany(
+            "INSERT INTO tag VALUES (?, ?, ?, 'embedded', ?)",
+            [
+                (BASS, "key", "D:minor", 0.8),
+                (BASS, "title", "Bass 1", 1.0),
+                (RAIN, "form", "oneshot", 0.8),
+            ],
+        )
+    return full
+
+
 @pytest.fixture
 def empty(tmp_path: Path) -> Library:
     """A fresh Mac: no data folder yet, so no catalogue and no renders."""

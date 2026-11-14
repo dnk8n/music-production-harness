@@ -188,7 +188,7 @@ BENCHMARK_ID: Schema = {
     "examples": ["BM-DRUM-02"],
     "description": "a benchmark ID, such as BM-DRUM-02 (benchmarks lists them)",
 }
-ORIGINS = ["folder", "filename", "analysis", "human"]
+ORIGINS = ["folder", "filename", "embedded", "analysis", "human"]
 # The roles names give sounds (labels name=role shows how many of each).
 ROLES = list(dict.fromkeys(value for tag, value in names.VOCAB.values() if tag == "role"))
 
@@ -234,11 +234,14 @@ TOOLS: tuple[Tool, ...] = (
         "labels",
         "Sound labels",
         "The tag vocabulary that describes the sounds, for exploring the catalogue by label. "
-        "Without name: every tag name (role, pack, bpm, key, form, character) with how many "
-        "sounds carry it, by origin: folder and filename are hints parsed from names, analysis "
-        "is measured from the audio, human is set by Dean. With name: that tag's values and how "
-        "many sounds carry each, most common first. For role, strongest also counts the sounds "
-        "whose most confident role it is, which is what overview counts.",
+        "Without name: every tag name (role, pack, bpm, key, form, character, root, and title, "
+        "artist, album, genre, record_label, catalogue_number, year, track) with how many sounds "
+        "carry it, by origin: folder and filename are hints parsed from names, embedded is what "
+        "the file says about itself (its tags, and tempo, key, root note and loop or one-shot "
+        "from loop and sampler chunks), analysis is measured from the audio, human is set by "
+        "Dean. With name: that tag's values and how many sounds carry each, most common first. "
+        "For role, strongest also counts the sounds whose most confident role it is, which is "
+        "what overview counts.",
         _args(
             {
                 "name": {
@@ -295,10 +298,12 @@ TOOLS: tuple[Tool, ...] = (
         "sound",
         "One sound in full",
         "Everything mph knows about one sound: format and length, every file it lives at (one "
-        "sound can be in several packs), every tag with its origin and confidence, analysis "
-        "(BPM, key, loudness, peak, spectral centroid, onsets, low-end and percussive share, "
-        "form), licence and download source, what it was made from, stashes, whether it is on "
-        "disk, and which benchmark renders used it.",
+        "sound can be in several packs), every tag with its origin and confidence, what the file "
+        "says about itself (embedded: its tags such as title, artist, album and label; ACID, "
+        "smpl, inst and Apple Loops chunks with tempo, beats, root note and loop points; whether "
+        "it has cover art), analysis (BPM, key, loudness, peak, spectral centroid, onsets, "
+        "low-end and percussive share, form), licence and download source, what it was made "
+        "from, stashes, whether it is on disk, and which benchmark renders used it.",
         _args(
             {
                 "ref": {

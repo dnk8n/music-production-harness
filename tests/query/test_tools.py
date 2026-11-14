@@ -103,7 +103,7 @@ def test_every_list_has_a_limit(name: str, limit: str) -> None:
         ("labels", {"limit": True}, "limit must be a whole number"),
         ("labels", {"limit": 0}, "limit must be at least 1"),
         ("labels", {"limit": 501}, "limit must be at most 500"),
-        ("labels", {"origin": "guess"}, "origin must be one of: folder, filename, analysis"),
+        ("labels", {"origin": "guess"}, "origin must be one of: folder, filename, embedded"),
         ("labels", {"nmae": "role"}, "unknown argument nmae (arguments: name, origin, limit)"),
         ("search_sounds", {"bpm": "fast"}, "bpm must be a number"),
         ("search_sounds", {"roles": "kick"}, "roles must be a list"),

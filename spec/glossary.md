@@ -12,6 +12,8 @@
 | **Recipe** | The exact tool, version and parameters that turned inputs into a derivative. Hash of the recipe plus input hashes = derivative identity. |
 | **Stem** | One musical part (drums, bass, vocals) as audio of its own, 32-bit float: rendered by mph at the production rate, or separated from a full track at the track's own rate (REQ-CAT-11). |
 | **Full track** | A finished piece of music, kept to remix or play rather than as a sample (REQ-CAT-10). |
+| **Label** | Something the catalogue knows about a sound (role, tempo, key, form, pack, title...), with where it came from (its origin: folder, filename, embedded, analysis or human) and how sure it is. Stored as a `tag`. |
+| **Embedded metadata** | What an audio file says about itself: its tags (title, artist, album...) and its loop and sampler chunks (ACID tempo, root note, loop points). Labels from it have `origin=embedded` (REQ-CAT-12). |
 | **Production rate** | Sample rate for synthesis and rendered stems (default 96 kHz). |
 | **Delivery** | The final 48 kHz / 24-bit AIFF. The only point where sample rate conversion (SRC) and dither happen. |
 | **Benchmark** | A short render with a written description of what Dean should hear, automated measurements, and Dean's rating. ID `BM-...`. |

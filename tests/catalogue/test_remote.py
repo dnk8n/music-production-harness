@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from mph import cli, config
-from mph.catalogue import commands, db, remote, search
+from mph.catalogue import commands, db, embedded, remote, search
 from mph.catalogue.remote import Archive, Fetcher, Freesound, RemoteError
 from mph.catalogue.scanner import Scanner
 from mph.proc import Result
@@ -279,6 +279,24 @@ def test_already_fetched_and_refresh(conn: sqlite3.Connection, tmp_path: Path) -
     assert "changed since it was fetched" in changed.failed[0]
     assert not path.exists()
     assert "no connector" in get.refresh({}).failed[0]
+
+
+@pytest.mark.req("REQ-CAT-12")
+def test_a_download_says_what_it_is(conn: sqlite3.Connection, tmp_path: Path) -> None:
+    tags = {"TITLE": "Poem One", "ARTIST": "A. Reader", "DATE": "1921-03-01"}
+    tagged = {"streams": [{"codec_name": "flac"}], "format": {"format_name": "flac", "tags": tags}}
+    runner = FakeRunner(responses={"ffprobe": Result(0, json.dumps(tagged))})
+    http = archive_http()
+    get = Fetcher(conn, runner, http, tmp_path / "data", clock=lambda: "t")
+    get.fetch(Archive(http), "poems", 5, clear_only=False)
+    labels = conn.execute("SELECT name, value, confidence FROM tag WHERE origin = 'embedded'")
+    assert {tuple(row) for row in labels} == {
+        ("title", "Poem One", 1.0),
+        ("artist", "A. Reader", 1.0),
+        ("year", "1921", 1.0),
+    }
+    row = conn.execute("SELECT version, read_at, error FROM embedded").fetchone()
+    assert tuple(row) == (embedded.VERSION, "t", None)
 
 
 def test_failed_download_is_reported(conn: sqlite3.Connection, tmp_path: Path) -> None:

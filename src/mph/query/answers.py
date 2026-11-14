@@ -343,6 +343,7 @@ def sound(lib: Library, ref: str) -> Answer:
                     (digest,),
                 )
             ],
+            "embedded": _embedded(conn, digest),
             "analysis": _analysis(conn, digest),
             "download": _download(conn, digest),
             "made_from": _made_from(conn, digest),
@@ -387,6 +388,18 @@ def _files(conn: sqlite3.Connection, digest: str) -> list[Answer]:
         }
         for r in rows
     ]
+
+
+def _embedded(conn: sqlite3.Connection, digest: str) -> Answer | None:
+    """What the file says about itself (REQ-CAT-12), or None before it is read."""
+    row = conn.execute(
+        "SELECT version, read_at, found_json, error FROM embedded WHERE asset_hash = ?",
+        (digest,),
+    ).fetchone()
+    if row is None:
+        return None
+    found: Answer = json.loads(row["found_json"] or "{}")
+    return {"version": row["version"], "read_at": row["read_at"], "error": row["error"], **found}
 
 
 def _analysis(conn: sqlite3.Connection, digest: str) -> list[Answer]:
@@ -455,7 +468,17 @@ def _renders_using(renders: Path, digest: str) -> Answer:
 SCHEMA_NOTES = (
     "Sounds are assets, keyed by content hash (BLAKE2b-256); source_file says where each "
     "lives (one asset can be in several packs).",
-    "tag holds labels with origin (folder, filename, analysis, human) and confidence.",
+    "tag holds labels with origin (folder, filename, embedded, analysis, human) and confidence. "
+    "embedded labels are what files say about themselves: bpm, key, form and root from loop and "
+    "sampler chunks or tags, and title, artist, album, genre, record_label, catalogue_number, "
+    "year and track from tags.",
+    "embedded holds each file's own metadata as read (REQ-CAT-12), read with "
+    "json_extract(found_json, '$.tags.album'): tags as ffprobe names them; acid (one_shot, "
+    "root_note, beats, meter, tempo), smpl (unity_note, cents, loops), inst (base_note, detune, "
+    "notes, velocities, gain_db, sustain, release) and basc (Apple Loops: one_shot, beats, "
+    "root_note, scale, meter) chunks; picture (cover art's codec and size, never the image); "
+    "skipped (chunks that couldn't be read). Notes are MIDI numbers (60 is middle C) and loops "
+    "run from their first frame to the frame after their last.",
     "analysis.result_json holds measured features as JSON, read with json_extract(result_json, "
     "'$.lufs'): duration_s, peak_dbfs, rms_dbfs, lufs, onsets, bpm, bpm_confidence, key, "
     "key_confidence, centroid_hz, low_ratio (energy share below 150 Hz), percussive_ratio, form, "

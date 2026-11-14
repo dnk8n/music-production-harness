@@ -8,9 +8,10 @@ is a harmonic tone at that pitch, held until its /n_set gate 0; an /n_set of
 and brighter. An ``mph_duck`` starts a dip on its bus at its sample, and an
 ``mph_ducker`` scales its channels by the dips, as the real synths do
 (REQ-BEN-12). A clip (a buffer played from a ``start`` frame for ``dur``
-seconds at its own rate, REQ-TRK-02) plays the real recording, resampled to
-the render's rate. That's enough for the matching, swing, choke, accent,
-slide, sidechain, clip and determinism checks to mean something.
+seconds at its own rate, REQ-TRK-02) plays the real recording at the
+render's rate, read through cubic interpolation as the real PlayBuf reads
+it. That's enough for the matching, swing, choke, accent, slide, sidechain,
+clip and determinism checks to mean something.
 
 A mix (spec/components/mix.md) runs on private buses past the output
 channels, in the real graph's order: taps of the sidechain's targets, the
@@ -25,6 +26,7 @@ over ``decay`` seconds.
 
 from __future__ import annotations
 
+import math
 import zlib
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -32,7 +34,6 @@ from pathlib import Path
 
 import numpy as np
 import soundfile
-import soxr
 
 from mph.bench import audio, mix, osc, scmix
 from mph.proc import Result
@@ -137,9 +138,26 @@ def _clip(path: str, args: dict[str, float], rate: int) -> np.ndarray:
     if data.shape[1] == 1:
         data = np.repeat(data, 2, axis=1)
     first = int(args["start"])
-    piece = data[first : first + round(args["dur"] * native)]
-    moved = soxr.resample(piece, native, rate, quality="VHQ") if native != rate else piece
-    return (np.asarray(moved) * args.get("amp", 1.0)).astype(np.float32)
+    speed = native / rate
+    frames = round(round(args["dur"] * native) / speed)
+    frames = min(frames, math.ceil((len(data) - first) / speed))  # it stops at the buffer's end
+    return (_playbuf(data, first, frames, speed) * args.get("amp", 1.0)).astype(np.float32)
+
+
+def _playbuf(data: np.ndarray, first: int, frames: int, speed: float) -> np.ndarray:
+    """``frames`` samples of ``data`` from frame ``first``, read as scsynth's
+    PlayBuf reads a buffer at another rate: ``speed`` frames a sample (a 32-bit
+    float, as BufRateScale gives), through 4-point cubic interpolation. It
+    follows low sounds closely and bright ones less so, as the real engine does."""
+    phase = first + np.arange(frames) * float(np.float32(speed))
+    whole = phase.astype(np.int64)
+    x = (phase - whole).astype(np.float32)[:, None]
+    held = np.concatenate([data[:1], data, data[-1:], data[-1:]])  # the ends held
+    y0, y1, y2, y3 = (held[np.minimum(whole + k, len(held) - 1)] for k in range(4))
+    c1 = 0.5 * (y2 - y0)
+    c2 = y0 - 2.5 * y1 + 2.0 * y2 - 0.5 * y3
+    c3 = 0.5 * (y3 - y0) + 1.5 * (y1 - y2)
+    return np.asarray(((c3 * x + c2) * x + c1) * x + y1)
 
 
 def _note_message(message: osc.Message, at: int, rate: int, notes: dict[int, _Note]) -> bool:

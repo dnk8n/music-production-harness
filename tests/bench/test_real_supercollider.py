@@ -12,8 +12,10 @@ import numpy as np
 import pytest
 
 from mph.bench import audio, render, sc, score
+from mph.catalogue import db
 from mph.proc import SubprocessRunner
 from tests.bench.test_render import cfg_for
+from tests.bench.test_tracks import add_song, track
 
 pytestmark = pytest.mark.tools
 
@@ -306,3 +308,31 @@ def test_the_new_synths_pass_in_a_mix_with_real_supercollider(
     # sidechain's dip on its targets and on the whole mix, and determinism.
     master = _master(real, tmp_path, monkeypatch, NEW_SYNTHS)
     assert np.isfinite(master).all() and 0 < np.abs(master).max() < 1
+
+
+# --- clips (REQ-TRK-02) --------------------------------------------------------------------
+
+
+@pytest.mark.req("REQ-TRK-02")
+@pytest.mark.req("REQ-TRK-06")
+@pytest.mark.parametrize(("leftovers_db", "passes"), [(-40.0, True), (0.0, False)])
+def test_clips_play_from_a_recording_at_another_rate_with_real_supercollider(
+    real: SubprocessRunner,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    leftovers_db: float,
+    passes: bool,
+) -> None:
+    # A 44.1 kHz recording played at 48 kHz, through PlayBuf's cubic resampling,
+    # with bright noise on the last bar of a clip: faint, as a stem's leftovers
+    # between lines are, it passes; as loud as the song, it fails, as the fake
+    # engine says it does.
+    conn = db.connect(tmp_path / "data" / db.FILENAME)
+    loaded = track(add_song(conn, tmp_path, leftovers_db=leftovers_db))
+    monkeypatch.setattr(render, "load", lambda _: loaded)
+    outcome = render.run("BM-TT", cfg_for(tmp_path), real, conn, engine="supercollider")
+    conn.close()
+    failures = [m["name"] for m in outcome.report["measurements"] if not m["passed"]]  # type: ignore[attr-defined]
+    assert failures == (
+        [] if passes else ["clips: song worst match to the recording (dB left after cancelling)"]
+    )

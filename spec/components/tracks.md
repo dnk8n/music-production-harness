@@ -65,9 +65,9 @@ Every render checks each cue against the recording, near its start and near
 its end: at the loudest half second in the cue's first quarter and in its
 last quarter, so a vocal line that starts on beat 2 is checked where it
 sings, not in the silence before it. The clip's stem must line up with the
-recording's bars to within 1 ms, and cancel against them to -20 dB or
-lower. So a clip that starts late, drifts, plays the wrong bars or plays at
-another speed fails.
+recording's bars to within 1 ms, and cancel against them until what's left
+is 20 dB or more below the cue's loudest half second. So a clip that starts
+late, drifts, plays the wrong bars or plays at another speed fails.
 - **Why:** a remix is built from the source's own bars (2026-11-13: "take a
   few loops, stem separate them, infuse it with other sounds"). The research
   for remix 1 recommends a re-edit built from source bars before anything
@@ -78,7 +78,13 @@ another speed fails.
   effect reaches only 256 points in a sample, 1.3 s apart in Love Train, and
   slicing every bar would need a note in every bar. Checking against the
   recording itself, not a template cut the same way, catches a wrong bar as
-  well as a late one.
+  well as a late one. SuperCollider plays a recording at another rate
+  through cubic interpolation, which follows low sounds closely and bright
+  ones less so: a real render of white noise from 44.1 kHz at 48 kHz kept
+  -11 dB after cancelling, against -64 dB for noise below 2 kHz
+  (2026-11-14). A stem's faint leftovers between lines are that kind of
+  sound, so each window is judged against the cue's loudest stretch, not
+  against itself; a bright recording played loud still fails.
 - **Verify:** test, measure
 
 ### REQ-TRK-03: Excerpts

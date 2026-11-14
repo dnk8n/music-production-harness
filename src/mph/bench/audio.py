@@ -183,10 +183,14 @@ def _frames(signal: Audio, start: int, length: int) -> Audio:
     return out
 
 
-def aligned(stem: Audio, wanted: Audio, at: int, reach: int) -> tuple[int, float, float]:
+def aligned(
+    stem: Audio, wanted: Audio, at: int, reach: int, *, against: Audio | None = None
+) -> tuple[int, float, float]:
     """Where ``wanted`` sits in ``stem`` near frame ``at``: the lag in frames,
     within +/- ``reach``; how much of the stem is left there once ``wanted``,
-    at its best level, is cancelled from it, in dB; and that level in dB
+    at its best level, is cancelled from it, in dB against ``against`` (as
+    long as ``wanted``, such as the loudest stretch of the same recording) or
+    against ``wanted`` itself, whichever is louder; and that level in dB
     (REQ-TRK-02). A stem with nothing there cancels nothing: 0 dB. A mono
     recording plays on both of a stem's channels."""
     shape = mono(wanted).astype(np.float64)
@@ -199,8 +203,11 @@ def aligned(stem: Audio, wanted: Audio, at: int, reach: int) -> tuple[int, float
     if not all(energies):
         return lag, NO_MATCH_DB, -math.inf
     shared = float(np.dot(heard, want))
-    kept = max(1.0 - shared * shared / (energies[0] * energies[1]), 1e-12)
-    return lag, 10 * math.log10(kept), db(abs(shared) / energies[1])
+    left = energies[0] - shared * shared / energies[1]
+    louder = energies[1]
+    if against is not None:
+        louder = max(louder, float(np.sum(np.repeat(against.astype(np.float64), channels, 1) ** 2)))
+    return lag, 10 * math.log10(max(left / louder, 1e-12)), db(abs(shared) / energies[1])
 
 
 def _best_fit(segment: Audio, tpl: Audio, energy: float) -> int:

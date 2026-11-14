@@ -766,7 +766,10 @@ def _cue_heard(
     setup: Setup, voice: Voice, play: Play, stem: audio.Audio, native: int
 ) -> list[tuple[int, float, float, float]]:
     """One cue, at its loudest near its start and near its end: (bar, offset in
-    ms, dB left, level). The windows start a whole number of samples into the
+    ms, dB left, level). What's left is measured against the cue's loudest
+    stretch, so faint leftovers between a stem's lines, which an engine's
+    resampling follows less closely than the singing, are judged against the
+    line they belong to. The windows start a whole number of samples into the
     cue at both rates, so the recording's samples, resampled, fall exactly
     where the render's do."""
     score, rate = setup.score, setup.rate
@@ -780,18 +783,20 @@ def _cue_heard(
     length_s = play.bars * score.bar_s
     window = on_grid(min(CLIP_WINDOW_S, length_s / 2 - CLIP_EDGE_S))
     part = max(length_s * CLIP_PART, window + CLIP_EDGE_S)
-    spans = ((CLIP_EDGE_S, part), (length_s - part, length_s - CLIP_EDGE_S))
     path = setup.sounds[voice.name]
     gain = levels.linear(voice.gain_db)
+
+    def recorded(span: tuple[float, float]) -> tuple[float, audio.Audio]:
+        into = on_grid(_loudest(path, native, first, span=span, window=window, step=step))
+        start, frames = first + round(into * native), round(window * native)
+        return into, audio.excerpt_at(path, native, start, frames, rate) * gain
+
+    loudest = recorded((CLIP_EDGE_S, length_s - CLIP_EDGE_S))[1]
     found = []
-    for low, high in spans:
-        into = on_grid(_loudest(path, native, first, span=(low, high), window=window, step=step))
-        wanted = audio.excerpt_at(
-            setup.sounds[voice.name], native, first + round(into * native),
-            round(window * native), rate,
-        )  # fmt: skip
+    for span in ((CLIP_EDGE_S, part), (length_s - part, length_s - CLIP_EDGE_S)):
+        into, wanted = recorded(span)
         at, reach = cue + round(into * rate), round(CLIP_SEARCH_S * rate)
-        lag, left, level = audio.aligned(stem, wanted * gain, at, reach)
+        lag, left, level = audio.aligned(stem, wanted, at, reach, against=loudest)
         found.append((play.bar, 1000 * lag / rate, left, level))
     return found
 

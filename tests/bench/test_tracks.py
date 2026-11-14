@@ -61,6 +61,7 @@ b = [9, 10]
 c = [5, 6]
 """
 SONG_SECONDS = 24.0  # 12 bars: clip b, bars 9 and 10, ends at 20 s
+SONG_TOP_HZ = 2000.0  # the test song is noise below this
 
 
 def track_text(song: str = FAKE_HASH, intro: str = INTRO) -> str:
@@ -203,12 +204,34 @@ def conn(tmp_path: Path) -> Iterator[sqlite3.Connection]:
 
 
 def add_song(
-    conn: sqlite3.Connection, tmp_path: Path, bpm: str = "120", seconds: float = SONG_SECONDS
+    conn: sqlite3.Connection,
+    tmp_path: Path,
+    bpm: str = "120",
+    seconds: float = SONG_SECONDS,
+    leftovers_db: float | None = None,
 ) -> str:
-    """A recording of noise in the catalogue: every bar of it sounds different."""
+    """A recording of noise in the catalogue: every bar of it sounds different.
+    It stays below 2 kHz, as most of a song's energy does, where the engine's
+    resampling follows it closely. With ``leftovers_db``, bar 4 holds only
+    bright noise that much below bar 1, as a stem holds leftovers between
+    lines."""
     tags = [("bpm", bpm)] if bpm else []
     name = f"Song {bpm or 'untimed'}.wav"
-    return add_sample(conn, tmp_path / "lib", name, tags, form="track", seconds=seconds, noise=True)
+    found = add_sample(
+        conn, tmp_path / "lib", name, tags, form="track", seconds=seconds, noise=True
+    )
+    path = tmp_path / "lib" / name
+    signal, rate = soundfile.read(str(path), dtype="float64")
+    spectrum = np.fft.rfft(signal)
+    spectrum[np.fft.rfftfreq(len(signal), 1 / rate) > SONG_TOP_HZ] = 0
+    signal = np.fft.irfft(spectrum, len(signal))
+    if leftovers_db is not None:
+        bar = 2 * rate
+        bright = np.random.default_rng(4).uniform(-1, 1, bar)
+        level = audio.rms(signal[:bar]) * 10 ** (leftovers_db / 20)
+        signal[3 * bar : 4 * bar] = bright * level / audio.rms(bright)
+    soundfile.write(str(path), signal, rate, subtype="PCM_16")
+    return found
 
 
 @pytest.mark.req("REQ-TRK-02")
@@ -598,6 +621,27 @@ def test_a_clip_from_the_wrong_place_fails_its_check(
         assert found[MATCH]["passed"]  # the right bars, just late
 
 
+@pytest.mark.req("REQ-TRK-02")
+@pytest.mark.parametrize(("leftovers_db", "passes"), [(-40.0, True), (0.0, False)])
+def test_faint_leftovers_are_judged_against_the_line_they_follow(
+    conn: sqlite3.Connection,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    leftovers_db: float,
+    passes: bool,
+) -> None:
+    # Clip a ends on bar 4 of the recording, which holds only bright noise. The
+    # engine's cubic resampling follows it less closely than the song (white
+    # noise keeps about -11 dB after cancelling). Faint, that is far below the
+    # cue's loudest stretch, so it passes; as loud as the song, it is heard.
+    _scores(monkeypatch, add_song(conn, tmp_path, leftovers_db=leftovers_db))
+    outcome = render.run("BM-TT", cfg_for(tmp_path), runner(), conn, engine="supercollider")
+    found = _measured(outcome.report)
+    assert found[OFFSET]["passed"]  # lined up either way
+    assert found[MATCH]["passed"] is passes
+    assert "the cue at bar 3" in str(found[MATCH]["note"])  # clip a, cued at bar 3
+
+
 @pytest.mark.lua
 @pytest.mark.req("REQ-TRK-02")
 @pytest.mark.req("REQ-TRK-03")
@@ -664,6 +708,23 @@ def test_a_silent_stem_cancels_nothing_so_its_clip_fails() -> None:
     found = checks.clips("song", [(3, 1000 * lag / 48000, left, level)])
     assert [(c.value, c.passed) for c in found][1] == (0.0, False)
     assert checks.clips("song", []) == []  # a clip voice that rests has nothing to check
+
+
+@pytest.mark.req("REQ-TRK-02")
+def test_whats_left_is_measured_against_the_louder_stretch() -> None:
+    rng = np.random.default_rng(3)
+    wanted = rng.standard_normal((4800, 1)).astype(np.float32)
+    stem = np.zeros((8000, 2), np.float32)
+    stem[400:5200] = wanted + 0.1 * rng.standard_normal((4800, 2))  # 20 dB of something else
+
+    def left(against: np.ndarray | None) -> float:
+        lag, found, level = audio.aligned(stem, wanted, 400, 10, against=against)
+        assert (lag, round(level, 1)) == (0, 0.0)
+        return found
+
+    assert left(None) == pytest.approx(-20, abs=0.3)
+    assert left(10 * wanted) == pytest.approx(-40, abs=0.3)  # a stretch 20 dB louder
+    assert left(0.1 * wanted) == left(None)  # never against anything quieter than itself
 
 
 @pytest.mark.req("REQ-TRK-03")

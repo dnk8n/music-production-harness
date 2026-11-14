@@ -45,6 +45,8 @@ FLATNESS_FFT = 16384
 FLATNESS_MIN_FRAMES = 256
 HARMONIC_WIDTH = 0.02  # +/- of the fundamental counts as on a harmonic
 FIT_RANGE = (0.75, 1.5)  # break playback-rate factors allowed before doubling or halving
+EXCERPT_PAD_S = 0.05  # resampled either side of a measured excerpt, then cut off
+NO_MATCH_DB = 0.0  # what is left after cancelling against silence: nothing cancels
 
 Audio = np.ndarray
 
@@ -59,6 +61,40 @@ class Match:
 def read(path: Path) -> tuple[Audio, int]:
     data, rate = soundfile.read(str(path), dtype="float32", always_2d=True)
     return data, int(rate)
+
+
+def info(path: Path) -> tuple[int, int]:
+    """A sound file's rate and length in frames, read from its header."""
+    found = soundfile.info(str(path))
+    return int(found.samplerate), int(found.frames)
+
+
+def read_frames(path: Path, first: int, count: int) -> Audio:
+    """``count`` frames from frame ``first``, exactly as stored (REQ-AUD-01):
+    16- and 24-bit samples are exact in 32-bit float."""
+    data, _ = soundfile.read(
+        str(path), start=first, stop=first + count, dtype="float32", always_2d=True
+    )
+    return np.asarray(data)
+
+
+def common_step_s(native: int, rate: int) -> float:
+    """The shortest time that is a whole number of samples at both rates:
+    1/300 s for 44.1 and 48 or 96 kHz."""
+    return 1 / math.gcd(native, rate)
+
+
+def excerpt_at(path: Path, native: int, first: int, frames: int, rate: int) -> Audio:
+    """``frames`` of a recording from frame ``first``, at another rate, for
+    measuring only. It is resampled with some room either side, so the
+    resampler's edges fall outside it. The room is a whole number of samples
+    at both rates, so the excerpt's samples fall where a render's do."""
+    step = native // math.gcd(native, rate)
+    pad = min(round(EXCERPT_PAD_S * native), first) // step * step
+    data = read_frames(path, first - pad, pad + frames + round(EXCERPT_PAD_S * native))
+    moved = soxr.resample(data, native, rate, quality="VHQ") if native != rate else data
+    skip = pad * rate // native
+    return np.asarray(moved[skip : skip + round(frames * rate / native)])
 
 
 def write_float(path: Path, data: Audio, rate: int) -> None:
@@ -136,6 +172,35 @@ def match_hits(
         level = float(np.dot(piece, tpl) / energy) if energy else 0.0
         found.append(Match(event, 1000 * lag / rate, level))
     return found
+
+
+def _frames(signal: Audio, start: int, length: int) -> Audio:
+    """Frames of a stem from ``start``, zero where they fall outside it."""
+    out = np.zeros((length, signal.shape[1]), dtype=np.float64)
+    lo, hi = max(start, 0), min(start + length, len(signal))
+    if hi > lo:
+        out[lo - start : hi - start] = signal[lo:hi]
+    return out
+
+
+def aligned(stem: Audio, wanted: Audio, at: int, reach: int) -> tuple[int, float, float]:
+    """Where ``wanted`` sits in ``stem`` near frame ``at``: the lag in frames,
+    within +/- ``reach``; how much of the stem is left there once ``wanted``,
+    at its best level, is cancelled from it, in dB; and that level in dB
+    (REQ-TRK-02). A stem with nothing there cancels nothing: 0 dB. A mono
+    recording plays on both of a stem's channels."""
+    shape = mono(wanted).astype(np.float64)
+    segment = _window(mono(stem), at - reach, 2 * reach + len(shape))
+    lag = int(np.argmax(np.correlate(segment, shape, mode="valid"))) - reach
+    heard = _frames(stem, at + lag, len(wanted)).ravel()
+    channels = stem.shape[1] if wanted.shape[1] == 1 else 1
+    want = np.repeat(wanted.astype(np.float64), channels, axis=1).ravel()
+    energies = float(np.dot(heard, heard)), float(np.dot(want, want))
+    if not all(energies):
+        return lag, NO_MATCH_DB, -math.inf
+    shared = float(np.dot(heard, want))
+    kept = max(1.0 - shared * shared / (energies[0] * energies[1]), 1e-12)
+    return lag, 10 * math.log10(kept), db(abs(shared) / energies[1])
 
 
 def _best_fit(segment: Audio, tpl: Audio, energy: float) -> int:

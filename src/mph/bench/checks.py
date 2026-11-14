@@ -38,6 +38,8 @@ DUCK_DIP_SEARCH_S = 0.02  # after the attack, where the deepest point can be
 MIX_UNDER_KICK_S = (0.005, 0.035)  # REQ-BEN-12: the whole mix, under the kick
 MIX_AFTER_KICK_S = (0.1, 0.2)  # and after it, where the pump is heard
 MIX_AUDIBLE_DB = 2.0  # quieter than bypass after the kick: twice a just-noticeable change
+CLIP_OFFSET_LIMIT_MS = 1.0  # REQ-TRK-02
+CLIP_LEFT_LIMIT_DB = -20.0  # what may be left of a clip after cancelling the recording from it
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,21 +138,15 @@ def chokes(
     peaks: Mapping[str, float],
     rate: int,
 ) -> list[Check]:
-    """After a choke, the choked voice must be silent until it plays again."""
+    """After a choke, the choked voice must be silent until it plays again. A
+    pair with no choke to hear, as in an excerpt where they rest (REQ-TRK-03),
+    has nothing to check."""
     found = []
     for voice in score.voices:
         for target in voice.chokes:
-            worst = 0.0
-            target_times = [e.time_s for e in events if e.voice == target]
-            for event in (e for e in events if e.voice == voice.name):
-                if not any(t < event.time_s for t in target_times):
-                    continue
-                later = [t for t in target_times if t >= event.time_s]
-                end = min([*later, event.time_s + 0.05])
-                residue = audio.residue_after(
-                    stems[target], event.time_s + CHOKE_SETTLE_S, end, rate
-                )
-                worst = max(worst, residue)
+            worst = _choke_residue(events, voice.name, target, stems[target], rate)
+            if worst is None:
+                continue
             level = audio.db(worst / peaks[target]) if peaks.get(target) else float("-inf")
             found.append(
                 Check(
@@ -163,6 +159,22 @@ def chokes(
     return found
 
 
+def _choke_residue(
+    events: Sequence[Event], voice: str, target: str, stem: Audio, rate: int
+) -> float | None:
+    """The loudest the target is just after the voice cuts it; None if it never does."""
+    worst: float | None = None
+    target_times = [e.time_s for e in events if e.voice == target]
+    for event in (e for e in events if e.voice == voice):
+        if not any(t < event.time_s for t in target_times):
+            continue
+        later = [t for t in target_times if t >= event.time_s]
+        end = min([*later, event.time_s + 0.05])
+        residue = audio.residue_after(stem, event.time_s + CHOKE_SETTLE_S, end, rate)
+        worst = max(worst or 0.0, residue)
+    return worst
+
+
 def humanise(score: Score, matches: Mapping[str, Sequence[Match]]) -> list[Check]:
     """Humanised velocities vary, by no more than the score allows, and render as
     scored. Each hit is compared with its velocity before humanising, so a part
@@ -171,9 +183,9 @@ def humanise(score: Score, matches: Mapping[str, Sequence[Match]]) -> list[Check
     plain = {(e.voice, e.step): e.velocity for e in events(plain_score)}
     found = []
     for voice in score.voices:
-        if not voice.humanise:
+        own = matches.get(voice.name, [])
+        if not voice.humanise or not own:  # an excerpt may rest a voice (REQ-TRK-03)
             continue
-        own = matches[voice.name]
         ratios = [m.level / m.event.velocity for m in own if m.event.velocity]
         factors = [
             m.event.velocity / plain[voice.name, m.event.step]
@@ -359,4 +371,31 @@ def sidechain_mix(under: Sequence[float], after: Sequence[float], hits: int) -> 
     )
     return [
         Check(name, round(change, 2), f"<= -{MIX_AUDIBLE_DB:g}", change <= -MIX_AUDIBLE_DB, note)
+    ]
+
+
+def clips(voice: str, heard: Sequence[tuple[int, float, float, float]]) -> list[Check]:
+    """REQ-TRK-02: each cue of a clip voice, near its start and its end, lines up
+    with its recording's bars and cancels against them. ``heard`` holds (bar of
+    the cue, offset in ms, dB left after cancelling, level in dB)."""
+    if not heard:
+        return []
+    off = max(heard, key=lambda h: abs(h[1]))
+    left = max(heard, key=lambda h: h[2])
+    cues = len({h[0] for h in heard})
+    return [
+        Check(
+            f"clips: {voice} worst offset from the recording (ms)",
+            round(abs(off[1]), 3),
+            f"<= {CLIP_OFFSET_LIMIT_MS}",
+            abs(off[1]) <= CLIP_OFFSET_LIMIT_MS,
+            f"{cues} cues, each checked near its start and its end; furthest off: bar {off[0]}",
+        ),
+        Check(
+            f"clips: {voice} worst match to the recording (dB left after cancelling)",
+            round(left[2], 1),
+            f"<= {CLIP_LEFT_LIMIT_DB}",
+            left[2] <= CLIP_LEFT_LIMIT_DB,
+            f"weakest: the cue at bar {left[0]}, playing at {left[3]:+.1f} dB",
+        ),
     ]

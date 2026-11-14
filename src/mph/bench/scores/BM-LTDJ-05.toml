@@ -1,0 +1,71 @@
+# spec/tracks/love-train.md#bm-ltdj-05: remix 1 of Love Train, the whole track.
+# This version is a re-edit: the source's own bars in the remix plan's form,
+# with BM-DRUM-02's Jersey shuffle (its fresh take's sounds) where no source bars play.
+id = "BM-LTDJ-05"
+title = "Remix 1, the whole track"
+hear = "a DJ-friendly 8 minutes. Sixteen bars of swung kick and hats build to the clap. Then everything stops for the train, the original's groove drops on bar 33, and the song runs in the plan's order with its sections stretched and repeated. The train returns at bar 141 to drop the chorus again, and the source's own last train comes before the kit carries the outro. Every cut lands on a bar line, with no clicks, no gaps and no change of speed or pitch."
+project = "Love Train remix 1: Detroit x Jersey"
+bpm = 120
+bars = 240
+swing = 0.58
+
+sections = [
+  { name = "DJ intro", bars = [1, 8], play = ["kick", "chh"] },
+  { name = "DJ intro", bars = [9, 16], play = ["kick", "chh", "ohh"] },
+  { name = "Intro build", bars = [17, 28], play = ["kick", "clap", "chh", "ohh"] },
+  { name = "Departure", bars = [29, 32], play = ["source:train"] },
+  { name = "Groove A", bars = [33, 48], play = ["source:groove"] },
+  { name = "Groove B", bars = [49, 60], play = ["source:groove-end"] },
+  { name = "Mini-break", bars = [61, 64], play = ["chh", "ohh"] },
+  { name = "Verse", bars = [65, 80], play = ["source:verse"] },
+  { name = "Chorus", bars = [81, 96], play = ["source:chorus"] },
+  { name = "Instrumental", bars = [97, 112], play = ["source:horns"] },
+  { name = "Breakdown", bars = [113, 120], play = ["source:break"] },
+  { name = "Breakdown", bars = [121, 128], play = ["source:verse-2"] },
+  { name = "Breakdown: build", bars = [129, 140], play = ["source:verse-3"] },
+  { name = "Departure II", bars = [141, 144], play = ["source:train"] },
+  { name = "Peak", bars = [145, 160], play = ["source:chorus"] },
+  { name = "Lift", bars = [161, 176], play = ["source:chorus-3"] },
+  { name = "Dub-out", bars = [177, 192], play = ["source:verse-4"] },
+  { name = "Dub-out II", bars = [193, 196], play = ["source:outro"] },
+  { name = "Dub-out II", bars = [197, 204], play = ["kick", "clap", "chh", "ohh"] },
+  { name = "Last train", bars = [205, 208], play = ["source:last-train"] },
+  { name = "DJ outro", bars = [209, 224], play = ["kick", "clap", "chh", "ohh"] },
+  { name = "DJ outro", bars = [225, 240], play = ["kick", "chh"] },
+]
+
+[voices.kick]
+grid = "X . . . X . . . X . . . X . . ."
+sound = { role = "kick", hash = "8842515c911a92edc17d44a3b0e95864c546bd20dfcc5bd3d2dc33da044d565f", why = "BM-DRUM-02's fresh-take kick: a rounded deeper-house kick (Kid Massive) with a soft click, the warmer Jersey thump." }
+
+[voices.clap]
+grid = ". . . . x . . . . . . . x . . ."
+sound = { role = "clap", hash = "4c5e8621f5e096a6b79a1f652ae87806af87ea19b5b008a939e38731e7116973", why = "BM-DRUM-02's fresh-take clap: a dub-house clap with some room on it, closer to Kerri Chandler's roomy claps." }
+
+[voices.chh]
+grid = "x x x x x x x x x x x x x x x x"
+sound = { role = "hat", hash = "96e616a03bd565bd08eac268b14fdb9aec63c9bce1741deb7167538b4eba6dfd", why = "BM-DRUM-02's fresh-take closed hat: short, from the clap's kit, so the skipping 16ths keep one tone." }
+chokes = ["ohh"]
+seconds = 0.25
+
+[voices.ohh]
+grid = ". . o . . . o . . . o . . . o ."
+sound = { role = "hat_open", hash = "925ae4da178a0a7ff008fa51e8a5d4fcea29bf058cb9e9a313407d94660c60a0", why = "BM-DRUM-02's fresh-take open hat: rings on the off-beat until the closed hat chokes it." }
+
+[voices.source]
+sound = { role = "track", hash = "406fc403707baff75c28c7605a3aa49fb0d6f57653a10c6ea222af76bc19a17b", why = "Love Train, the track this remixes: Dean's FLAC in his full tracks folder, 120 BPM with bar 1 at its first sample." }
+
+[voices.source.clips]
+train = [9, 12]
+groove = [13, 28]
+groove-end = [25, 36]
+verse = [37, 52]
+chorus = [53, 68]
+break = [69, 76]
+verse-2 = [77, 84]
+horns = [93, 108]
+verse-3 = [111, 122]
+chorus-3 = [127, 142]
+verse-4 = [143, 158]
+outro = [159, 162]
+last-train = [163, 166]

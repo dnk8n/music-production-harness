@@ -39,6 +39,7 @@ LAST_NUMBER = 99
 FALLBACK_AREA = "NEW"
 CHECKOUT = Path(__file__).resolve().parents[3]  # src/mph/bench/ideas.py -> the repo
 SPEC = CHECKOUT / "spec" / "components" / "benchmarks.md"
+TRACK_SPECS = CHECKOUT / "spec" / "tracks"  # tracks and their blocks (REQ-TRK-03)
 COLUMNS = "id, kind, ref, parent, title, notes, ref_given, created_at, dropped_at, dropped_with"
 BELOW = {"project": "benchmark", "benchmark": "variant"}  # the kind of idea that goes in each
 
@@ -95,8 +96,14 @@ def slug(text: str) -> str:
 
 
 def specced(path: Path = SPEC) -> list[tuple[str, str, str]]:
-    """(id, title, project) of every benchmark the spec describes. Its project is
-    the section heading it is written under (REQ-BEN-11)."""
+    """(id, title, project) of every benchmark the spec describes, with the
+    tracks and their blocks in ``spec/tracks`` (REQ-TRK-03). Its project is the
+    section heading it is written under (REQ-BEN-11)."""
+    tracks = sorted(TRACK_SPECS.glob("*.md")) if path == SPEC else []
+    return [item for file in (path, *tracks) for item in _specced_in(file)]
+
+
+def _specced_in(path: Path) -> list[tuple[str, str, str]]:
     try:
         lines = path.read_text("utf-8").splitlines()
     except OSError:  # not run from a checkout

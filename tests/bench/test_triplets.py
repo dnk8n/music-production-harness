@@ -166,7 +166,7 @@ def test_the_jembe_feel_renders_in_renoise(tmp_path: Path) -> None:
     assert report["engine"] == "renoise"
     assert [m for m in report["measurements"] if not m["passed"]] == []  # type: ignore[attr-defined]
     main, _ = fake.performed[0]["songs"]
-    assert (main["lpb"], main["pattern_lines"]) == (12, 192)
+    assert (main["lpb"], main["patterns"][0]) == (12, {"lines": 192})
     tone = next(t for t in main["tracks"] if t["name"] == "tone")
     # The tone's first strokes: beat 1's second and third pulses, 41% and 72% in.
     assert [(n["line"], n["delay"]) for n in tone["notes"][:2]] == [(4, 236), (8, 164)]

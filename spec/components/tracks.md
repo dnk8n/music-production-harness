@@ -84,7 +84,10 @@ late, drifts, plays the wrong bars or plays at another speed fails.
   -11 dB after cancelling, against -64 dB for noise below 2 kHz
   (2026-11-14). A stem's faint leftovers between lines are that kind of
   sound, so each window is judged against the cue's loudest stretch, not
-  against itself; a bright recording played loud still fails.
+  against itself; a bright recording played loud still fails. The stem is
+  lined up with each window by shape, not by size: a window that ended as
+  a sung line came in lined up one pitch period (6.7 ms) late, where the
+  voice was louder (remix 1's second version, block 1, 2026-11-14).
 - **Verify:** test, measure
 
 ### REQ-TRK-03: Excerpts
@@ -116,15 +119,18 @@ last bar gets a note-off where it stops.
   or repeat a section as one block.
 - **Verify:** test; inspect: open a track's song in Renoise
 
-### REQ-TRK-05: Stems keep their recording's tempo
+### REQ-TRK-05: Stems keep their recording's tempo and licence
 A stem separated from a recording (REQ-CAT-11) plays at the recording's
 speed, so a clip voice that pins a stem places its clips by the tempo the
 catalogue measured for the recording it came from, when the stem has no
-tempo of its own. Bar 1 is where it is in the recording.
+tempo of its own. Bar 1 is where it is in the recording. The report lists a
+stem with its recording's licence.
 - **Why:** remix 1's second version plays the vocals and the train's horn
   from their stems, not from the mix. Demucs keeps every sample in place,
   so a stem has its recording's grid, but the catalogue measures tempo for
-  sources, not for derivatives.
+  sources, not for derivatives. A stem is still the recording's music: on
+  Dean's Mac the report listed the stems' licence as unknown, where the
+  whole recording had been private (2026-11-14).
 - **Verify:** test
 
 ### REQ-TRK-06: A track's sample rate

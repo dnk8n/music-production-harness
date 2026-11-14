@@ -187,15 +187,17 @@ def aligned(
     stem: Audio, wanted: Audio, at: int, reach: int, *, against: Audio | None = None
 ) -> tuple[int, float, float]:
     """Where ``wanted`` sits in ``stem`` near frame ``at``: the lag in frames,
-    within +/- ``reach``; how much of the stem is left there once ``wanted``,
-    at its best level, is cancelled from it, in dB against ``against`` (as
-    long as ``wanted``, such as the loudest stretch of the same recording) or
+    within +/- ``reach``, found by shape rather than size, so a window that
+    ends as a sung line starts isn't pulled a pitch period late, to where the
+    line is louder; how much of the stem is left there once ``wanted``, at
+    its best level, is cancelled from it, in dB against ``against`` (as long
+    as ``wanted``, such as the loudest stretch of the same recording) or
     against ``wanted`` itself, whichever is louder; and that level in dB
     (REQ-TRK-02). A stem with nothing there cancels nothing: 0 dB. A mono
     recording plays on both of a stem's channels."""
     shape = mono(wanted).astype(np.float64)
     segment = _window(mono(stem), at - reach, 2 * reach + len(shape))
-    lag = int(np.argmax(np.correlate(segment, shape, mode="valid"))) - reach
+    lag = _best_fit(segment, shape, max(float(np.dot(shape, shape)), 1e-30)) - reach
     heard = _frames(stem, at + lag, len(wanted)).ravel()
     channels = stem.shape[1] if wanted.shape[1] == 1 else 1
     want = np.repeat(wanted.astype(np.float64), channels, axis=1).ravel()

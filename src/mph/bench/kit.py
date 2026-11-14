@@ -13,8 +13,8 @@ above, and the reason says what happened to the pick.
 A take Dean passed keeps the sounds he heard when it renders again (REQ-BEN-15).
 A clip voice plays exactly the recording it pins, at the tempo the catalogue
 measured, and nothing else (spec/components/tracks.md, REQ-TRK-02). A stem
-plays at the tempo measured for the recording it was separated from
-(REQ-TRK-05).
+plays at the tempo measured for the recording it was separated from, and
+has its licence (REQ-TRK-05).
 """
 
 from __future__ import annotations
@@ -117,6 +117,8 @@ def synth_for(voice: Voice, reason: str) -> Choice:
 
 
 def _licence(conn: sqlite3.Connection, digest: str) -> str:
+    """A sound's licence: its download's or its folder's, or for a stem, its
+    recording's (REQ-TRK-05)."""
     row = conn.execute("SELECT licence FROM download WHERE asset_hash = ?", (digest,)).fetchone()
     if row:
         return str(row[0])
@@ -125,7 +127,10 @@ def _licence(conn: sqlite3.Connection, digest: str) -> str:
         "WHERE f.asset_hash = ? ORDER BY s.licence LIMIT 1",
         (digest,),
     ).fetchone()
-    return str(row[0]) if row else "unknown"
+    if row:
+        return str(row[0])
+    recording = _separated_from(conn, digest)
+    return _licence(conn, recording) if recording else "unknown"
 
 
 def tonal(path: Path) -> bool:
@@ -211,13 +216,19 @@ def _best_bpm(conn: sqlite3.Connection, digest: str) -> float:
     ).fetchone()
     if row:
         return float(row[0])
+    recording = _separated_from(conn, digest)
+    return _best_bpm(conn, recording) if recording else 0.0
+
+
+def _separated_from(conn: sqlite3.Connection, digest: str) -> str:
+    """The recording a stem was separated from, or "" for any other sound."""
     made = conn.execute(
         "SELECT d.inputs_json FROM derivation d JOIN recipe r ON r.id = d.recipe_id "
         "WHERE d.output_hash = ? AND r.kind = ?",
         (digest, STEMS),
     ).fetchone()
     inputs = json.loads(made[0]) if made else []
-    return _best_bpm(conn, str(inputs[0])) if inputs else 0.0
+    return str(inputs[0]) if inputs else ""
 
 
 def _label(conn: sqlite3.Connection, digest: str) -> str:

@@ -32,6 +32,19 @@ def _isolate_user_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Non
     monkeypatch.setenv("MPH_CONFIG", str(tmp_path / "absent.toml"))
 
 
+@pytest.fixture(autouse=True)
+def _isolate_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Never look in Dean's real home folder (REQ-ENG-03). On his Mac the Renoise
+    bridge is installed there, so a render left to pick its engine would pick
+    Renoise and wait for it. Tools the tests start still get the real home."""
+    home = tmp_path / "home"
+
+    def elsewhere(cls: type[Path]) -> Path:
+        return home
+
+    monkeypatch.setattr(Path, "home", classmethod(elsewhere))
+
+
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     """``tools`` tests need SuperCollider and ``lua`` tests need Lua 5.1; skip them
     quietly where those aren't installed."""

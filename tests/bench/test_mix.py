@@ -430,10 +430,10 @@ def test_a_render_fails_if_scsynth_could_not_start_a_synth(tmp_path: Path) -> No
 
     short = saying("FAILURE IN SERVER /s_new out of real time memory")
     with pytest.raises(sc.RenderError, match=r"couldn't start every synth \(1 failed\), so the"):
-        render.run("BM-DRUM-02", cfg_for(tmp_path), runner(scsynth=short), None)
+        render.run("BM-DRUM-02", cfg_for(tmp_path), runner(scsynth=short), None, home=tmp_path)
     # A release sent to a note that had already ended is harmless.
     late = saying("FAILURE IN SERVER /n_set Node 1004 not found")
-    outcome = render.run("BM-DRUM-02", cfg_for(tmp_path), runner(scsynth=late), None)
+    outcome = render.run("BM-DRUM-02", cfg_for(tmp_path), runner(scsynth=late), None, home=tmp_path)
     assert all(m["passed"] for m in outcome.report["measurements"])  # type: ignore[attr-defined]
 
 

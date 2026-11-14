@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sqlite3
 from collections.abc import Iterator, Sequence
@@ -402,6 +403,16 @@ def test_engine_choice(tmp_path: Path) -> None:
     home = renoise_ready(tmp_path, cfg)
     assert render.pick_engine("auto", home) == "renoise"
     assert render.pick_engine("supercollider", home) == "supercollider"
+
+
+@pytest.mark.req("REQ-ENG-03")
+def test_tests_never_see_the_real_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # On Dean's Mac the Renoise bridge is installed in his real home, so a render
+    # that picks its own engine there would wait for Renoise. Tests get their own.
+    real = Path(os.path.expanduser("~"))
+    monkeypatch.setattr(bridge, "status", lambda home: "ready" if home == real else "missing")
+    assert Path.home() == tmp_path / "home"
+    assert render.pick_engine("auto", Path.home()) == "supercollider"
 
 
 @pytest.mark.lua

@@ -25,6 +25,7 @@ from mph.catalogue import db
 from mph.renoise import bridge, luadata
 from mph.renoise import plan as song_plan
 from tests.bench.fake_renoise import FakeRenoise
+from tests.bench.fake_sc import _playbuf
 from tests.bench.test_render import add_sample, cfg_for, renoise_ready, runner
 from tests.renoise import lua
 
@@ -727,6 +728,29 @@ def test_whats_left_is_measured_against_the_louder_stretch() -> None:
     assert left(0.1 * wanted) == left(None)  # never against anything quieter than itself
 
 
+@pytest.mark.req("REQ-TRK-02")
+def test_a_window_that_ends_as_a_line_starts_lines_up_where_it_is(tmp_path: Path) -> None:
+    # A 150 Hz voice comes in near the end of a check window, over faint
+    # leftovers, as a sung line does. Matched by size, the window lined up one
+    # pitch period (6.7 ms) late, where the voice is louder: block 1 of remix
+    # 1's second version, 2026-11-14. Matched by shape, it lines up where it is.
+    native, rate = 44100, 48000
+    t = np.arange(2 * native) / native
+    rise = np.clip((t - 0.95) / 0.02, 0, 1) ** 2
+    voice = 0.3 * rise * sum(np.sin(2 * np.pi * 150 * k * t + k) / k for k in range(1, 40))
+    faint = 10 ** (-45 / 20) * np.random.default_rng(7).uniform(-1, 1, len(t))
+    path = tmp_path / "line.wav"
+    soundfile.write(str(path), faint + voice, native, subtype="FLOAT")
+    recording, _ = audio.read(path)
+    cue = native // 2  # the cue starts 0.5 s in, so the voice comes in 0.45 s into it
+    stem = _playbuf(np.repeat(recording, 2, axis=1), cue, rate, native / rate)
+    window = audio.excerpt_at(path, native, cue + round(0.02 * native), native // 2, rate)
+    lag, left, level = audio.aligned(stem, window, round(0.02 * rate), round(0.01 * rate))
+    assert lag == 0
+    assert left < -30
+    assert level == pytest.approx(0, abs=0.1)
+
+
 @pytest.mark.req("REQ-TRK-03")
 def test_chokes_and_humanising_rest_with_their_voices() -> None:
     # The first departure: the strings, the shaker and the horn; the kit and the hats rest.
@@ -758,7 +782,7 @@ def test_the_listing_reads_the_track_specs(tmp_path: Path) -> None:
     assert ideas.specced(tmp_path / "missing.md") == []
 
 
-# --- stems keep their recording's tempo (REQ-TRK-05) -------------------------------------
+# --- stems keep their recording's tempo and licence (REQ-TRK-05) -------------------------
 
 
 def add_stem(conn: sqlite3.Connection, data: Path, song: str, part: str = "vocals") -> str:
@@ -798,6 +822,9 @@ def test_a_stem_plays_at_its_recordings_tempo(
     stem = add_stem(conn, data, song)
     chosen = {c.voice: c for c in kit.choose(track(stem), conn, data)}
     assert (chosen["song"].digest, chosen["song"].bpm) == (stem, 120.0)
+    # It has its recording's licence too: on Dean's Mac a stem of a private
+    # recording was listed as "unknown" (2026-11-14).
+    assert chosen["song"].licence == "commercial-pack"
     _scores(monkeypatch, stem)
     outcome = render.run("BM-TT", cfg_for(tmp_path), runner(), conn, engine="supercollider")
     assert [m for m in _measured(outcome.report).values() if not m["passed"]] == []
@@ -832,7 +859,7 @@ def test_a_take_at_the_tracks_rate_needs_no_conversion(
     song = add_song(conn, tmp_path)
     whole = changed("bars = 8", "bars = 8\nrate = 48000", song)
     monkeypatch.setattr(render, "load", lambda _: whole)
-    outcome = render.run("BM-TT", cfg_for(tmp_path, rate=96000), runner(), conn)
+    outcome = render.run("BM-TT", cfg_for(tmp_path, rate=96000), runner(), conn, home=tmp_path)
     assert outcome.report["production_rate"] == 48000
     assert audio.info(outcome.folder / "master.wav")[0] == 48000
     assert [m for m in _measured(outcome.report).values() if not m["passed"]] == []

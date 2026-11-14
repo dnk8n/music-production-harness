@@ -20,9 +20,11 @@ when the package outgrows a handful of modules.
 ### REQ-ENG-03: Side effects behind seams
 Processes, the filesystem outside `data_dir`, network and clocks are
 reached through injected interfaces (`Runner`, `Host`, ...). Unit tests never
-touch the real system.
+touch the real system, the home folder included.
 - **Why:** tests are fast and deterministic, and they run on Linux CI without
-  macOS apps.
+  macOS apps. On Dean's Mac the Renoise bridge is installed in his home
+  folder, so two tests whose renders picked their engine from it waited
+  12 minutes each for Renoise (2026-11-14). Tests get a home of their own.
 - **Verify:** test
 
 ### REQ-ENG-04: Security baseline

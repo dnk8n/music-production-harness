@@ -110,7 +110,13 @@ def test_scan_reads_what_real_files_say_about_themselves(
     (root / "Pack/broken.wav").write_bytes(b"not audio")
     song = root / "full_tracks/07 song.flac"
     song.parent.mkdir(parents=True)
-    described = {"title": "Night Drive", "artist": "The Somebodies", "date": "2026", "track": "7/7"}
+    described = {
+        "title": "Night Drive",
+        "artist": "The Somebodies",
+        "date": "2026",
+        "track": "7/7",
+        "initialkey": "8A",  # the loop's IKEY is keywords, so this is the only key
+    }
     made = SubprocessRunner().run(
         ["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", "1"]
         + [arg for key, value in described.items() for arg in ("-metadata", f"{key}={value}")]

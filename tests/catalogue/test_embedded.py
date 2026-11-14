@@ -60,12 +60,21 @@ def test_an_acid_tempo_whose_beats_fill_the_file_is_sure() -> None:
 
 
 @pytest.mark.req("REQ-CAT-12")
-def test_an_acid_chunk_that_doesnt_fit_its_loop_was_stamped_so_gives_nothing() -> None:
-    # As on Dean's Mac: a pack's template, 16 beats at 120 and note 53, on every loop
+def test_an_acid_tempo_counts_within_half_a_percent_of_the_files_length() -> None:
+    acid = an_acid(tempo=128.0, beats=8)  # 3.75 s
+    assert labelled(loop(acid, seconds=3.765)) == {"bpm": ("128", 0.9), "form": ("loop", 0.8)}
+    assert labelled(loop(acid, seconds=3.8)) == {}  # 1.3% longer: not this file's tempo
+
+
+@pytest.mark.req("REQ-CAT-12")
+def test_an_acid_loop_stamped_with_a_default_tempo_gives_only_its_root() -> None:
+    # As on Dean's Mac: 16 beats at 120 on loops of every tempo, each with its own note
     stamped = an_acid(tempo=120.0, beats=16, root_note=53)
-    assert labelled(loop(stamped, seconds=7.5)) == {}  # really 128 BPM: no tempo, form or root
-    tagged = loop(stamped, seconds=7.5, TBPM="128")  # the file's other labels still count
-    assert labelled(tagged) == {"bpm": ("128", 0.35)}
+    assert labelled(loop(stamped, seconds=6.857)) == {"root": ("F", 0.8)}  # a 140 BPM loop
+    # 16 beats at 122 last 7.87 s, 1.6% short of 8 s at 120: close, but not its tempo
+    assert labelled(loop(stamped, seconds=7.869)) == {"root": ("F", 0.8)}
+    tagged = loop(stamped, seconds=6.857, TBPM="140")  # the file's other labels still count
+    assert labelled(tagged) == {"bpm": ("140", 0.35), "root": ("F", 0.8)}
 
 
 @pytest.mark.req("REQ-CAT-12")
@@ -131,20 +140,9 @@ def test_key_tags_that_give_none(written: str) -> None:
 
 
 @pytest.mark.req("REQ-CAT-12")
-@pytest.mark.parametrize(
-    ("written", "key"),
-    [
-        ("Am", "A:minor"),
-        ("Ab", "G#:major"),
-        ("8A", "A:minor"),
-        ("A", None),
-        ("Bass", None),
-        ("am", None),
-    ],
-)
-def test_ikey_is_keywords_so_only_a_clear_key_counts(written: str, key: str | None) -> None:
-    found = labelled(Found(tags={"IKEY": written}))
-    assert found.get("key") == ((key, 0.35) if key else None)
+@pytest.mark.parametrize("written", ["Am", "8A", "Ambient, Electronica, IDM, Industrial"])
+def test_ikey_is_keywords_not_a_key(written: str) -> None:
+    assert "key" not in labelled(Found(tags={"IKEY": written}))  # a pack's genres, on the Mac
 
 
 @pytest.mark.req("REQ-CAT-12")

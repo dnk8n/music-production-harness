@@ -7,21 +7,22 @@ in the ``embedded`` table as JSON. The labels drawn from it are tags with
 
 How sure each label is, from the spec:
 
-- ``bpm`` 0.9 from an ACID tempo whose beats fill the file to within 2%, or
-  an Apple Loop's beats over its length; 0.35 from a BPM tag, below a tempo
-  in the file's name. A one-shot has no tempo, and only 60 to 200 BPM counts.
+- ``bpm`` 0.9 from an ACID tempo whose beats fill the file to within 0.5%,
+  or an Apple Loop's beats over its length; 0.35 from a BPM tag, below a
+  tempo in the file's name. A one-shot has no tempo, and only 60 to 200 BPM
+  counts.
 - ``key`` 0.8 from an Apple Loop's root and scale; 0.35 from a key tag in any
-  common notation, below a key in the file's name. ``IKEY`` is RIFF INFO's
-  keywords, so there only a key with a mode or a sharp or flat counts, never
-  a lone letter.
+  common notation, below a key in the file's name.
 - ``form`` 0.8: one-shot when a chunk says so; loop when it says loop and its
   beats at its tempo fill the file.
 - ``root`` 0.8 from ACID (when it says the note is set) or an Apple Loop with
   a scale; 0.6 from a sampler chunk, unless it looks untouched (60, no
   tuning, no loops).
-- An ACID chunk on a loop whose beats don't fill the file was stamped from a
-  tool's template, not set for that file, so its tempo and root note give
-  nothing: on Dean's library 1,027 of them all said 120 BPM.
+- An ACID loop whose beats at its tempo don't fill the file was stamped with
+  a tool's default tempo, so that tempo gives nothing; packs still set its
+  root note per file. On Dean's library over a thousand ACID loops said 120
+  BPM, nearly a hundred of them on 122 BPM loops, only 1.6% off: hence 0.5%,
+  not 2%.
 - ``title``, ``artist``, ``album``, ``genre``, ``record_label``,
   ``catalogue_number``, ``year`` and ``track`` 1, as the tags write them.
 
@@ -47,7 +48,7 @@ from mph.catalogue.probe import Picture, Probe
 VERSION = 1
 ORIGIN = "embedded"
 MAX_VALUE = 1000  # characters kept of any one tag
-FILLS = 0.02  # beats at the tempo fill the file to within this share of its length
+FILLS = 0.005  # beats at the tempo fill the file to within this share of its length
 TEMPO_RANGE = names.BPM_RANGE
 FITTED_TEMPO = 0.9
 LOOP_KEY = 0.8
@@ -59,8 +60,7 @@ UNTOUCHED_NOTE = 60  # middle C: what tools write when nobody set a note
 METERS = (2, 4, 8, 16)
 
 BPM_TAGS = ("tbpm", "bpm", "tempo", "tmpo")
-KEY_TAGS = ("tkey", "initialkey", "key")
-LOOSE_KEY_TAGS = ("ikey",)  # RIFF INFO keywords, which some packs use for keys
+KEY_TAGS = ("tkey", "initialkey", "key")  # not RIFF INFO's IKEY: that is keywords
 DESCRIBED: dict[str, tuple[str, ...]] = {
     "title": ("title",),
     "artist": ("artist", "author"),
@@ -149,7 +149,7 @@ def labels(found: Found) -> list[Label]:
         *_tempos(found),
         *_forms(found),
         *_keys(found),
-        *_roots(found),
+        *_roots(found.chunks),
         *_described(found.tags),
     ]
     best: dict[tuple[str, str], float] = {}
@@ -172,15 +172,15 @@ def _in_range(bpm: float) -> bool:
 
 
 def _fills(beats: int, bpm: float, duration_s: float | None) -> bool:
-    """Whether ``beats`` at ``bpm`` last as long as the file, to within 2%."""
+    """Whether ``beats`` at ``bpm`` last as long as the file, to within 0.5%."""
     if beats < 1 or bpm <= 0 or not duration_s:
         return False
     return abs(beats * 60 / bpm - duration_s) <= FILLS * duration_s
 
 
 def _acid_fits(found: Found) -> bool:
-    """Whether the ACID chunk was set for this file: a one-shot, or a loop whose
-    beats at its tempo fill it. Any other was stamped from a template."""
+    """Whether the ACID chunk's tempo was set for this file: a one-shot, or a
+    loop whose beats at its tempo fill it. Any other tempo was a default."""
     acid = found.chunks.acid
     if acid is None:
         return False
@@ -233,17 +233,15 @@ def _keys(found: Found) -> list[Label]:
     basc = found.chunks.basc
     if basc is not None and basc.scale in ("major", "minor"):
         made.append(Label("key", f"{_pitch(basc.root_note)}:{basc.scale}", LOOP_KEY))
-    for tags, strict in ((KEY_TAGS, False), (LOOSE_KEY_TAGS, True)):
-        text = _tag(found.tags, tags)
-        if text and (key := parse_key(text, strict=strict)):
-            made.append(Label("key", key, TAGGED_KEY))
+    text = _tag(found.tags, KEY_TAGS)
+    if text and (key := parse_key(text)):
+        made.append(Label("key", key, TAGGED_KEY))
     return made
 
 
-def _roots(found: Found) -> list[Label]:
+def _roots(chunks: Chunks) -> list[Label]:
     made = []
-    chunks = found.chunks
-    if chunks.acid is not None and chunks.acid.root_note is not None and _acid_fits(found):
+    if chunks.acid is not None and chunks.acid.root_note is not None:
         made.append(Label("root", _pitch(chunks.acid.root_note), ROOT))
     if chunks.basc is not None and chunks.basc.scale not in ("neither", "unknown"):
         made.append(Label("root", _pitch(chunks.basc.root_note), ROOT))
@@ -312,17 +310,17 @@ def _tag_number(tags: Mapping[str, str], keys: Iterable[str]) -> float | None:
     return float(match.group(1).replace(",", ".")) if match else None
 
 
-def parse_key(text: str, *, strict: bool = False) -> str | None:
+def parse_key(text: str) -> str | None:
     """A key tag ('Am', 'A minor', 'F#m', '8A', '1m', '8A - Am') as 'A:minor'.
 
-    A lone letter is a major key, as ID3 writes them, unless ``strict``."""
+    A lone letter is a major key, as ID3 writes them."""
     for part in KEY_PARTS.split(text.strip()):
-        if key := _one_key(part, strict=strict):
+        if key := _one_key(part):
             return key
     return None
 
 
-def _one_key(part: str, *, strict: bool) -> str | None:
+def _one_key(part: str) -> str | None:
     if found := CAMELOT.match(part):  # 8B is C major, each step a fifth up; A is its relative
         return _wheel(int(found.group(1)) - 8, found.group(2).lower() == "a")
     if found := OPEN_KEY.match(part):  # 1d is C major, 1m A minor
@@ -330,10 +328,9 @@ def _one_key(part: str, *, strict: bool) -> str | None:
     tokens = [t for t in names.SPLIT.split(part) if t]
     if not tokens:
         return None
-    if not strict:
-        tokens[0] = tokens[0][:1].upper() + tokens[0][1:]
+    tokens[0] = tokens[0][:1].upper() + tokens[0][1:]
     key = names.parse_key(tokens)
-    if key is None and not strict and len(tokens) == 1 and tokens[0] in names.PITCH:
+    if key is None and len(tokens) == 1 and tokens[0] in names.PITCH:
         key = f"{tokens[0]}:major"
     return key
 

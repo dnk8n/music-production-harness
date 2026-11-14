@@ -170,7 +170,7 @@ def test_a_triplet_song_runs_at_12_lines_a_beat() -> None:
     # A sixteenth is 3 lines; swing still moves it in the delay column (0.6 of 2 steps).
     assert [(n["line"], n["delay"]) for n in song_plan.notes(loaded, found, "chh")] == [(3, 154)]
     song = song_plan.song(loaded, found, [], rate=96000, save="x", renders=[])
-    assert (song["lpb"], song["pattern_lines"], song["lines"]) == (12, 192, 60)
+    assert (song["lpb"], song["patterns"], song["lines"]) == (12, [{"lines": 60}], 60)
     straight = score.load_text(SHUFFLE)
     assert (song_plan.lpb(straight), song_plan.pattern_lines(straight)) == (4, 64)
 

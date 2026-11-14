@@ -1,10 +1,13 @@
--- Builds one song from a plan table (spec/components/renoise.md: REQ-REN-01, REQ-REN-06).
+-- Builds one song from a plan table (spec/components/renoise.md: REQ-REN-01, REQ-REN-06;
+-- spec/components/tracks.md: REQ-TRK-02, REQ-TRK-04).
 -- Pure use of the Renoise API, so tests can run it against a fake `renoise`.
 --
 -- A song plan:
---   bpm, lpb, pattern_lines, lines
+--   bpm, lpb, lines
+--   patterns = { { lines, section = name or nil }, ... }: a section starts a pattern
 --   tracks = { { name, sample, volume, transpose, fine_tune, slices = {frame, ...},
---                notes = { { line, delay, volume, note | slice | off }, ... } }, ... }
+--                clips = { { file, name }, ... } or nil,
+--                notes = { { line, delay, volume, note | slice | clip | off }, ... } }, ... }
 -- Lines are 0-based across the whole song; Renoise's own indices are 1-based.
 
 local M = {}
@@ -31,8 +34,9 @@ local function ensure_instruments(song, count)
   end
 end
 
+-- Makes the song's patterns, names its sections, and returns each pattern's first line.
 local function ensure_patterns(song, plan)
-  local count = math.max(1, math.ceil(plan.lines / plan.pattern_lines))
+  local count = #plan.patterns
   local sequencer = song.sequencer
   while #sequencer.pattern_sequence < count do
     sequencer:insert_new_pattern_at(#sequencer.pattern_sequence + 1)
@@ -40,12 +44,19 @@ local function ensure_patterns(song, plan)
   while #sequencer.pattern_sequence > count do
     sequencer:delete_sequence_at(#sequencer.pattern_sequence)
   end
-  for position = 1, count do
+  local starts, line = {}, 0
+  for position, wanted in ipairs(plan.patterns) do
     local pattern = song:pattern(sequencer.pattern_sequence[position])
     pattern:clear()
-    local left = plan.lines - (position - 1) * plan.pattern_lines
-    pattern.number_of_lines = math.min(plan.pattern_lines, left)
+    pattern.number_of_lines = wanted.lines
+    if wanted.section then
+      sequencer:set_sequence_is_start_of_section(position, true)
+      sequencer:set_sequence_section_name(position, wanted.section)
+    end
+    starts[position] = line
+    line = line + wanted.lines
   end
+  return starts
 end
 
 local function setup_track(track, plan)
@@ -95,9 +106,38 @@ local function setup_instrument(instrument, plan)
   end
 end
 
-local function write_note(song, plan, track_index, instrument_index, note, pitch)
-  local position = math.floor(note.line / plan.pattern_lines) + 1
-  local line = note.line % plan.pattern_lines + 1
+-- One sample per clip, each on its own key from C-4 up, at its own pitch. Autoseek
+-- plays a clip from the right place when playback starts in its middle, and
+-- autofade keeps its cuts free of clicks.
+local function setup_clips(instrument, plan)
+  instrument.name = plan.name
+  while #instrument.samples < #plan.clips do
+    instrument:insert_sample_at(#instrument.samples + 1)
+  end
+  for k, clip in ipairs(plan.clips) do
+    local sample = instrument.samples[k]
+    if not sample.sample_buffer:load_from(clip.file) then
+      error("Renoise could not load " .. clip.file)
+    end
+    sample.name = clip.name
+    tune(sample, plan)
+    sample.autoseek = true
+    sample.autofade = true
+    local key = M.C4 + k - 1
+    sample.sample_mapping.base_note = key
+    sample.sample_mapping.note_range = { key, key }
+  end
+  return function(note)
+    return M.C4 + note.clip - 1
+  end
+end
+
+local function write_note(song, starts, track_index, instrument_index, note, pitch)
+  local position = #starts
+  while starts[position] > note.line do
+    position = position - 1
+  end
+  local line = note.line - starts[position] + 1
   local pattern = song:pattern(song.sequencer.pattern_sequence[position])
   local column = pattern:track(track_index):line(line):note_column(1)
   if note.off then
@@ -115,12 +155,13 @@ function M.build(song, plan)
   song.transport.lpb = plan.lpb
   ensure_tracks(song, #plan.tracks)
   ensure_instruments(song, #plan.tracks)
-  ensure_patterns(song, plan)
+  local starts = ensure_patterns(song, plan)
   for index, track_plan in ipairs(plan.tracks) do
     setup_track(song:track(index), track_plan)
-    local pitch_of = setup_instrument(song:instrument(index), track_plan)
+    local setup = track_plan.clips and setup_clips or setup_instrument
+    local pitch_of = setup(song:instrument(index), track_plan)
     for _, note in ipairs(track_plan.notes) do
-      write_note(song, plan, index, index, note, (not note.off) and pitch_of(note) or nil)
+      write_note(song, starts, index, index, note, (not note.off) and pitch_of(note) or nil)
     end
   end
 end

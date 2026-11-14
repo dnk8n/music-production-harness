@@ -12,6 +12,7 @@ disagree, fix the spec first.
 | [glossary.md](glossary.md) | Shared words. Use these terms in code and issues |
 | [architecture.md](architecture.md) | Stages, data flow, boundaries |
 | [components/](components/) | One file per component, each with numbered requirements |
+| [tracks/](tracks/) | One file per source track: the remixes made from it, as track and block entries (REQ-TRK) |
 | [process/](process/) | How we work: agent workflow, labels, engineering standards |
 | [decisions/](decisions/) | ADRs: why we chose what we chose |
 

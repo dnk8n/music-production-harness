@@ -1,0 +1,7 @@
+# spec/tracks/love-train.md#bm-ltdj-03: bars 125-152 of remix 1 (BM-LTDJ-05):
+# the breakdown and the second departure, whose first clip starts before the block does.
+id = "BM-LTDJ-03"
+title = "Remix 1, bars 125-152: breakdown, the train again and the peak"
+hear = "the last four bars of the second verse, cued from the bar the track has reached, then twelve bars of the third verse. The train plays alone again and drops the chorus at bar 21 of the block."
+project = "Love Train remix 1: Detroit x Jersey"
+excerpt = { of = "BM-LTDJ-05", bars = [125, 152] }

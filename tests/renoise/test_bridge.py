@@ -218,7 +218,7 @@ def _job(tmp_path: Path, sample: Path) -> dict[str, luadata.Data]:
     song: dict[str, luadata.Data] = {
         "bpm": 120,
         "lpb": 4,
-        "pattern_lines": 64,
+        "patterns": [{"lines": 16}],
         "lines": 16,
         "rate": 48000,
         "tracks": [track],

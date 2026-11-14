@@ -8,6 +8,10 @@ one deterministic pass. A melodic note is a ``/s_new`` with its pitch and
 accent, released by ``/n_set gate 0``; a slide is an ``/n_set`` of the held
 note's pitch, so nothing retriggers (BM-BASS-01).
 
+A clip (spec/components/tracks.md, REQ-TRK-02) is a ``/s_new`` that plays
+the voice's whole recording from the clip's first frame, for as long as the
+clip plays, with a short fade at each end.
+
 Voices play in one group and the sidechain (REQ-BEN-12) in a group after
 it: every trigger hit starts an ``mph_duck`` envelope on a private bus, at
 the hit's own sample, and an ``mph_ducker`` per target scales that target's
@@ -17,14 +21,14 @@ channels by it. Processes are spawned only through ``mph.proc.Runner``.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
 
 from mph.bench.kit import Choice
 from mph.bench.osc import Arg, Bundle, Message, encode_score
-from mph.bench.score import Event, Score, Voice
+from mph.bench.score import Event, Score, Voice, clip_start_s
 from mph.components import SC_APP
 from mph.proc import Runner
 
@@ -33,6 +37,7 @@ MAC_SCLANG = f"{SC_APP}/Contents/MacOS/sclang"
 FIRST_NODE = 1000
 RANDOM_GENERATORS = 64  # scsynth default (-r); concurrent noisy hits stay well under it
 SLICE_FADE_S = 0.001  # click-free slice edges (BM-DRUM-09)
+CLIP_FADE_S = 0.002  # click-free clip cuts (REQ-TRK-02)
 WIRE_BUFFERS = 1024  # the acid voice's additive saw needs more than the default 64
 DONE = "compiled.ok"
 VOICES_GROUP = 100
@@ -105,6 +110,7 @@ class Plan:
     slice_rate: float = 1.0  # playback-rate factor that fits the break to the tempo
     break_rate: int = 0  # the break file's own sample rate
     gains: Sequence[float] = ()  # linear, one per voice (REQ-BEN-09); empty means 1
+    clip_rates: Mapping[str, int] = field(default_factory=dict)  # clip voice -> recording rate
 
     @property
     def channels(self) -> int:
@@ -122,7 +128,12 @@ def _hit_args(plan: Plan, index: int, voice: Voice, event: Event, node: int) -> 
     if not choice.is_sample:
         return [*args, "seed", index + 1, "rid", node % RANDOM_GENERATORS]
     args += ["buf", index]
-    if event.slice:
+    if event.clip:
+        clip = voice.clips[event.clip - 1]
+        start = round(clip_start_s(plan.score, voice, clip) * plan.clip_rates[voice.name])
+        args += ["start", start, "dur", event.length_s, "attack", CLIP_FADE_S]
+        args += ["release", CLIP_FADE_S]
+    elif event.slice:
         piece = plan.slices[event.slice - 1]
         # A slice stops where the next one starts, so slices never overlap.
         seconds = min(piece.frames / plan.break_rate / plan.slice_rate, 2 * plan.score.step_s)

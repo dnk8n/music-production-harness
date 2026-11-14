@@ -5,13 +5,14 @@ reads the job mph wrote (through lua5.1, so the job is checked to be valid
 Lua), plays each song the way Renoise would, and writes the result file.
 Playing a song means: every note starts at its line plus delay, at its
 volume times the sample's gain; a later note or a note-off in the same track
-cuts it; slices play from their marker to the next one; the pitch change
-resamples the sound.
+cuts it; slices play from their marker to the next one; a clip voice's note
+plays that clip's sample (REQ-TRK-02); the pitch change resamples the sound.
 """
 
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -26,22 +27,44 @@ from tests.renoise import lua
 FULL = 0x80
 
 
-def _sound(track: dict[str, Any], rate: int) -> tuple[np.ndarray, list[tuple[int, int]]]:
-    data, native = soundfile.read(track["sample"], dtype="float32", always_2d=True)
+def _played(path: str, track: dict[str, Any], rate: int) -> tuple[np.ndarray, float]:
+    """A sample as the song plays it: stereo, at the render rate, at its gain."""
+    data, native = soundfile.read(path, dtype="float32", always_2d=True)
     if data.shape[1] == 1:
         data = np.repeat(data, 2, axis=1)
     pitch = 2 ** ((track["transpose"] + track["fine_tune"] / 128) / 12)
     factor = rate / native / pitch
     played = soxr.resample(data, native, round(native * factor)) if factor != 1 else data
+    return played.astype(np.float32) * float(track["volume"]), factor
+
+
+def _sound(track: dict[str, Any], rate: int) -> tuple[np.ndarray, list[tuple[int, int]]]:
+    played, factor = _played(track["sample"], track, rate)
     markers = [round(m * factor) for m in track["slices"]]
     bounds = list(zip(markers, [*markers[1:], len(played)][: len(markers)], strict=True))
-    return played.astype(np.float32) * float(track["volume"]), bounds
+    return played, bounds
+
+
+def _player(track: dict[str, Any], rate: int) -> Callable[[dict[str, Any]], np.ndarray]:
+    """What each note of a track plays: its clip, its slice, or the whole sound."""
+    if "clips" in track:
+        clips = [_played(clip["file"], track, rate)[0] for clip in track["clips"]]
+        return lambda note: clips[note["clip"] - 1]
+    sound, bounds = _sound(track, rate)
+
+    def piece(note: dict[str, Any]) -> np.ndarray:
+        if "slice" in note:
+            first, last = bounds[note["slice"] - 1]
+            return sound[first:last]
+        return sound
+
+    return piece
 
 
 def _track(song: dict[str, Any], track: dict[str, Any], frames: int) -> np.ndarray:
     rate = song["rate"]
     line_s = 60.0 / song["bpm"] / song["lpb"]
-    sound, bounds = _sound(track, rate)
+    play = _player(track, rate)
     out = np.zeros((frames, 2), np.float32)
     starts = [round((n["line"] + n["delay"] / 256) * line_s * rate) for n in track["notes"]]
     for n, note in enumerate(track["notes"]):
@@ -49,11 +72,7 @@ def _track(song: dict[str, Any], track: dict[str, Any], frames: int) -> np.ndarr
             continue
         start = starts[n]
         end = starts[n + 1] if n + 1 < len(starts) else frames
-        piece = sound
-        if "slice" in note:
-            first, last = bounds[note["slice"] - 1]
-            piece = sound[first:last]
-        piece = piece[: max(0, min(end, frames) - start)] * (note["volume"] / FULL)
+        piece = play(note)[: max(0, min(end, frames) - start)] * (note["volume"] / FULL)
         out[start : start + len(piece)] += piece
     return out
 

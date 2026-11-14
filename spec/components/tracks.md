@@ -11,7 +11,8 @@ rated on its own, so Dean can judge a track in pieces before it is finished.
 
 Tracks render the way benchmarks do (REQ-BEN-06, REQ-BEN-10): a Renoise song
 or a SuperCollider pass for each take, stems, the checks, and the 48 kHz /
-24-bit delivery. Their entries live in `spec/tracks/`, one file per source
+24-bit delivery. Renoise gets time in proportion to the audio it renders, so
+an 8-minute track has as long as it needs. Their entries live in `spec/tracks/`, one file per source
 track and a heading per project, written like benchmarks: what to hear, why,
 and how it is verified.
 

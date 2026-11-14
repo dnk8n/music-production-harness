@@ -571,6 +571,11 @@ def test_renoise_cuts_each_clip_once_and_plays_it_from_one_note(
     sizes = [(c.samplerate, c.frames, c.subtype) for c in cut.values()]
     assert sizes == [(44100, bars * 2 * 44100, "FLOAT") for bars in (4, 2, 2)]  # a, b, c
     assert templates["tracks"][2]["clips"] == []  # nothing to load where nothing plays
+    # Renoise gets time for every second it renders: the warm-up, two mixes and a
+    # stem per voice of the song, then the templates' warm-up and render.
+    song_s, template_s = 136 * 0.125, templates["lines"] * 0.125
+    expected = render.RENOISE_TIMEOUT_S + 6 * song_s + 2 * template_s
+    assert render.renoise_timeout_s(fake.performed[0]) == pytest.approx(expected)
     # An excerpt's song holds only the clips it plays.
     part = render.run("BM-TT-X", cfg, runner(), conn, home=home, clock=fake.clock())
     assert [m for m in _measured(part.report).values() if not m["passed"]] == []

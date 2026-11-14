@@ -79,7 +79,8 @@ RENDERS = "renders"
 ONESHOT_S = 2.0  # room for a synth voice's one-shot
 ONESHOT_FLOOR = 10 ** (-100 / 20)  # trailing silence below this is trimmed
 ENGINES = ("auto", "renoise", "supercollider")
-RENOISE_TIMEOUT_S = 600.0
+RENOISE_TIMEOUT_S = 600.0  # to start, build and save a job's songs
+RENOISE_SECONDS_PER_SECOND = 1.0  # and each second it renders may take this long again
 RENOISE_NULL_DB = -120.0  # REQ-AUD-05: Renoise renders null-test, not bit-identical
 CLIP_TEMPO_SLACK_BPM = 0.01  # REQ-TRK-02: a clip plays at its recording's own tempo
 CLIP_WINDOW_S = 0.5  # each cue is checked over this long near its start and its end
@@ -533,6 +534,17 @@ def renoise_job(
     return {"songs": [main, reference]}, templates
 
 
+def renoise_timeout_s(job: dict[str, Any]) -> float:
+    """How long a job may take: time to start and save, and time for each
+    second of audio it renders, so an 8-minute track gets longer than a
+    benchmark (spec/components/tracks.md)."""
+    rendered_s = sum(
+        len(song["renders"]) * float(song["lines"]) * 60.0 / song["bpm"] / song["lpb"]
+        for song in job["songs"]
+    )
+    return RENOISE_TIMEOUT_S + RENOISE_SECONDS_PER_SECOND * float(rendered_s)
+
+
 def _render_renoise(
     cfg: Config,
     runner: Runner,
@@ -547,7 +559,7 @@ def _render_renoise(
     job, templates = renoise_job(setup, cut_clips(setup))
     name = f"{score.id}-{setup.folder.name}"
     outcome = bridge.run_job(
-        cfg, runner, home, name, job, timeout_s=RENOISE_TIMEOUT_S, clock=clock, session=session
+        cfg, runner, home, name, job, timeout_s=renoise_timeout_s(job), clock=clock, session=session
     )
     frames = round(score.length_s * setup.rate)
 

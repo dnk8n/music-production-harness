@@ -315,3 +315,49 @@ def test_a_long_recording_labelled_a_track_is_a_track(conn: sqlite3.Connection) 
     best = search.search(conn, Query(form="track", bpm=120)).hits[0]
     assert best.digest == "song"
     assert cli.build_parser().parse_args(["catalogue", "search", "--form", "track"]).form == "track"
+
+
+@pytest.mark.req("REQ-CAT-12")
+def test_what_files_say_about_themselves_counts_in_search(conn: sqlite3.Connection) -> None:
+    add(  # a loop its name says little about; its ACID and Apple Loops chunks say more
+        conn,
+        "own",
+        "Pack/Loops/Loop 07.wav",
+        [
+            ("bpm", "126", "embedded", 0.9),
+            ("key", "F:minor", "embedded", 0.8),
+            ("key", "E:major", "analysis", 0.9),
+        ],
+    )
+    add(  # a loop whose tags disagree with its name: the name wins
+        conn,
+        "tagged",
+        "Pack/Loops/Groove 124bpm Am.wav",
+        [
+            ("bpm", "124", "filename", 0.6),
+            ("bpm", "120", "embedded", 0.35),
+            ("key", "A:minor", "filename", 0.6),
+            ("key", "F:minor", "embedded", 0.35),
+        ],
+    )
+    add(
+        conn,
+        "song",
+        "full_tracks/01 night-drive.flac",
+        [
+            ("title", "Night Drive", "embedded", 1.0),
+            ("artist", "The Somebodies", "embedded", 1.0),
+            ("record_label", "Example Records", "embedded", 1.0),
+        ],
+        duration=300.0,
+    )
+    keyed = search.search(conn, Query(key="F:minor"))
+    assert keyed.hits[0].reasons == ("key F:minor (embedded)",)  # the file's label wins
+    assert "tagged" not in {hit.digest for hit in keyed.hits}  # its name's A minor wins
+    tempo = {hit.digest: hit for hit in search.search(conn, Query(bpm=124)).hits}
+    assert tempo["tagged"].reasons == ("124 BPM (filename)",)
+    assert tempo["tagged"].facts == {"bpm": "124", "key": "A:minor"}
+    assert tempo["own"].reasons == ("126 BPM (embedded)",)
+    for words in (("somebodies",), ("example records",), ("night", "drive")):
+        assert paths(search.search(conn, Query(text=words))) == ["full_tracks/01 night-drive.flac"]
+    assert search.search(conn, Query(roles=("artist",))).hits == []  # text gives no role

@@ -1,14 +1,15 @@
 #!/bin/bash
 # Which sounds the benchmarks would pick, and how the catalogue would label
-# them, if Dean's Mac ran another commit (REQ-BEN-05, REQ-CAT-03).
+# them, if Dean's Mac ran another commit (REQ-BEN-05, REQ-CAT-03, REQ-CAT-12).
 #
 #   scripts/kit-diff REF [BASE]   compare REF with BASE (default origin/main)
 #
 # Each commit gets a temporary worktree and its own copy of the catalogue,
-# scanned with that commit's naming rules. Then it lists every take whose
-# voices would pick a different sound, and the sounds whose roles would
-# change, grouped by their top two folders. Dean's catalogue, sources,
-# renders and this checkout are only read.
+# scanned with that commit's naming rules and readers. Then it lists every
+# take whose voices would pick a different sound (or slice a break at another
+# tempo), the sounds whose roles would change, and the sounds whose tempo, key
+# or form would change, grouped by their top two folders. Dean's catalogue,
+# sources, renders and this checkout are only read.
 #
 # Written for macOS's /bin/bash 3.2: no bash 4 features.
 set -u

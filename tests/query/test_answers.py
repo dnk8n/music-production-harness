@@ -16,6 +16,7 @@ from tests.bench.test_ideas import TOMS
 from tests.fakes import FakeStore
 from tests.query.conftest import (
     BASS,
+    BASS_SAYS,
     GONE,
     HAT,
     KICK,
@@ -27,6 +28,7 @@ from tests.query.conftest import (
     OLD_RENOISE,
     RAIN,
     RATING_COLUMNS,
+    READ_AT,
     SC_TAKE,
     SYNTH_KIT,
     TRIMMED,
@@ -234,6 +236,24 @@ def test_sound_shows_lineage_stashes_and_downloads(full: Library) -> None:
     assert rain["download"]["title"] == "Rain on a tin roof"
     assert rain["download"]["licence"] == "cc0"
     assert ask(full, "sound", ref=HAT)["analysis"][0]["error"] == "could not decode"
+
+
+@pytest.mark.req("REQ-CAT-12")
+@pytest.mark.req("REQ-QRY-03")
+def test_sound_says_what_the_file_says_about_itself(told: Library) -> None:
+    bass = ask(told, "sound", ref=BASS)
+    assert bass["embedded"] == {"version": 1, "read_at": READ_AT, "error": None, **BASS_SAYS}
+    assert ("title", "Bass 1", "embedded") in {
+        (t["name"], t["value"], t["origin"]) for t in bass["tags"]
+    }
+    assert ask(told, "sound", ref=KICK)["embedded"] is None  # not read yet
+    assert ask(told, "sound", ref=HAT)["embedded"]["error"].startswith("cannot read Hat.wav")
+    own = ask(told, "labels", origin="embedded")["labels"]
+    assert {label["name"] for label in own} == {"form", "key", "title"}
+    titles = ask(
+        told, "sql", query="SELECT json_extract(found_json, '$.tags.title') AS t FROM embedded"
+    )
+    assert "Bass 1" in json.dumps(titles)
 
 
 @pytest.mark.req("REQ-QRY-06")

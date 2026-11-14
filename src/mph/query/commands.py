@@ -22,11 +22,15 @@ from pathlib import Path
 from typing import IO, Any
 
 from mph import config
+from mph.catalogue.names import SHARP_NAMES
 from mph.proc import Runner
 from mph.query import Unanswerable, answers, mcp, tools
 from mph.query.answers import Library
 
 SERVER_NAME = "mph"
+SHOWN_VALUE = 80  # characters of a label or tag shown; --json has them whole
+NAME_WIDTH = 9  # room for most label names; longer ones (catalogue_number) widen it
+CHUNK_NAMES = ("acid", "smpl", "inst", "basc", "picture", "skipped")
 CHECKOUT = Path(__file__).resolve().parents[3]  # src/mph/query/commands.py -> the repo
 SERVE_HINT = (
     "mph mcp serve speaks MCP on stdin and stdout, for Claude Code to start. "
@@ -137,18 +141,23 @@ def cmd_sound(library: Library, ref: str, *, as_json: bool = False) -> int:
 
 def render_sound(answer: dict[str, Any]) -> str:
     """The ``sound`` answer as text: every label with where it came from and how
-    sure it is, then files, analysis, download and renders."""
+    sure it is, then files, what the file says about itself, analysis, download
+    and renders."""
     lines = [answer["hash"], f"  {_format(answer)}"]
     if answer["probe_error"]:
         lines.append(f"  unreadable: {answer['probe_error']}")
     lines.append("files:")
     lines += [f"  {f['source']}: {f['path']} ({f['source_licence']})" for f in answer["files"]]
     lines.append("labels:" if answer["tags"] else "labels: none")
-    width = max((len(str(t["value"])) for t in answer["tags"]), default=0)
+    named = max([NAME_WIDTH, *(len(str(t["name"])) for t in answer["tags"])])
+    width = min(max((len(str(t["value"])) for t in answer["tags"]), default=0), SHOWN_VALUE)
     lines += [
-        f"  {t['name']:9} {t['value']:{width}}  {t['origin']:8}  {t['confidence']:g}"
+        f"  {t['name']:{named}} {_clip(str(t['value'])):{width}}  {t['origin']:8}  "
+        f"{t['confidence']:g}"
         for t in answer["tags"]
     ]
+    if answer["origin"] != "derivative" or answer.get("embedded"):
+        lines += _inside(answer.get("embedded"))  # mph writes derivatives without tags
     for found in answer["analysis"]:
         head = f"analysis {found['analyser']} v{found['version']}, {found['analysed_at']}: "
         if found["error"]:
@@ -158,6 +167,84 @@ def render_sound(answer: dict[str, Any]) -> str:
         lines += textwrap.wrap(head + facts, width=100, subsequent_indent="    ")
     lines += _provenance(answer)
     return "\n".join(lines)
+
+
+def _clip(text: str) -> str:
+    return text if len(text) <= SHOWN_VALUE else text[: SHOWN_VALUE - 3] + "..."
+
+
+def _inside(found: dict[str, Any] | None) -> list[str]:
+    """What the file says about itself (REQ-CAT-12): its tags, then its chunks."""
+    if found is None:
+        return ["inside the file: not read yet (the next `mph catalogue scan` reads it)"]
+    head = f"inside the file (read {found['read_at']}, reader v{found['version']})"
+    if found["error"]:
+        return [f"{head}: couldn't be read: {found['error']}"]
+    tags = found.get("tags") or {}
+    lines = [f"{head}:" if tags or any(k in found for k in CHUNK_NAMES) else f"{head}: nothing"]
+    width = max((len(key) for key in tags), default=0)
+    lines += [f"  {key:{width}}  {_clip(' '.join(str(v).split()))}" for key, v in tags.items()]
+    lines += [f"  {line}" for line in _chunk_lines(found)]
+    return lines
+
+
+def _chunk_lines(found: dict[str, Any]) -> list[str]:
+    lines = [
+        render(found[name])
+        for name, render in (
+            ("acid", _acid),
+            ("basc", _apple_loop),
+            ("smpl", _sampler),
+            ("inst", _instrument),
+            ("picture", _picture),
+        )
+        if found.get(name)
+    ]
+    return lines + [f"skipped {item}" for item in found.get("skipped", [])]
+
+
+def _acid(acid: dict[str, Any]) -> str:
+    kind = "one-shot" if acid["one_shot"] else "loop"
+    meter = "/".join(str(n) for n in acid["meter"])
+    root = f", root {_note(acid['root_note'])}" if acid["root_note"] is not None else ""
+    return f"ACID: {kind}, {acid['beats']} beats in {meter} at {acid['tempo']:g} BPM{root}"
+
+
+def _apple_loop(basc: dict[str, Any]) -> str:
+    kind = "one-shot" if basc["one_shot"] else "loop"
+    meter = "/".join(str(n) for n in basc["meter"])
+    return (
+        f"Apple Loop: {kind}, {basc['beats']} beats in {meter}, "
+        f"root {_note(basc['root_note'])}, scale {basc['scale']}"
+    )
+
+
+def _sampler(smpl: dict[str, Any]) -> str:
+    loops = "".join(f", {_loop(loop)}" for loop in smpl["loops"])
+    return f"sampler: unity note {_note(smpl['unity_note'])} {smpl['cents']:+g} cents{loops}"
+
+
+def _instrument(inst: dict[str, Any]) -> str:
+    low, high = inst["notes"]
+    loops = "".join(f", {_loop(inst[k])}" for k in ("sustain", "release") if inst[k])
+    return (
+        f"instrument: base note {_note(inst['base_note'])} {inst['detune']:+d} cents, "
+        f"notes {_note(low)} to {_note(high)}{loops}"
+    )
+
+
+def _picture(picture: dict[str, Any]) -> str:
+    size = f" {picture['width']}x{picture['height']}" if picture["width"] else ""
+    return f"cover art: {picture['codec'] or 'a picture'}{size} (not kept)"
+
+
+def _note(number: int) -> str:
+    """MIDI 60 -> 'C4 (60)'."""
+    return f"{SHARP_NAMES[number % 12]}{number // 12 - 1} ({number})"
+
+
+def _loop(loop: dict[str, Any]) -> str:
+    return f"loop {loop['start']}-{loop['end']} {loop['mode']}"
 
 
 def _format(answer: dict[str, Any]) -> str:

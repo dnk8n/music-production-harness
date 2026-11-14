@@ -11,6 +11,7 @@ import pytest
 from mph import config
 from mph.catalogue import commands, db
 from mph.proc import SubprocessRunner
+from tests.catalogue import audiofiles as af
 from tests.fakes import FakeRunner
 
 
@@ -94,3 +95,75 @@ def test_scan_then_analyse_selected_role(
     assert "1 analysed" in capsys.readouterr().out
     assert commands.cmd_analyse(cfg, [], [], None, 1, force=False) == 0
     assert "1 analysed, 1 already up to date" in capsys.readouterr().out
+
+
+@pytest.mark.req("REQ-CAT-12")
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs ffmpeg and ffprobe")
+def test_scan_reads_what_real_files_say_about_themselves(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "samples"
+    loop = root / "Pack/Loops/Loop 07.wav"
+    loop.parent.mkdir(parents=True)
+    tags = af.riff_chunk(b"LIST", af.info(INAM="Loop 07", IART="Someone", IKEY="Am"))
+    loop.write_bytes(af.wav(4.0, tags, af.riff_chunk(b"acid", af.acid(beats=8, tempo=120.0))))
+    (root / "Pack/broken.wav").write_bytes(b"not audio")
+    song = root / "full_tracks/07 song.flac"
+    song.parent.mkdir(parents=True)
+    described = {
+        "title": "Night Drive",
+        "artist": "The Somebodies",
+        "date": "2026",
+        "track": "7/7",
+        "initialkey": "8A",  # the loop's IKEY is keywords, so this is the only key
+    }
+    made = SubprocessRunner().run(
+        ["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", "1"]
+        + [arg for key, value in described.items() for arg in ("-metadata", f"{key}={value}")]
+        + [str(song)]
+    )
+    assert made.ok, made.stderr
+    cfg = cfg_for(tmp_path, root)
+    assert commands.cmd_scan(cfg, SubprocessRunner(), [], 2) == 0
+    assert (
+        "  read the metadata inside 3 files; it labels 1 with a tempo, 1 with a key, "
+        "1 as loop or one-shot, 2 with an artist, 2 with a title; 1 couldn't be read"
+    ) in capsys.readouterr().out.splitlines()
+    with closing(db.connect(commands.db_path(cfg))) as conn:
+        labels = conn.execute("SELECT name, value FROM tag WHERE origin = 'embedded'")
+        assert {tuple(row) for row in labels} == {
+            ("title", "Loop 07"),
+            ("artist", "Someone"),
+            ("key", "A:minor"),
+            ("bpm", "120"),
+            ("form", "loop"),
+            ("title", "Night Drive"),
+            ("artist", "The Somebodies"),
+            ("year", "2026"),
+            ("track", "7/7"),
+        }
+    assert commands.cmd_scan(cfg, SubprocessRunner(), [], 2) == 0
+    again = capsys.readouterr().out  # read once; only the broken file is tried again
+    assert "  read the metadata inside 1 file; 1 couldn't be read" in again.splitlines()
+
+
+@pytest.mark.req("REQ-CAT-12")
+def test_analyse_reports_agreement_with_names_and_files_apart(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from mph.catalogue import analysis  # noqa: PLC0415 (heavy, as in the command)
+
+    cfg = cfg_for(tmp_path, tmp_path / "samples")
+    with closing(db.connect(commands.db_path(cfg))) as conn, conn:
+        conn.execute("INSERT INTO asset (hash, bytes, origin) VALUES ('a', 1, 'source')")
+        conn.executemany(
+            "INSERT INTO tag VALUES ('a', 'bpm', ?, ?, ?)",
+            [("128", "filename", 0.6), ("120", "embedded", 0.35), ("128.1", "analysis", 0.9)],
+        )
+    monkeypatch.setattr(analysis, "run", lambda *args, **kwargs: analysis.AnalysisRun(cached=1))
+    assert commands.cmd_analyse(cfg, [], [], None, 1, force=False) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out[-2:] == [
+        "  bpm: analysis agrees with names on 1/1 (100%)",
+        "  bpm: analysis agrees with the files' own labels on 0/1 (0%)",
+    ]

@@ -1,7 +1,8 @@
 # Catalogue
 
 **Status:** built (step 2: REQ-CAT-01 to 09). Full tracks and stems (REQ-CAT-10,
-11) added for the remixes, 2026-11-13.
+11) added for the remixes, 2026-11-13. What files say about themselves
+(REQ-CAT-12) added 2026-11-14.
 
 A local search engine over every sound the harness can use, with full
 provenance. The first source is `/Users/dean/dj/samples` (about 4,000 files,
@@ -18,7 +19,7 @@ provenance. The first source is `/Users/dean/dj/samples` (about 4,000 files,
 
 ## Data model
 
-Built so far (migrations 1 and 2, `src/mph/catalogue/db.py`):
+Built so far (`src/mph/catalogue/db.py`):
 
 ```
 source(id, kind, location, licence, last_scan_at)
@@ -26,7 +27,8 @@ asset(hash PK, bytes, container, codec, sample_rate, bit_depth, channels, durati
       origin: source|download|derivative, probe_error)
 source_file(source_id, rel_path, size, mtime_ns, asset_hash, scan_id)   -- where content lives
 document(source_id, rel_path, kind, scan_id)                            -- licence evidence
-tag(asset_hash, name, value, origin: folder|filename|analysis|human, confidence)
+tag(asset_hash, name, value, origin: folder|filename|embedded|analysis|human, confidence)
+embedded(asset_hash, version, read_at, found_json, error)  -- what a file says about itself
 scan(id, source_id, started_at, finished_at, files_seen, hashed, new_assets, moved, removed,
      skipped)
 analysis(asset_hash, analyser, version, analysed_at, result_json, error)
@@ -57,11 +59,12 @@ share (HPSS), and form (one-shot, loop, or phrase for a minute or more). Tags
 to the name priors.
 
 A single loop often doesn't spell out its pack's key: a riff in D minor may
-only play F, A and C. So an analysed key is a hint, and where a pack labels its
-key, the label wins. `mph catalogue analyse` reports agreement three ways (BPM
-within 2%, key or its relative, and key or a neighbouring key one step round
-the circle of fifths), always against the most confident name hint. Search
-treats neighbouring keys as compatible.
+only play F, A and C. So an analysed key is a hint, and where a pack or the
+file itself labels its key, the label wins. `mph catalogue analyse` reports
+agreement three ways (BPM within 2%, key or its relative, and key or a
+neighbouring key one step round the circle of fifths), against the most
+confident name hint, and apart from that against the file's own tempo and key
+(REQ-CAT-12). Search treats neighbouring keys as compatible.
 
 Still to come: an FTS5 text index, if word search gets slow.
 
@@ -153,8 +156,9 @@ closed and hat), and a phrase ("open hat") matches in that order.
 `mph catalogue sound REF` shows everything mph knows about one sound, found
 by its hash, a unique hash prefix of 6 or more characters, or its path:
 every label with where it came from and how sure it is, its files and their
-licences, analysis, download source, what it was made from, stashes, whether
-it is on disk and which renders used it. It is the query channel's `sound`
+licences, what the file says about itself (REQ-CAT-12), analysis, download
+source, what it was made from, stashes, whether it is on disk and which
+renders used it. It is the query channel's `sound`
 answer (REQ-QRY-03); `--json` prints that answer as it is.
 - **Why:** Dean couldn't check a label change kit-diff reported. Search shows
   no labels unless asked for a role and doesn't take a hash, and the only way
@@ -250,3 +254,103 @@ track take about 500 MB, so stash only the ones a remix uses.
   longer add up to the track. A separation takes minutes, so it should run
   once per track and model, then be reused.
 - **Verify:** test; inspect on the Mac: separating Love Train twice gives the same hashes
+
+### REQ-CAT-12: What a file says about itself
+The scan reads the metadata stored inside each audio file and keeps all of
+it, so `mph catalogue sound` can show it (REQ-CAT-09). There are three kinds:
+
+- **Tags**, which ffprobe reads: ID3 (MP3, and inside WAV and AIFF), Vorbis
+  comments (FLAC, Ogg), MP4 atoms (M4A), RIFF INFO, AIFF text chunks and
+  broadcast WAV (`bext`). Title, artist, album, genre, label, catalogue
+  number, year, track number, comments and anything else they hold. Lyrics
+  are left out, and any other value is kept to its first 1,000 characters.
+- **Loop and sampler chunks**, which mph reads because ffprobe skips them: a
+  WAV's `acid` chunk (one-shot or loop, beats, meter, tempo, root note),
+  `smpl` chunk (MIDI unity note, tuning, loop points) and `inst` chunk (base
+  note, tuning, note and velocity ranges), and an AIFF's `basc` chunk from
+  Apple Loops (one-shot or loop, beats, meter, root note, scale) and its
+  `INST` and `MARK` chunks (base note, loop points). Only those chunks are
+  read; the audio is skipped.
+- **Cover art**: whether the file has a picture, its format and size. The
+  picture itself isn't kept.
+
+What a file says gives it labels with `origin=embedded`:
+
+| Label | From | Confidence |
+|---|---|---|
+| `bpm` | an ACID tempo whose beats fill the file to within 0.5%; an Apple Loop's beats over its length | 0.9 |
+| `bpm` | a BPM tag (`TBPM`, `BPM`, `TEMPO`, `tmpo`) | 0.35 |
+| `key` | an Apple Loop's root note and scale, when the scale is major or minor | 0.8 |
+| `key` | a key tag (`TKEY`, `INITIALKEY`, `KEY`) written as Am, A minor, A min, Camelot (8A) or Open Key (1m) | 0.35 |
+| `form` | `oneshot` when an ACID or Apple Loops chunk says one-shot; `loop` when it says loop and its beats at its tempo fill the file to within 0.5% | 0.8 |
+| `root` | the note an ACID chunk names when it says its root note is set, or an Apple Loop's when it has a scale | 0.8 |
+| `root` | a sampler chunk's (`smpl`, `inst`, `INST`) unity or base note, unless it looks untouched: 60 (middle C) with no tuning and no loops | 0.6 |
+| `title`, `artist`, `album`, `genre`, `record_label`, `catalogue_number`, `year`, `track` | tags, as written | 1 |
+
+A one-shot has no tempo, and a tempo outside 60 to 200 BPM gives none. A
+`root` is the note to play a sound at to hear it unshifted, which a sampler
+needs to pitch it; it gives no key, since it doesn't say major or minor. A
+key tag that is a lone letter (`C`) means C major. RIFF INFO's `IKEY` is
+keywords, not a key, so it isn't read as one. Words search finds the tag
+labels (REQ-CAT-05): a track by its title, artist, album or label.
+
+A loop chunk that fits its file ranks above the file's name, and a text tag
+ranks below it. A tempo whose beats fill the file to within 0.5% is the
+producer's own, confirmed by the file's length, so it ranks above a tempo in
+the name (0.6). An ACID loop whose beats at its tempo don't fill the file
+was stamped with a tool's default tempo rather than set for that file, so
+that tempo gives no label (it is still kept, and shown). Its root note still
+counts: packs set those per file. Tempo and key tags rank below a tempo or
+key in the file's name (0.6) or in its two nearest folders' names (0.5,
+0.4), and above a bare number that might be a tempo (0.3): packs fill them
+in by batch, and they are often wrong. None of these labels is a
+measurement. Analysis still measures every sound, both are kept, and
+`mph catalogue analyse` reports how often analysis agrees with the files'
+own tempo and key, apart from names. A measured form still wins over a
+labelled one in search, as it does over names.
+
+Text inside a file never gives a role or a form. Titles, artists, albums,
+labels, genres and comments are the names and genres REQ-CAT-03 keeps from
+giving roles.
+
+Each file is read once per reader version (`embedded.VERSION`, which bumps
+whenever what is read or how it labels changes). A scan reads the files that
+are new or were read by an older reader, in the folder it scans and in the
+download stores; `mph catalogue fetch` reads what it downloads. Files are
+only ever opened to read (REQ-CAT-01). A file that can't be read at all is
+recorded with the error, gets no labels, and is tried again at the next
+scan; a chunk too short or too odd to read is skipped and noted.
+Derivatives (REQ-CAT-06) aren't read: mph writes them without tags, so their
+hashes depend on the audio alone.
+- **Why:** Dean asked (2026-11-14) whether a track's album and artist reach
+  the catalogue. They didn't: the scan asked ffprobe for format facts only,
+  so Love Train's tags (album Love Train Remixes, label Soul Clap Records,
+  catalogue number SCR100, genre, year, track 7 of 7) were thrown away. In
+  his sample folder (4,061 files, surveyed 2026-11-14), text tags are rare,
+  but 1,247 WAVs have ACID chunks (1,219 loops with tempo and beats, 28
+  one-shots, 743 with a root note), 214 have `smpl` and 23 `inst`. Sample
+  packs write these so loop software can stretch and pitch each file, and
+  samplers can play it at the right note: the producer's own facts, better
+  than guesses from names. But tools also write defaults nobody set (120
+  BPM, middle C), so these labels sit beside analysis rather than replace it.
+  The first Mac kit-diff (2026-11-14) bore both out. The 182 ACID and Apple
+  Loops tempos that fill their files (within 2%) agreed with analysis 96
+  times in 97, and Love Train's tags all came through. But 1,027 ACID loops whose beats didn't fill the file all said
+  120 BPM and agreed with analysis 4 times in 507. At 0.5 they became the
+  best tempo of 617 sounds (ROB_140_Gbm_SynthLoop_010.wav went from 140 to
+  120) and moved one benchmark break's slicing tempo from 125 to 120. Two of
+  the three key tags said F minor on hits whose names say E minor and C
+  minor. So a chunk that doesn't fit its file gave no tempo or root, and
+  text tags went below names. The second kit-diff (2026-11-14) showed the
+  stock 120s gone, but the same 120 with 16 beats on nearly a hundred loops
+  named 122 BPM: 16 beats at 120 last 8 s and at 122 7.87 s, only 1.6%
+  apart, so a 2% check passed them (and analysis, compared within 2%, can't
+  tell either).
+  Hence 0.5%. It also showed that the root notes those chunks name match
+  the key in the file's name on all 242 loops whose tempo doesn't fit (and
+  38 of 38 that do), so roots count whatever the tempo. `IKEY` held only a
+  pack's genre list. The third kit-diff (2026-11-14) confirmed the cut:
+  within 0.5% the stated tempo matched the tempo in the file's name on 89
+  of 89 loops, beyond it on none of 1,097, and against main only 9 sounds'
+  tempo or key changed, with no kit pick or role.
+- **Verify:** test; inspect on the Mac: kit-diff against main, and the first scan of Dean's library

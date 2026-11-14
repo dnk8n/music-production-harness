@@ -3,8 +3,9 @@
 Connectors find sounds; the ``Fetcher`` downloads them into
 ``data_dir/downloads/<connector>/<id>/`` and records each one like any other
 catalogued file, plus a ``download`` row saying where it came from, who made it
-and under what licence. A deleted download can always be fetched again from
-its recorded URL, and must come back byte-identical.
+and under what licence, and what the file says about itself (REQ-CAT-12). A
+deleted download can always be fetched again from its recorded URL, and must
+come back byte-identical.
 
 - **freesound:** text search with the API key. Original files need a one-time
   browser sign-in (OAuth2, ``mph catalogue auth freesound``); without it,
@@ -32,7 +33,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from mph import secrets
-from mph.catalogue import names
+from mph.catalogue import embedded, names
 from mph.catalogue.probe import probe
 from mph.catalogue.scanner import blake2b_file, utc_now
 from mph.net import Http, HttpError, with_query
@@ -392,6 +393,7 @@ class Fetcher:
         self, source_id: str, sound: RemoteSound, rel: str, path: Path, digest: str
     ) -> None:
         facts = probe(self._runner, path)
+        found = embedded.read(path, facts)  # what the file says about itself (REQ-CAT-12)
         stat = path.stat()
         now = self._clock()
         with self._conn:
@@ -439,6 +441,7 @@ class Fetcher:
                 ),
             )
             self._tag(digest, source_id, sound)
+            embedded.store(self._conn, digest, found, now)
 
     def _tag(self, digest: str, source_id: str, sound: RemoteSound) -> None:
         rows: list[tuple[str, str, str, float]] = [("pack", source_id, "folder", 1.0)]

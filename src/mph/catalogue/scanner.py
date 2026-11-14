@@ -1,8 +1,10 @@
-"""Incremental, read-only scan of a local source (REQ-CAT-01, -02, -08).
+"""Incremental, read-only scan of a local source (REQ-CAT-01, -02, -08, -12).
 
 Source files are only ever ``stat``-ed and opened ``rb``. Assets are keyed by
 content hash, so renames and moves keep their identity (and later, their
-analysis). A rescan re-hashes only files whose size or mtime changed.
+analysis). A rescan re-hashes only files whose size or mtime changed. It
+also reads what files say about themselves (REQ-CAT-12) wherever the current
+reader hasn't yet: in this source, and in the download stores.
 """
 
 from __future__ import annotations
@@ -10,13 +12,14 @@ from __future__ import annotations
 import hashlib
 import os
 import sqlite3
-from collections.abc import Callable, Iterator
+from collections import Counter
+from collections.abc import Callable, Iterator, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-from mph.catalogue import db, names
+from mph.catalogue import db, embedded, names
 from mph.catalogue.probe import Probe, probe
 from mph.config import Source
 from mph.proc import Runner
@@ -45,6 +48,9 @@ class ScanStats:
     skipped: int = 0
     documents: int = 0
     probe_errors: list[str] = field(default_factory=list)
+    read_inside: int = 0  # files whose own metadata was read (REQ-CAT-12)
+    unreadable_inside: int = 0
+    told: Counter[str] = field(default_factory=Counter)  # label name -> files it labelled
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,8 +124,9 @@ class Scanner:
                 else:
                     changed.append(entry)
             # kind == "skip": junk is ignored entirely (REQ-CAT-08)
-        touched = self._link_changed(source, root, changed, scan_id, stats)
+        touched, probed = self._link_changed(source, root, changed, scan_id, stats)
         self._sweep(source.id, scan_id, touched, stats)
+        self._read_inside(source.id, probed, stats)
         self._finish(source.id, scan_id, stats)
         return stats
 
@@ -159,8 +166,9 @@ class Scanner:
 
     def _link_changed(
         self, source: Source, root: Path, changed: list[Entry], scan_id: int, stats: ScanStats
-    ) -> set[str]:
-        """Hash changed files, probe never-seen content, link paths. Returns touched hashes."""
+    ) -> tuple[set[str], dict[str, Probe]]:
+        """Hash changed files, probe never-seen content, link paths. Returns the
+        touched hashes, and the probes of new content for reading its tags."""
         with ThreadPoolExecutor(max_workers=self._workers) as pool:
             hashes = list(pool.map(lambda e: blake2b_file(root / e.rel), changed))
             stats.hashed = len(hashes)
@@ -184,7 +192,8 @@ class Scanner:
                     "asset_hash = excluded.asset_hash, scan_id = excluded.scan_id",
                     (source.id, entry.rel, entry.size, entry.mtime_ns, digest, scan_id),
                 )
-        return set(hashes)
+        probed = {digest: result for (digest, _), result in zip(new, probes, strict=True)}
+        return set(hashes), probed
 
     def _sweep(self, source_id: str, scan_id: int, touched: set[str], stats: ScanStats) -> None:
         """Drop paths not seen this scan; a vanished path whose content reappeared is a move."""
@@ -211,6 +220,46 @@ class Scanner:
             for digest in sorted(to_retag):
                 self._retag(digest)
         db.set_meta(self._conn, PRIORS_KEY, str(names.VERSION))
+
+    def _read_inside(self, source_id: str, probed: Mapping[str, Probe], stats: ScanStats) -> None:
+        """Read what files say about themselves (REQ-CAT-12): each file in this
+        source or a download store that this reader hasn't read, or couldn't.
+        New content was probed moments ago, so its tags are already known."""
+        todo = self._unread(source_id)
+        with ThreadPoolExecutor(max_workers=self._workers) as pool:
+            found = list(
+                pool.map(
+                    lambda item: embedded.read(
+                        item[1], probed.get(item[0]) or probe(self._runner, item[1])
+                    ),
+                    todo,
+                )
+            )
+        now = self._clock()
+        with self._conn:
+            for (digest, _), item in zip(todo, found, strict=True):
+                made = embedded.store(self._conn, digest, item, now)
+                stats.told.update({label.name for label in made})
+                stats.unreadable_inside += item.error is not None
+        stats.read_inside = len(todo)
+
+    def _unread(self, source_id: str) -> list[tuple[str, Path]]:
+        """(hash, a path to it on disk) for each file the current reader hasn't read."""
+        rows = self._conn.execute(
+            "SELECT f.asset_hash, s.location, f.rel_path FROM source_file f "
+            "JOIN source s ON s.id = f.source_id "
+            "WHERE (f.source_id = ? OR s.kind = 'remote') AND NOT EXISTS ("
+            "  SELECT 1 FROM embedded e WHERE e.asset_hash = f.asset_hash "
+            "  AND e.version = ? AND e.error IS NULL"
+            ") ORDER BY f.asset_hash, f.source_id != ?, f.rel_path",
+            (source_id, embedded.VERSION, source_id),
+        )
+        todo: dict[str, Path] = {}
+        for digest, location, rel in rows:
+            path = Path(location).expanduser() / rel
+            if digest not in todo and path.is_file():
+                todo[digest] = path
+        return sorted(todo.items())
 
     def _finish(self, source_id: str, scan_id: int, stats: ScanStats) -> None:
         now = self._clock()

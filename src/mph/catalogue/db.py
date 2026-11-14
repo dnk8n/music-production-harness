@@ -2,7 +2,7 @@
 
 Schema changes are append-only migrations tracked with ``PRAGMA user_version``,
 so an old catalogue upgrades in place and a fresh one is built from scratch
-by the same code path.
+by the same code path. Each migration runs in one transaction.
 """
 
 from __future__ import annotations
@@ -198,6 +198,32 @@ MIGRATIONS: tuple[str, ...] = (
     CREATE UNIQUE INDEX idea_benchmark ON idea (ref)
         WHERE kind = 'benchmark' AND dropped_at IS NULL;
     """,
+    # 10: what files say about themselves (REQ-CAT-12): their tags and loop and sampler
+    # chunks, as read by one version of the reader. Labels drawn from it have origin
+    # 'embedded', which tag's CHECK must allow, so tag is copied into a new table.
+    """
+    CREATE TABLE tag_v10 (
+        asset_hash TEXT NOT NULL REFERENCES asset (hash) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        value TEXT NOT NULL,
+        origin TEXT NOT NULL
+            CHECK (origin IN ('folder', 'filename', 'embedded', 'analysis', 'human')),
+        confidence REAL NOT NULL CHECK (confidence BETWEEN 0 AND 1),
+        PRIMARY KEY (asset_hash, name, value, origin)
+    );
+    INSERT INTO tag_v10 (asset_hash, name, value, origin, confidence)
+        SELECT asset_hash, name, value, origin, confidence FROM tag;
+    DROP TABLE tag;
+    ALTER TABLE tag_v10 RENAME TO tag;
+    CREATE INDEX tag_lookup ON tag (name, value);
+    CREATE TABLE embedded (
+        asset_hash TEXT PRIMARY KEY REFERENCES asset (hash) ON DELETE CASCADE,
+        version INTEGER NOT NULL,            -- the reader that read it (embedded.VERSION)
+        read_at TEXT NOT NULL,
+        found_json TEXT NOT NULL,            -- tags; acid, smpl, inst, basc; picture; skipped
+        error TEXT                           -- why the file couldn't be read, if it couldn't
+    );
+    """,
 )
 
 
@@ -205,10 +231,14 @@ def connect(path: Path) -> sqlite3.Connection:
     """Open (creating if needed) and migrate the catalogue at ``path``."""
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA journal_mode = WAL")
-    migrate(conn)
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA journal_mode = WAL")
+        migrate(conn)
+    except BaseException:
+        conn.close()
+        raise
     return conn
 
 
@@ -217,10 +247,18 @@ def schema_version(conn: sqlite3.Connection) -> int:
 
 
 def migrate(conn: sqlite3.Connection) -> None:
+    """Run each missing migration in one transaction with its version stamp, so a
+    migration that fails half way (migration 10 drops and rebuilds ``tag``) leaves
+    the catalogue as it was."""
     for version in range(schema_version(conn), len(MIGRATIONS)):
-        with conn:
-            conn.executescript(MIGRATIONS[version])
-            conn.execute(f"PRAGMA user_version = {version + 1}")
+        try:
+            conn.executescript(
+                f"BEGIN;\n{MIGRATIONS[version]}\nPRAGMA user_version = {version + 1};\nCOMMIT;"
+            )
+        except sqlite3.Error:
+            if conn.in_transaction:
+                conn.rollback()
+            raise
 
 
 def get_meta(conn: sqlite3.Connection, key: str) -> str | None:

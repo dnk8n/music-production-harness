@@ -26,9 +26,9 @@ Implementation: `src/mph/query/`.
 |---|---|
 | `overview` | Start here: config, sources (download stores too) and how much of each is analysed, catalogue size, roles counted two ways (REQ-QRY-11), benchmarks per project with how their takes are rated, open ideas, disk used by renders |
 | `feedback` | The work Dean's ratings and ideas ask for: unresolved takes with their stars and feedback, and open ideas (REQ-QRY-12) |
-| `labels` | The tag vocabulary (role, pack, bpm, key, form, character) with counts by origin, or the values of one tag |
+| `labels` | The tag vocabulary (role, pack, bpm, key, form, character, and what files say about themselves, such as title, artist and album) with counts by origin, or the values of one tag |
 | `search_sounds` | The catalogue search (REQ-CAT-05): hard filters, then hits ranked by fit with their reasons and licence |
-| `sound` | Everything about one sound: files, tags, analysis, licence and download, lineage, stashes, renders that used it |
+| `sound` | Everything about one sound: files, tags, what the file says about itself (REQ-CAT-12), analysis, licence and download, lineage, stashes, renders that used it |
 | `benchmarks` | Every benchmark and its takes: rendered or not, which measurements failed, the rating that stands with its stars, status and feedback (REQ-QRY-10) |
 | `benchmark` | One benchmark: what to hear, its score file, each take's newest render in brief (kit, failed measurements, levels, commit), render history, ratings as given |
 | `report` | One render's full report: kit, levels, measurements, files, commit, and the ratings given on it |

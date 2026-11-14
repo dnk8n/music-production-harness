@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from mph.catalogue.probe import parse, probe
+import pytest
+
+from mph.catalogue.probe import Picture, parse, probe
 from mph.proc import Result
 from tests.fakes import FakeRunner
 
@@ -52,3 +54,56 @@ def test_probe_failure_and_garbage() -> None:
     assert probe(bad, Path("x.wav")).error == "Invalid data"
     garbage = FakeRunner(responses={"ffprobe": Result(0, "not json")})
     assert (probe(garbage, Path("x.wav")).error or "").startswith("unreadable")
+
+
+@pytest.mark.req("REQ-CAT-12")
+def test_tags_come_from_the_file_and_its_audio_stream() -> None:
+    out = json.dumps(
+        {
+            "streams": [
+                {
+                    "codec_type": "audio",
+                    "codec_name": "vorbis",
+                    "tags": {"encoder": "libvorbis", "title": "Stream title", "TBPM": 120},
+                }
+            ],
+            "format": {"format_name": "ogg", "tags": {"title": "Love Train"}},
+        }
+    )
+    assert parse(out).tags == {"encoder": "libvorbis", "title": "Love Train", "TBPM": "120"}
+
+
+@pytest.mark.req("REQ-CAT-12")
+def test_cover_art_is_noted_but_its_tags_and_stream_are_not_the_sound() -> None:
+    out = json.dumps(
+        {
+            "streams": [
+                {
+                    "codec_type": "video",
+                    "codec_name": "mjpeg",
+                    "width": 1400,
+                    "height": 1400,
+                    "disposition": {"attached_pic": 1},
+                    "tags": {"comment": "Cover (front)"},
+                },
+                {
+                    "codec_type": "audio",
+                    "codec_name": "flac",
+                    "sample_rate": "44100",
+                    "channels": 2,
+                    "disposition": {"attached_pic": 0},
+                },
+            ],
+            "format": {"format_name": "flac", "duration": "337.53", "tags": {"album": "X"}},
+        }
+    )
+    found = parse(out)
+    assert (found.codec, found.sample_rate, found.duration_s) == ("flac", 44100, 337.53)
+    assert found.picture == Picture("mjpeg", 1400, 1400)
+    assert found.tags == {"album": "X"}
+
+
+def test_a_file_with_only_a_picture_has_no_audio() -> None:
+    out = json.dumps({"streams": [{"codec_type": "video", "codec_name": "png"}], "format": {}})
+    assert parse(out).error == "no audio stream"
+    assert parse(json.dumps({"streams": [{"codec_type": "audio"}]})).picture is None

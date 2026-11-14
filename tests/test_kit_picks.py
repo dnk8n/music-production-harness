@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sqlite3
 from collections.abc import Iterator
 from contextlib import closing
@@ -11,6 +12,7 @@ from types import ModuleType
 
 import pytest
 
+from mph.bench import kit
 from mph.catalogue import db
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "kit_picks.py"
@@ -97,3 +99,72 @@ def test_changed_picks_list_only_the_voices_that_change(kit_picks: ModuleType) -
         "BM-1 a": ["kick: K1  ->  K2"],
         "BM-2 a": ["bell: -  ->  mph_bell"],
     }
+
+
+@pytest.mark.req("REQ-ENG-08")
+@pytest.mark.req("REQ-CAT-12")
+def test_a_break_shows_the_tempo_it_is_sliced_by(kit_picks: ModuleType) -> None:
+    sample = kit.Choice("break", "mph_play2", "why", "/s/b.wav", "ab" * 32, "Breaks/Amen.wav")
+    assert kit_picks.pick(sample) == f"Breaks/Amen.wav ({'ab' * 6})"
+    sliced = kit.Choice(
+        "break", "mph_play2", "why", "/s/b.wav", "ab" * 32, "Breaks/Amen.wav", bpm=136
+    )
+    assert kit_picks.pick(sliced) == f"Breaks/Amen.wav ({'ab' * 6}) at 136 BPM"
+    assert kit_picks.pick(kit.Choice("bell", "mph_bell", "why", label="mph_bell")) == "mph_bell"
+
+
+@pytest.mark.req("REQ-ENG-08")
+@pytest.mark.req("REQ-CAT-12")
+def test_tempo_key_and_form_changes_group_by_field_and_folder(
+    kit_picks: ModuleType, conn: sqlite3.Connection
+) -> None:
+    conn.executemany(
+        "INSERT INTO tag VALUES (?, ?, ?, ?, ?)",
+        [
+            ("k", "role", "kick", "filename", 0.6),  # roles are compared on their own
+            ("k", "form", "oneshot", "embedded", 0.8),
+            ("d", "bpm", "100", "filename", 0.6),
+            ("d", "bpm", "96", "embedded", 0.9),  # the strongest label, as search weighs them
+        ],
+    )
+    assert kit_picks.labels(conn) == {"k": {"form": "oneshot"}, "d": {"bpm": "96"}}
+    where = kit_picks.paths(conn)
+    before = {"labels": {"k": {"form": "oneshot"}, "d": {"bpm": "120"}}, "paths": where}
+    after = {
+        "labels": {"k": {"form": "oneshot"}, "d": {"bpm": "96", "key": "A:minor"}},
+        "paths": where,
+    }
+    assert kit_picks.changed_labels(before, after) == {
+        "bpm  downloads/freesound": ["downloads/freesound/Djembe Loop 07: 120 -> 96"],
+        "key  downloads/freesound": ["downloads/freesound/Djembe Loop 07: - -> A:minor"],
+    }
+
+
+@pytest.mark.req("REQ-ENG-08")
+def test_compare_prints_every_kind_of_change(
+    kit_picks: ModuleType, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    where = {"k": "Pack/Kicks/Kick 1.wav", "l": "Pack/Loops/Loop 1.wav"}
+    sides = {
+        "base": {"names_version": 5, "reader_version": None, "picks": {"BM-1 a": {"kick": "K1"}},
+                 "roles": {"k": ["kick"]}, "labels": {"l": {"bpm": "120"}}, "paths": where},
+        "ref": {"names_version": 5, "reader_version": 1, "picks": {"BM-1 a": {"kick": "K1"}},
+                "roles": {"k": ["kick"]}, "labels": {"l": {"bpm": "124", "form": "loop"}},
+                "paths": where},
+    }  # fmt: skip
+    for side, found in sides.items():
+        (tmp_path / f"{side}.json").write_text(json.dumps(found))
+    kit_picks.compare(tmp_path / "base.json", tmp_path / "ref.json")
+    assert capsys.readouterr().out.splitlines() == [
+        "names v5, files' own metadata not read  ->  names v5, files' own metadata reader v1",
+        "",
+        "Kit picks: 0 of 1 takes would pick different sounds",
+        "",
+        "Roles: 0 sounds change (- loses, + gains), by top two folders",
+        "",
+        "Tempo, key and form: 1 sounds change (old -> new), by top two folders",
+        "      1  bpm  Pack/Loops",
+        "         Pack/Loops/Loop 1.wav: 120 -> 124",
+        "      1  form Pack/Loops",
+        "         Pack/Loops/Loop 1.wav: - -> loop",
+    ]

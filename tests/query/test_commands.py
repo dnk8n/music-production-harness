@@ -14,7 +14,7 @@ from mph.proc import Result, SubprocessRunner
 from mph.query import answers, commands, mcp
 from mph.query.answers import Library
 from tests.fakes import FakeRunner
-from tests.query.conftest import HAT, KICK, RAIN, TRIMMED, library_for, make_cfg
+from tests.query.conftest import BASS, HAT, KICK, RAIN, READ_AT, TRIMMED, library_for, make_cfg
 
 ON_PATH = {"claude": "/opt/homebrew/bin/claude", "uv": "/opt/homebrew/bin/uv"}
 
@@ -80,6 +80,47 @@ def test_sound_shows_downloads_lineage_and_failed_analysis(
     assert "not analysed yet" in trimmed[-1]
     assert commands.cmd_sound(full, HAT) == 0
     assert "analysis core v2, 2026-11-02T10:00Z: failed: could not decode" in lines_of(capsys)
+
+
+@pytest.mark.req("REQ-CAT-09")
+@pytest.mark.req("REQ-CAT-12")
+def test_sound_shows_what_the_file_says_about_itself(
+    told: Library, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def inside(ref: str) -> list[str]:
+        assert commands.cmd_sound(told, ref) == 0
+        lines = lines_of(capsys)
+        start = next(n for n, line in enumerate(lines) if line.startswith("inside the file"))
+        end = next(n for n, line in enumerate(lines) if line.startswith("analysis "))
+        return lines[start:end]
+
+    assert inside(BASS) == [
+        f"inside the file (read {READ_AT}, reader v1):",
+        "  title  Bass 1",
+        "  genre  Synthpop",
+        "  Apple Loop: loop, 16 beats in 4/4, root D2 (38), scale minor",
+        "  instrument: base note D2 (38) -3 cents, notes C-1 (0) to G9 (127), loop 0-88200 forward",
+        "  cover art: png 300x300 (not kept)",
+    ]
+    assert commands.cmd_sound(told, BASS) == 0
+    assert "  title     Bass 1   embedded  1" in lines_of(capsys)
+    assert commands.cmd_sound(told, RAIN) == 0
+    rain = lines_of(capsys)
+    start = rain.index(f"inside the file (read {READ_AT}, reader v1):")
+    assert rain[start + 1 : start + 4] == [
+        "  ACID: one-shot, 0 beats in 4/4 at 120 BPM",
+        "  sampler: unity note C4 (60) +0 cents, loop 0-1000 forward",
+        "  skipped inst: 3 bytes, wanted at least 7",
+    ]
+    assert inside(KICK) == [
+        "inside the file: not read yet (the next `mph catalogue scan` reads it)"
+    ]
+    assert inside(HAT) == [
+        f"inside the file (read {READ_AT}, reader v1): "
+        "couldn't be read: cannot read Hat.wav: Permission denied"
+    ]
+    assert commands.cmd_sound(told, TRIMMED) == 0  # mph made it, without tags: nothing to read
+    assert not any(line.startswith("inside the file") for line in lines_of(capsys))
 
 
 @pytest.mark.req("REQ-CAT-09")

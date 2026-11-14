@@ -102,3 +102,18 @@ def test_empty_selection(conn: sqlite3.Connection) -> None:
 )
 def test_relative_key(key: str, relative: str) -> None:
     assert agreement.relative_key(key) == relative
+
+
+@pytest.mark.req("REQ-CAT-12")
+def test_the_files_own_labels_are_measured_apart_from_names(conn: sqlite3.Connection) -> None:
+    # The pack names the loop well, but the file's BPM tag is wrong.
+    tag(conn, "a", "bpm", "128", "filename", confidence=0.6)
+    tag(conn, "a", "bpm", "120", "embedded", confidence=0.35)
+    tag(conn, "a", "bpm", "128.2", "analysis")
+    tag(conn, "b", "key", "A:minor", "embedded", confidence=0.35)
+    tag(conn, "b", "key", "C:major", "analysis")  # the relative key: forgiven
+    names = {r.field: r for r in agreement.measure(conn, ["a", "b"])}
+    own = {r.field: r for r in agreement.measure(conn, ["a", "b"], agreement.OWN)}
+    assert (names["bpm"].agreed, names["bpm"].compared, names["key"].compared) == (1, 1, 0)
+    assert (own["bpm"].agreed, own["bpm"].compared) == (0, 1)
+    assert (own["key"].agreed, own["key"].compared) == (1, 1)

@@ -11,8 +11,11 @@ Evidence rules, from the spec:
 - Tempo matches allow half and double time. One-shots have no tempo and pass a
   BPM filter without gaining or losing score.
 - Keys match when they're the same scale or one step round the circle of
-  fifths (``agreement.compatible``). A pack's key label wins over the analysed
-  key. Sounds with no key (most drums) pass a key filter neutrally.
+  fifths (``agreement.compatible``). A key label, from the pack's names or the
+  file itself (REQ-CAT-12), wins over the analysed key. Sounds with no key
+  (most drums) pass a key filter neutrally.
+- Words also match the labels files give themselves: a track's title, artist,
+  album or label (REQ-CAT-12).
 - Words match whole words of a sound's paths and labels, never part of one:
   "dub" doesn't find DUBSTEP, and "m1" doesn't find Tom1.
 """

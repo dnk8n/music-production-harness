@@ -64,3 +64,9 @@ def test_only_net_talks_to_the_network() -> None:
         if p.relative_to(SRC).as_posix() not in allowed and imported_modules(p) & network
     ]
     assert offenders == []
+
+
+@pytest.mark.req("REQ-ENG-09")
+def test_a_passing_tests_temporary_folder_is_deleted(pytestconfig: pytest.Config) -> None:
+    # The setting pytest actually loaded, wherever it was configured.
+    assert pytestconfig.getini("tmp_path_retention_policy") == "failed"

@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from mph.bench import audio, checks, commands, kit, render, sc, score
+from mph.bench import audio, checks, commands, kit, render, sc, scmix, score
 from mph.bench.score import ScoreError, Sidechain
 from tests.bench.test_render import cfg_for, renoise_ready, runner
 
@@ -129,9 +129,9 @@ def test_every_kick_starts_a_dip_at_its_own_sample(tmp_path: Path) -> None:
     bundles = sc.build(plan, score.events(loaded))
     setup = [m for m in bundles[0].messages if m.address in ("/g_new", "/s_new")]
     assert [m.args[:4] for m in setup] == [
-        (sc.VOICES_GROUP, sc.TAIL, 0),
-        (sc.SIDECHAIN_GROUP, sc.AFTER, sc.VOICES_GROUP),
-        ("mph_ducker", sc.AUTO_NODE, sc.TAIL, sc.SIDECHAIN_GROUP),
+        (scmix.VOICES_GROUP, scmix.TAIL, 0),
+        (scmix.SIDECHAIN_GROUP, scmix.AFTER, scmix.VOICES_GROUP),
+        ("mph_ducker", scmix.AUTO_NODE, scmix.TAIL, scmix.SIDECHAIN_GROUP),
     ]
     ducks = [(b.time_s, m) for b in bundles for m in b.messages if m.args[:1] == ("mph_duck",)]
     kicks = [e.sample(RATE) / RATE for e in score.events(loaded) if e.voice == "kick"]
@@ -267,3 +267,71 @@ def test_bm_sc_01_ducks_the_pad_and_acid_under_every_kick(tmp_path: Path) -> Non
 def test_bm_sc_01_plays_the_bm_bass_01_line() -> None:
     acid = score.load("BM-SC-01").voice("acid")
     assert acid == score.load("BM-BASS-01").voice("acid")
+
+
+@pytest.mark.req("REQ-BEN-12")
+def test_a_dip_is_timed_from_the_targets_first_sound_when_it_starts_late() -> None:
+    # A pad fading in on the kick: nothing to measure for 8 ms, then the dip
+    # is already at its depth.
+    chain = Sidechain("kick", ("pad",))
+    wet, dry = _gain(_dip(6, 0.002, 0.2))
+    silent = round(0.008 * RATE)
+    wet[:silent], dry[:silent] = 0.0, 0.0
+    found = checks.sidechain(chain, "pad", wet, dry, [0.0], rate=RATE)
+    assert all(c.passed for c in found)
+    assert found[1].value == 0.5  # reached in its first heard window
+    # A dip that comes late after the pad starts still fails.
+    slow_wet, slow_dry = _gain(_dip(6, 0.02, 0.2))
+    slow_wet[:silent], slow_dry[:silent] = 0.0, 0.0
+    late = checks.sidechain(chain, "pad", slow_wet, slow_dry, [0.0], rate=RATE)
+    assert [c.passed for c in late] == [True, False, True, True]
+
+
+@pytest.mark.req("REQ-BEN-12")
+def test_a_dip_cut_short_by_the_next_hit_is_followed_up_to_it() -> None:
+    # A kick pushed onto the last eighth: its dip is still on the way back
+    # when the downbeat's dip starts, 250 ms later.
+    chain = Sidechain("kick", ("pad",), release_ms=400.0)
+    depth = sc.reduction(6)
+    first = 1 - 10 ** (_dip(6, 0.002, 0.4, length_s=0.75) / 20)
+    second = np.zeros_like(first)
+    second[round(0.25 * RATE) :] = 1 - 10 ** (_dip(6, 0.002, 0.4) / 20)
+    wet, dry = _gain(20 * np.log10(1 - np.minimum(first + second, depth)))
+    found = checks.sidechain(chain, "pad", wet, dry, [0.0, 0.25], rate=RATE)
+    assert all(c.passed for c in found)
+    assert found[2].note == "1 of 2 dips ran their course before the next hit"
+
+
+@pytest.mark.req("REQ-BEN-12")
+def test_the_whole_mix_is_measured_after_hits_where_a_target_sounds() -> None:
+    rate = RATE
+    t = np.arange(rate) / rate
+    tone = (0.3 * np.sin(2 * np.pi * 220 * t)).astype(np.float32)[:, None].repeat(2, axis=1)
+    target = tone.copy()
+    target[: rate // 2] = 0.0  # the target only comes in half way
+    ducked = target * np.float32(10 ** (-6 / 20))
+    hits = [0.0, 0.5]
+    every = audio.window_changes(
+        tone + ducked, tone + target, hits, rate=rate, start_s=0.1, end_s=0.2
+    )
+    assert every == pytest.approx([0.0, -2.5], abs=0.05)
+    heard = audio.window_changes(
+        tone + ducked, tone + target, hits, rate=rate, start_s=0.1, end_s=0.2, heard=target
+    )
+    assert heard == pytest.approx([-2.5], abs=0.05)
+
+
+@pytest.mark.req("REQ-BEN-12")
+def test_recovery_is_measured_as_soon_as_the_target_sounds_again() -> None:
+    # A bass line between notes when the release ends: the level waits for
+    # the next note, 5 ms later, instead of going unmeasured.
+    chain = Sidechain("kick", ("bass",))
+    wet, dry = _gain(_dip(6, 0.002, 0.2))
+    gap = slice(round(0.205 * RATE), round(0.215 * RATE))
+    wet[gap], dry[gap] = 0.0, 0.0
+    found = checks.sidechain(chain, "bass", wet, dry, [0.0], rate=RATE)
+    assert found[2].passed and found[2].note == "1 of 1 dips ran their course before the next hit"
+    # Still down when it sounds again: a fail.
+    slow_wet, slow_dry = _gain(_dip(6, 0.002, 0.4))
+    slow_wet[gap], slow_dry[gap] = 0.0, 0.0
+    assert not checks.sidechain(chain, "bass", slow_wet, slow_dry, [0.0], rate=RATE)[2].passed

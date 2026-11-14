@@ -16,8 +16,9 @@ exactly as stored.
 
 ### REQ-AUD-02: Intermediates are 32-bit float at the production rate
 Synth stems, processed derivatives and the Renoise master render are 32-bit
-float WAV at `audio.production_sample_rate` (default 96 kHz). Derivatives of
-a sample (trims, chops, separated stems) keep the sample's native rate.
+float WAV at `audio.production_sample_rate` (default 96 kHz), or at a
+track's own rate (REQ-TRK-06). Derivatives of a sample (trims, chops,
+separated stems) keep the sample's native rate.
 - **Why:** float has headroom (no clipping between stages) and needs no
   dither. A higher rate pushes synth aliasing out of the audible band.
 - **Verify:** measure

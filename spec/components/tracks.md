@@ -1,6 +1,7 @@
 # Tracks
 
-**Status:** draft (arranged scores for the Love Train remixes, 2026-11-14)
+**Status:** draft (arranged scores for the Love Train remixes, 2026-11-14;
+stems' tempo, a track's rate and cues inside sections for remix 1, version 2)
 
 A track is a long score in a project of its own, such as a remix. It is the
 same TOML as a benchmark (REQ-BEN-04), with three additions. Sections say
@@ -61,9 +62,12 @@ Autofade keeps the cuts free of clicks. In SuperCollider, a cue plays the
 recording from the clip's first frame.
 
 Every render checks each cue against the recording, near its start and near
-its end. The clip's stem must line up with the recording's bars to within
-1 ms, and cancel against them to -20 dB or lower. So a clip that starts late,
-drifts, plays the wrong bars or plays at another speed fails.
+its end: at the loudest half second in the cue's first quarter and in its
+last quarter, so a vocal line that starts on beat 2 is checked where it
+sings, not in the silence before it. The clip's stem must line up with the
+recording's bars to within 1 ms, and cancel against them to -20 dB or
+lower. So a clip that starts late, drifts, plays the wrong bars or plays at
+another speed fails.
 - **Why:** a remix is built from the source's own bars (2026-11-13: "take a
   few loops, stem separate them, infuse it with other sounds"). The research
   for remix 1 recommends a re-edit built from source bars before anything
@@ -105,3 +109,40 @@ last bar gets a note-off where it stops.
   users find their way around an arrangement, and they let Dean move, copy
   or repeat a section as one block.
 - **Verify:** test; inspect: open a track's song in Renoise
+
+### REQ-TRK-05: Stems keep their recording's tempo
+A stem separated from a recording (REQ-CAT-11) plays at the recording's
+speed, so a clip voice that pins a stem places its clips by the tempo the
+catalogue measured for the recording it came from, when the stem has no
+tempo of its own. Bar 1 is where it is in the recording.
+- **Why:** remix 1's second version plays the vocals and the train's horn
+  from their stems, not from the mix. Demucs keeps every sample in place,
+  so a stem has its recording's grid, but the catalogue measures tempo for
+  sources, not for derivatives.
+- **Verify:** test
+
+### REQ-TRK-06: A track's sample rate
+A track can render at a rate of its own, `rate = 48000`, in place of the
+production rate (REQ-AUD-02), but never below the delivery rate. Its stems,
+master and checks use that rate, and its delivery needs no conversion.
+- **Why:** an 8-minute track with 14 voices writes about 2.6 GB of stems at
+  48 kHz and twice that at 96 kHz, and Dean's Mac had about 9 GB free
+  (2026-11-14). The new synths are band-limited (REQ-AUD-04), so they don't
+  need the higher rate to keep aliasing down, and the clips play from
+  recordings at 44.1 kHz.
+- **Verify:** test
+
+### REQ-TRK-07: Cues inside a section
+A clip voice can cue clips at the start of any bar, not only where a
+section starts: `cues = [[40, "verse-1"], [44, "verse-2"]]`. The section
+holding that bar must list the voice, and nothing else may cue it in the
+same bar. A clip cued this way stops like any other: at its last bar, at
+the next cue, in a section that leaves the voice out, or at the end. A
+section can list the voice on its own while nothing plays, as long as one
+of the voice's cues falls inside it. An excerpt keeps the cues in its bars.
+- **Why:** a singer starts a line where it fits the song, not where the
+  arrangement changes. Love Train's lines start on beat 2 of even bars, as
+  pickups into phrases that start on odd bars. Cueing them inside sections
+  keeps the sections, and the Renoise patterns made from them
+  (REQ-TRK-04), lined up with the phrases.
+- **Verify:** test

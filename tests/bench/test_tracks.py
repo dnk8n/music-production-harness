@@ -308,32 +308,77 @@ def test_an_excerpt_names_its_track_and_bars_and_nothing_else(text: str, message
         score.load_text(text)
 
 
-BLOCKS = {  # block: (its bars of the whole track, what its clips play, as (clip, bar, bars))
-    "BM-LTDJ-01": ((25, 48), [("train", 5, 4), ("groove", 9, 16)]),
-    "BM-LTDJ-02": ((65, 96), [("verse", 1, 16), ("chorus", 17, 16)]),
-    "BM-LTDJ-03": (
-        (125, 152),
-        [("verse-2 from bar 81", 1, 4), ("verse-3", 5, 12), ("train", 17, 4), ("chorus", 21, 8)],
+BLOCKS = {  # block: (its bars of the whole track, what its clips play, as (voice, clip, bar, bars))
+    "BM-LTDJ-01": (
+        (25, 52),
+        [
+            ("vox", "teaser", 4, 2),
+            ("vox", "horn-1", 9, 5),
+            ("vox", "verse-1a", 16, 4),
+            ("vox", "verse-1b", 20, 4),
+            ("vox", "verse-1c", 24, 4),
+            ("vox", "pre-1", 28, 1),
+            ("siren", "horn-1", 9, 5),
+        ],
     ),
-    "BM-LTDJ-04": ((177, 208), [("verse-4", 1, 16), ("outro", 17, 4), ("last-train", 29, 4)]),
+    "BM-LTDJ-02": (
+        (53, 80),
+        [
+            ("vox", "pre-1 from bar 49", 1, 7),
+            ("vox", "hook-1a", 8, 4),
+            ("vox", "hook-1b", 12, 4),
+            ("vox", "hook-1c", 16, 4),
+            ("vox", "vamp", 20, 9),
+        ],
+    ),
+    "BM-LTDJ-03": (
+        (97, 128),
+        [
+            ("vox", "pre-2 from bar 123", 1, 7),
+            ("vox", "hook-2a", 8, 4),
+            ("vox", "horn-2", 14, 4),
+            ("vox", "hook-2b", 20, 4),
+            ("vox", "hook-2c", 24, 4),
+            ("vox", "hook-1a", 28, 4),
+            ("siren", "horn-2", 14, 4),
+        ],
+    ),
+    "BM-LTDJ-04": (
+        (173, 204),
+        [
+            ("vox", "adlib-3 from bar 151", 1, 3),
+            ("vox", "tag", 8, 6),
+            ("vox", "horn-2", 22, 4),
+            ("vox", "hook-1a", 28, 4),
+            ("siren", "horn-2", 22, 4),
+        ],
+    ),
 }
 
 
+def _cued(loaded: score.Score) -> list[tuple[str, str, int, int]]:
+    return [
+        (p.voice, loaded.voice(p.voice).clips[p.clip].name, p.bar, p.bars)
+        for p in score.plays(loaded)
+    ]
+
+
 @pytest.mark.req("REQ-TRK-03")
+@pytest.mark.req("REQ-TRK-07")
 @pytest.mark.parametrize("block", sorted(BLOCKS))
 def test_remix_ones_blocks_are_cut_from_the_whole_track(block: str) -> None:
     whole, part = score.load("BM-LTDJ-05"), score.load(block)
     (first, last), cues = BLOCKS[block]
     assert part.excerpt == score.Excerpt("BM-LTDJ-05", first, last)
-    assert (part.bars, part.lead_bars, part.bpm, part.swing) == (
+    assert (part.bars, part.lead_bars, part.bpm, part.swing, part.rate) == (
         last - first + 1,
         first - 1,
         120,
-        0.58,
+        0.55,
+        48000,
     )
     assert part.project == whole.project == "Love Train remix 1: Detroit x Jersey"
-    song = part.voice("source")
-    assert [(song.clips[p.clip].name, p.bar, p.bars) for p in score.plays(part)] == cues
+    assert _cued(part) == cues
     steps, bar_s = 16, whole.bar_s
     for voice in (v for v in whole.voices if not v.clips):
         inside = [
@@ -345,15 +390,32 @@ def test_remix_ones_blocks_are_cut_from_the_whole_track(block: str) -> None:
 
 
 @pytest.mark.req("REQ-TRK-02")
-def test_remix_ones_whole_track_is_a_re_edit_of_the_source() -> None:
+@pytest.mark.req("REQ-TRK-07")
+def test_remix_ones_whole_track_weaves_the_vocals_and_horn_through_new_parts() -> None:
     whole = score.load("BM-LTDJ-05")
-    assert (whole.bars, whole.bpm, len(whole.sections)) == (240, 120, 22)
+    assert (whole.bars, whole.bpm, whole.rate, whole.swing, len(whole.sections)) == (
+        240,
+        120,
+        48000,
+        0.55,
+        22,
+    )
     assert whole.length_s == 481.0  # 8:00 and the tail
-    source = whole.voice("source")
-    assert source.sound.hash.startswith("406fc403707b")
-    cued = [(source.clips[p.clip].name, p.bar) for p in score.plays(whole)]
-    assert cued[0] == ("train", 29) and ("train", 141) in cued and cued[-1] == ("last-train", 205)
-    assert [v.name for v in score.all_variants(whole)] == ["renoise", "supercollider"]
+    # Nothing of the original's band plays: the only recordings are two stems.
+    vox, siren = whole.voice("vox"), whole.voice("siren")
+    assert [v.name for v in whole.voices if v.clips] == ["vox", "siren"]
+    assert vox.sound.hash.startswith("c2b24168a2cb") and siren.sound.hash.startswith("4ed4ea4d21f7")
+    cued = _cued(whole)
+    assert [(v, bar) for v, clip, bar, _ in cued if clip.startswith("horn")] == [
+        ("vox", 33), ("vox", 110), ("vox", 194), ("siren", 33), ("siren", 110), ("siren", 194),
+    ]  # fmt: skip
+    assert len([c for c in cued if c[0] == "vox" and not c[1].startswith("horn")]) == 28
+    # Each line moves by an even number of bars, so it stays on the chords it was sung on.
+    for play in score.plays(whole):
+        clip = whole.voice(play.voice).clips[play.clip]
+        assert (play.bar - clip.first) % 2 == 0, clip.name
+    assert whole.mixed and whole.sidechain is not None
+    assert [v.name for v in score.all_variants(whole)] == ["supercollider"]
 
 
 # --- sections in Renoise (REQ-TRK-04) ------------------------------------------------------
@@ -606,9 +668,10 @@ def test_a_silent_stem_cancels_nothing_so_its_clip_fails() -> None:
 
 @pytest.mark.req("REQ-TRK-03")
 def test_chokes_and_humanising_rest_with_their_voices() -> None:
-    block = score.load("BM-LTDJ-02")  # the source alone: the kit rests, the hats too
+    # The first departure: the strings, the shaker and the horn; the kit and the hats rest.
+    block = score.excerpt(score.load("BM-LTDJ-05"), 33, 36, id="BM-LTDJ-X")
     found = score.events(block)
-    assert {e.voice for e in found} == {"source"}
+    assert {e.voice for e in found} == {"strings_a", "strings_b", "shaker", "vox", "siren"}
     silent = {v.name: np.zeros((48000, 2), np.float32) for v in block.voices}
     assert checks.chokes(block, found, silent, {}, 48000) == []
     resting = score.excerpt(track(), 3, 4, id="BM-TT-Y")
@@ -632,3 +695,170 @@ def test_the_listing_reads_the_track_specs(tmp_path: Path) -> None:
     assert found["BM-LTDJ-05"] == found["BM-LTDJ-01"] == "Love Train remix 1: Detroit x Jersey"
     assert "BM-DRUM-02" in found
     assert ideas.specced(tmp_path / "missing.md") == []
+
+
+# --- stems keep their recording's tempo (REQ-TRK-05) -------------------------------------
+
+
+def add_stem(conn: sqlite3.Connection, data: Path, song: str, part: str = "vocals") -> str:
+    """A stem of ``song`` in the cache, recorded as Demucs' work: no tempo of its own."""
+    row = conn.execute(
+        "SELECT s.location, f.rel_path FROM source_file f JOIN source s ON s.id = f.source_id "
+        "WHERE f.asset_hash = ?",
+        (song,),
+    ).fetchone()
+    signal, rate = soundfile.read(str(Path(row[0]) / row[1]), dtype="float32", always_2d=True)
+    digest = f"{abs(hash(song + part)):064x}"[:64]
+    path = data / "cache" / digest[:2] / f"{digest}.wav"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    soundfile.write(str(path), np.repeat(signal, 2, axis=1) * 0.5, rate, subtype="FLOAT")
+    with conn:
+        conn.execute(
+            "INSERT INTO asset (hash, bytes, container, sample_rate, channels, duration_s, "
+            "origin) VALUES (?, 1, 'wav', ?, 2, ?, 'derivative')",
+            (digest, rate, len(signal) / rate),
+        )
+        conn.execute(
+            "INSERT OR IGNORE INTO recipe VALUES ('stems-1', 'stems', 1, '{}')",
+        )
+        conn.execute(
+            "INSERT INTO derivation VALUES (?, 'stems-1', ?, '2026-11-14T00:00:00Z')",
+            (digest, f'["{song}"]'),
+        )
+    return digest
+
+
+@pytest.mark.req("REQ-TRK-05")
+def test_a_stem_plays_at_its_recordings_tempo(
+    conn: sqlite3.Connection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    data = tmp_path / "data"
+    song = add_song(conn, tmp_path)
+    stem = add_stem(conn, data, song)
+    chosen = {c.voice: c for c in kit.choose(track(stem), conn, data)}
+    assert (chosen["song"].digest, chosen["song"].bpm) == (stem, 120.0)
+    _scores(monkeypatch, stem)
+    outcome = render.run("BM-TT", cfg_for(tmp_path), runner(), conn, engine="supercollider")
+    assert [m for m in _measured(outcome.report).values() if not m["passed"]] == []
+    # A stem of a recording with no tempo has none either.
+    untimed = add_stem(conn, data, add_song(conn, tmp_path, bpm=""), part="other")
+    with pytest.raises(kit.KitError, match="has no known tempo to place its clips by"):
+        kit.choose(track(untimed), conn, data)
+
+
+# --- a track's own rate (REQ-TRK-06) ------------------------------------------------------
+
+
+@pytest.mark.req("REQ-TRK-06")
+def test_a_track_can_render_at_a_rate_of_its_own(tmp_path: Path) -> None:
+    own_rate = changed("bars = 8", "bars = 8\nrate = 48000")
+    assert own_rate.rate == 48000 and track().rate == 0
+    assert own_rate.digest() != track().digest()
+    cfg = cfg_for(tmp_path, rate=96000)
+    assert render.production_rate(cfg, own_rate) == 48000
+    assert render.production_rate(cfg, track()) == 96000
+    low = changed("bars = 8", "bars = 8\nrate = 44100")
+    with pytest.raises(sc.RenderError, match="44100 Hz, below the delivery rate \\(48000 Hz\\)"):
+        render.production_rate(cfg, low)
+    with pytest.raises(score.ScoreError, match=r"rate is one of 44100, 48000, .* not 22050"):
+        changed("bars = 8", "bars = 8\nrate = 22050")
+
+
+@pytest.mark.req("REQ-TRK-06")
+def test_a_take_at_the_tracks_rate_needs_no_conversion(
+    conn: sqlite3.Connection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    song = add_song(conn, tmp_path)
+    whole = changed("bars = 8", "bars = 8\nrate = 48000", song)
+    monkeypatch.setattr(render, "load", lambda _: whole)
+    outcome = render.run("BM-TT", cfg_for(tmp_path, rate=96000), runner(), conn)
+    assert outcome.report["production_rate"] == 48000
+    assert audio.info(outcome.folder / "master.wav")[0] == 48000
+    assert [m for m in _measured(outcome.report).values() if not m["passed"]] == []
+
+
+# --- cues inside a section (REQ-TRK-07) ---------------------------------------------------
+
+
+CUES = "[voices.song.clips]"
+
+
+def cued(cues: str, song: str = FAKE_HASH, intro: str = INTRO) -> score.Score:
+    text = track_text(song, intro)
+    return score.load_text(text.replace(CUES, f"cues = {cues}\n{CUES}"))
+
+
+@pytest.mark.req("REQ-TRK-07")
+def test_a_clip_voice_cues_clips_at_any_bar_its_section_lists_it() -> None:
+    loaded = cued('[[6, "c"]]')
+    assert loaded.voice("song").cues == ((6, "c"),)
+    # a plays from bar 3 until the cue at 6; c until the next section cues b.
+    assert score.plays(loaded) == [
+        Play("song", 0, 3, 3),
+        Play("song", 2, 6, 1),
+        Play("song", 1, 7, 2),
+    ]
+    # A section may list the voice alone while nothing plays, if a cue falls inside it.
+    intro = INTRO.replace('"kick", "hat"', '"kick", "hat", "song"')
+    early = cued('[[2, "c"]]', intro=intro)
+    assert score.plays(early)[0] == Play("song", 2, 2, 1)
+    with pytest.raises(score.ScoreError, match="'Intro' lets song carry on, but none of its clips"):
+        track(intro=intro)
+    # An excerpt keeps the cues in its bars, counted from its first bar.
+    part = score.excerpt(loaded, 4, 7, id="BM-TT-X")
+    assert part.voice("song").cues == ((3, "c"),)
+    assert [(part.voice("song").clips[p.clip].name, p.bar, p.bars) for p in score.plays(part)] == [
+        ("a from bar 2", 1, 2),
+        ("c", 3, 1),
+        ("b", 4, 1),
+    ]
+    assert score.excerpt(loaded, 7, 8, id="BM-TT-Z").voice("song").cues == ()
+
+
+@pytest.mark.req("REQ-TRK-07")
+@pytest.mark.parametrize(
+    ("cues", "message"),
+    [
+        ('[[1, "c"]]', "cues 'c' at bar 1, but section 'Intro' leaves song out"),
+        ('[[3, "c"]]', "section 'Drop' already cues 'a' there"),
+        ('[[5, "c"], [5, "a"]]', "cues two clips in one bar"),
+        ('[[5, "z"]]', "cues 'z', which isn't one of its clips"),
+        ('[[9, "c"]]', "cues 'c' at bar 9, outside its 8 bars"),
+        ("[5]", "cues lists \\[bar, clip\\] pairs"),
+        ('[["5", "c"]]', "cues lists \\[bar, clip\\] pairs"),
+        ('"c"', "cues lists \\[bar, clip\\] pairs"),
+    ],
+)
+def test_a_cue_names_a_clip_in_a_bar_its_voice_plays(cues: str, message: str) -> None:
+    with pytest.raises(score.ScoreError, match=message):
+        cued(cues)
+
+
+@pytest.mark.req("REQ-TRK-07")
+def test_only_clip_voices_take_cues() -> None:
+    with pytest.raises(score.ScoreError, match="cues cue clips, so the voice needs clips"):
+        changed("[voices.kick]\n", '[voices.kick]\ncues = [[1, "a"]]\n')
+
+
+# --- checking a cue where it sings (REQ-TRK-02) -------------------------------------------
+
+
+@pytest.mark.req("REQ-TRK-02")
+def test_a_cue_that_starts_in_silence_is_checked_where_it_sings(
+    conn: sqlite3.Connection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The song is silent for the first beat of every clip, as a vocal line that
+    # starts on beat 2 is; the check finds the singing, not the silence.
+    song = add_song(conn, tmp_path)
+    row = conn.execute("SELECT rel_path FROM source_file WHERE asset_hash = ?", (song,)).fetchone()
+    path = tmp_path / "lib" / row[0]
+    signal, rate = soundfile.read(str(path), dtype="float32")
+    beat = rate // 2
+    for bar in range(len(signal) // (4 * beat)):
+        signal[bar * 4 * beat : bar * 4 * beat + beat] = 0.0
+    soundfile.write(str(path), signal, rate, subtype="PCM_16")
+    _scores(monkeypatch, song)
+    outcome = render.run("BM-TT", cfg_for(tmp_path), runner(), conn, engine="supercollider")
+    found = _measured(outcome.report)
+    assert found[MATCH]["passed"] and found[OFFSET]["passed"]
+    assert render._loudest(path, rate, 0, span=(0.02, 2.0), window=0.5, step=1 / 300) >= 0.5

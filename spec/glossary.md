@@ -26,6 +26,12 @@
 | **Section** | Bars of a track and the voices that play in them, named in the Renoise song's sequence (REQ-TRK-01). |
 | **Clip** | Whole bars of a recording, such as a full track or a stem, that a section cues as it is: never stretched (REQ-TRK-02). |
 | **Excerpt** | A block of a track's bars that renders and is rated on its own, before the track is finished (REQ-TRK-03). |
+| **Cue** | Where a clip starts playing: the first bar of a section that names it, or any bar a clip voice lists in its `cues` (REQ-TRK-02, REQ-TRK-07). |
+| **Strip** | A voice's channel strip in a mix: filters, level, pan and sends (REQ-MIX-01). |
+| **Send** | A shared effect, a delay or a reverb, that strips feed and that returns into the master (REQ-MIX-02). |
+| **Automation** | A control of a strip moving over the bars of a track, written as points (REQ-MIX-03). |
+| **Echo throw** | A send opened for one word or hit and closed again, so only that part echoes (REQ-MIX-03). |
+| **Chord memory** | One chord shape moved in parallel with a line, as Detroit stabs are (REQ-BEN-18, BM-KEYS-01). |
 | **Triplet grid** | A 12-step grid: eighth-note triplets, three to a beat, playing alongside 16-step grids (REQ-BEN-13). |
 | **Feel** | Where a beat's three triplet pulses fall, as shares of the beat: even, or uneven like the long-short-short of jembe drumming (REQ-BEN-13). |
 | **Timeline** | The repeating bell pattern that organises an African drum ensemble, such as the standard bell pattern in BM-AFRO-01. |

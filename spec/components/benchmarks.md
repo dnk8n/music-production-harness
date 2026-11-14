@@ -24,7 +24,9 @@ A hit is found by matching the voice's own sound, rendered alone, within
 through its loudest point (at least 20 ms, at most 250 ms, and never into
 the voice's next note), and it compares shape, not loudness. So a sound that
 swells in is found where it starts, not pulled late toward its louder part.
-The check names the hit that is furthest off.
+Each sound is rendered alone held as scored, but for at most 0.75 s, so a
+long pad's release has died away before the next sound of that voice
+starts, 2 s later. The check names the hit that is furthest off.
 - **Why:** a quantised groove that drifts sounds sloppy. We need to know the
   pipeline is sample-accurate before blaming the music. On 2026-11-13,
   BM-DRUM-02's fresh take failed at 5 ms with every hit on time. Its kick
@@ -214,14 +216,24 @@ The note timing checks use that dry render, and two kinds of measurement
 compare against it:
 - **Each target.** The gain is the ratio of the ducked target to the dry
   one, in 0.5 ms windows. At every hit, the target dips by the depth
-  (±1 dB) within 5 ms. It is back within 0.5 dB of full level 10 ms after
-  the release ends. On the way back, the gain never changes by more than
-  0.5 dB from one window to the next.
+  (±1 dB) within 5 ms. That's counted from the hit, or from the target's
+  first sound when it starts after the hit, like a pad fading in on the
+  kick. It is back within 0.5 dB of full level 10 ms after
+  the release ends, or as soon as it sounds after that (a bass line can
+  be between notes then). On the way back, the gain never changes by more than
+  0.5 dB from one window to the next. A dip that the next hit cuts short,
+  like one after a kick pushed onto the last eighth of a bar, is followed
+  only up to that hit, so its recovery isn't checked. A target with no
+  note held under any hit in the render is skipped: an excerpt can leave
+  a target out, and a pad may only play where the kick rests.
 - **The whole mix.** The ducked mix is compared with the same mix holding
   the dry targets, which is exactly what bypass sounds like. Both are
   K-weighted, as loudness is measured (ITU-R BS.1770). The comparison
-  looks at two windows after every hit: under the kick (5 to 35 ms) and
-  after it (100 to 200 ms). After the kick, the median over the hits must
+  looks at two windows after every hit where a target sounds: under the
+  kick (5 to 35 ms) and after it (100 to 200 ms). A whole track's intro,
+  with no targets yet, has nothing to pump. Recordings that aren't
+  targets, like a remix's vocals, are left out of both mixes: they ride on
+  top of the pump, so it's measured in the music under them. After the kick, the median over the hits must
   be at least 2 dB down. That's about twice the smallest change in level
   people notice, so it's heard as pumping. The window under the kick is
   reported alongside it.
@@ -234,7 +246,12 @@ compare against it:
   the kick masks the first 100 ms after each hit, and by then the dip was
   nearly over. A hold keeps the dip at full depth before it swells back:
   within one beat, the release can't grow much longer before the next
-  kick, so a hold is how a volume shaper makes the pump last longer.
+  kick, so a hold is how a volume shaper makes the pump last longer. A dip
+  can't be heard or measured in silence: on 2026-11-14 a string pad that
+  faded in on the kick read 8 ms, with the dip in place from the hit. In
+  remix 1's second version the vocals are close to half the mix's
+  loudness, so the same pump in the music under them would measure about
+  half as much with them in.
 - **Verify:** test
 
 ### REQ-BEN-13: Triplet grids and feel
@@ -336,6 +353,34 @@ the fresh take asks for it, with why.
   saved in the score with its reason, and Dean hears it next to the takes he
   has rated. Issue #31 automates the picking later.
 - **Verify:** test, listen
+
+### REQ-BEN-17: Patterns longer than a bar
+A voice's rows can hold several bars, separated by `|`: a drum grid, and a
+melodic voice's `notes`, `gate`, `accent` and `slide`. Every bar of a row
+has the same number of steps (16, or 12 for a triplet grid), and all of a
+voice's rows have the same number of bars. The pattern repeats from its
+first bar, counted from the score's bar 1, so bar *n* plays the pattern's
+bar ((*n* - 1) mod its length) + 1, and an excerpt plays what its track
+plays there (REQ-TRK-03). A one-bar row reads as before, with no `|`.
+- **Why:** Love Train's harmony changes every bar (Cmaj7, then Fmaj7), so a
+  bass line or a chord part needs at least two bars, and drum parts get
+  their fills and turnarounds every four or eight bars. Counting from the
+  track's bar 1 keeps a pattern in step with the harmony wherever a block
+  starts.
+- **Verify:** test
+
+### REQ-BEN-18: Chords
+A melodic voice can play a chord on every note: `chord = [0, 3, 7, 10]`
+lists the chord's notes in semitones above each note of `notes`, so one
+shape moves with the line. In SuperCollider every note of the chord is a
+synth voice of its own, started, slid and released together, and an accent
+accents the whole chord. The voice's level (REQ-BEN-09) is measured on the
+whole chord, and the aliasing probe (BM-BASS-01) plays its first note alone.
+- **Why:** Detroit stabs and strings move one chord shape in parallel, the
+  "chord memory" BM-KEYS-01 describes, and remix 1's stabs and strings play
+  Love Train's two chords that way. One synth per note is how SuperCollider
+  users play chords, and it keeps each note's oscillators band-limited.
+- **Verify:** test
 
 ## Drum patterns
 

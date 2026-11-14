@@ -224,7 +224,7 @@ level = [[1, -14], [37, 0], [109, 0], [109, -10], [113, 0], [193, 0], [193, -10]
 [voices.vox]
 sound = { role = "track", hash = "c2b24168a2cb70f09d14efee4b06d95ec36a29b1a80b16fe8fbd775ddd34092e", why = "Love Train's vocals: Demucs' vocal stem of Dean's FLAC (htdemucs_ft), at the source's own 120 BPM." }
 cues = [
-  [14, "teaser"], [28, "teaser"], [33, "horn-1"], [40, "verse-1a"], [44, "verse-1b"],
+  [14, "teaser"], [28, "teaser"], [34, "horn-1"], [40, "verse-1a"], [44, "verse-1b"],
   [48, "verse-1c"], [52, "pre-1"], [60, "hook-1a"], [64, "hook-1b"], [68, "hook-1c"],
   [72, "vamp"], [84, "bridge"], [96, "pre-2"], [104, "hook-2a"], [110, "horn-2"],
   [116, "hook-2b"], [120, "hook-2c"], [124, "hook-1a"], [130, "verse-2a"], [134, "verse-2b"],
@@ -234,7 +234,7 @@ cues = [
 ]
 
 [voices.vox.clips]
-horn-1 = [9, 13]
+horn-1 = [10, 13]
 verse-1a = [36, 39]
 verse-1b = [40, 43]
 verse-1c = [44, 47]
@@ -303,10 +303,10 @@ echo = [
 # the bar where each section drops.
 [voices.siren]
 sound = { role = "track", hash = "4ed4ea4d21f7ca9718a3ee67823eb11f4d762f5023eadcd332b02eca6e44b2c7", why = "Love Train's train horn: Demucs' \"other\" stem of Dean's FLAC (htdemucs_ft), where the horn sits on its own." }
-cues = [[33, "horn-1"], [110, "horn-2"], [194, "horn-2"]]
+cues = [[34, "horn-1"], [110, "horn-2"], [194, "horn-2"]]
 
 [voices.siren.clips]
-horn-1 = [9, 13]
+horn-1 = [10, 13]
 horn-2 = [164, 167]
 
 [voices.siren.mix]

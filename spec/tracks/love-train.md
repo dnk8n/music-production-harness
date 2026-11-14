@@ -88,7 +88,7 @@ The train's horn is in the "other" stem, and at its loudest it bleeds into
 the vocal stem, so each horn plays from both stems at once. It sounds like
 an E major chord (E3 with partials at E5 and G#5), set against the song's
 harmony rather than in it.
-- Horn 1 (clip 9-13): starts at 10.2, swells to its peak at 12.3, then bends
+- Horn 1 (clip 10-13): starts at 10.2, swells to its peak at 12.3, then bends
   down about three semitones (E3 to C#3) across bar 13 and fades by 14.1.
 - Horn 2 (clip 164-167): starts at 164.2, holds E3 while it rises, peaks at
   166.3, bends down across bar 167 and ends at 168.1.

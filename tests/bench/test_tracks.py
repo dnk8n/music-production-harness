@@ -313,12 +313,12 @@ BLOCKS = {  # block: (its bars of the whole track, what its clips play, as (voic
         (25, 52),
         [
             ("vox", "teaser", 4, 2),
-            ("vox", "horn-1", 9, 5),
+            ("vox", "horn-1", 10, 4),
             ("vox", "verse-1a", 16, 4),
             ("vox", "verse-1b", 20, 4),
             ("vox", "verse-1c", 24, 4),
             ("vox", "pre-1", 28, 1),
-            ("siren", "horn-1", 9, 5),
+            ("siren", "horn-1", 10, 4),
         ],
     ),
     "BM-LTDJ-02": (
@@ -407,7 +407,7 @@ def test_remix_ones_whole_track_weaves_the_vocals_and_horn_through_new_parts() -
     assert vox.sound.hash.startswith("c2b24168a2cb") and siren.sound.hash.startswith("4ed4ea4d21f7")
     cued = _cued(whole)
     assert [(v, bar) for v, clip, bar, _ in cued if clip.startswith("horn")] == [
-        ("vox", 33), ("vox", 110), ("vox", 194), ("siren", 33), ("siren", 110), ("siren", 194),
+        ("vox", 34), ("vox", 110), ("vox", 194), ("siren", 34), ("siren", 110), ("siren", 194),
     ]  # fmt: skip
     assert len([c for c in cued if c[0] == "vox" and not c[1].startswith("horn")]) == 28
     # Each line moves by an even number of bars, so it stays on the chords it was sung on.

@@ -41,7 +41,7 @@ sections = [
 # Four to the floor, with a push on the last eighth of every fourth bar.
 [voices.kick]
 grid = "X . . . X . . . X . . . X . . . | X . . . X . . . X . . . X . . . | X . . . X . . . X . . . X . . . | X . . . X . . . X . . . X . x ."
-sound = { role = "kick", hash = "8b9bc78a69c19943c681ae08110ee1e5f97a53e45eaac9c8b20de1185cb78dcf", why = "SIG_Kick_13 from Signature Techno: the classic 909 shape, tuned low (51 Hz body) with a short tail and a click near 1.3 kHz." }
+sound = { role = "kick", hash = "d8b49a309044f151a9037201a6b3fdc37cabbfa3709debb0541434c538f308e7", why = "CT2_Kick_Block_01 (Loopmasters 2016): a tight 909-type kick, a 57 Hz body under a strong click, down 9 dB by 100 ms and 18 dB by 150 ms, so the duck is heard after every hit. SIG_Kick_13 held its body near full level for 150 ms and hid it." }
 
 [voices.kick.mix]
 highpass = 28
@@ -342,11 +342,11 @@ level = -4
 highpass = 25
 
 # The kick ducks the parts that hold under it: the bass, the organ bass and
-# the strings. The stabs sit on the off-beats and need none.
+# the strings. The stabs sit on the off-beats and need none. Dean's
+# production duck: BM-SC-01's exaggerated take, 24 dB released over 430 ms.
 [sidechain]
 trigger = "kick"
 targets = ["bass", "organ", "strings_a", "strings_b"]
-depth_db = 12.0
+depth_db = 24.0
 attack_ms = 2.0
-hold_ms = 40.0
-release_ms = 330.0
+release_ms = 430.0

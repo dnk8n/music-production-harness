@@ -103,7 +103,10 @@ Detroit leads, with a splash of Jersey: 120 BPM with a light 16th swing of
   push on the last eighth of every fourth bar, claps on 2 and 4, closed
   hats on the sixteenths around open hats on the off-beats (the closed hat
   chokes the open one), a ride on the eighths, and a syncopated two-bar rim
-  figure. A shaker on the sixteenths is the Jersey part.
+  figure. A shaker on the sixteenths is the Jersey part. The kick is a
+  tight one, down 18 dB 150 ms after it hits, so the pump comes through:
+  the first pick held its body near full level for 150 ms, which hid the
+  duck in the whole mix on Dean's Mac (2026-11-14).
 - **Bass**, a new synth: a sine sub under a band-limited saw through a
   resonant low-pass with a short envelope. It rolls on every sixteenth, C
   in odd bars and F in even bars, with octave jumps and a glide down to G,
@@ -131,8 +134,9 @@ Detroit leads, with a splash of Jersey: 120 BPM with a light 16th swing of
   down through the dubs, where the stabs and the rim sink deeper into the
   echo. The strings swell in under each horn, and the closed hats rise
   under the second. The kick ducks the parts that hold under it, the
-  bass, the organ bass and the strings, by 12 dB, held for 40 ms and
-  released over 330 ms; the stabs sit on the off-beats and need none. The
+  bass, the organ bass and the strings, with Dean's production duck: 24 dB
+  in 2 ms, released over 430 ms (BM-SC-01's exaggerated take). The stabs
+  sit on the off-beats and need none. The
   last word of every vocal line is thrown into the echo, the teaser and
   the outro's hook line are filtered thin, and each horn's bend is thrown
   into the echo as it lands.

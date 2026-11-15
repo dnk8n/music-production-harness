@@ -41,7 +41,7 @@ sections = [
 # Four to the floor, with a push on the last eighth of every fourth bar.
 [voices.kick]
 grid = "X . . . X . . . X . . . X . . . | X . . . X . . . X . . . X . . . | X . . . X . . . X . . . X . . . | X . . . X . . . X . . . X . x ."
-sound = { role = "kick", hash = "d8b49a309044f151a9037201a6b3fdc37cabbfa3709debb0541434c538f308e7", why = "CT2_Kick_Block_01 (Loopmasters 2016): a tight 909-type kick, a 57 Hz body under a strong click, down 9 dB by 100 ms and 18 dB by 150 ms, so the duck is heard after every hit. SIG_Kick_13 held its body near full level for 150 ms and hid it." }
+sound = { role = "kick", hash = "d8b49a309044f151a9037201a6b3fdc37cabbfa3709debb0541434c538f308e7", why = "CT2_Kick_Block_01 from Capsun's Chill Trap & Future Bass pack, though its shape is a tight 909 kick: a 57 Hz body under a strong click, down 9 dB by 100 ms and 18 dB by 150 ms, so the duck is heard after every hit. SIG_Kick_13 held its body near full level for 150 ms and hid it." }
 
 [voices.kick.mix]
 highpass = 28

@@ -8,12 +8,15 @@ devices. Each send is a send track after the master: its effect (a Multitap's
 first tap for a delay, mpReverb 2 for a reverb), then its return strip. The
 master's strip sits on the master track.
 
-Values are written as Renoise shows them (Hz, dB, ms), and the bridge tool
-finds the parameter value that shows each one. Automation becomes points in
-each pattern: one at each lane point, one every beat along a move, and one at
-each pattern's start and end, so a move sounds the same whatever scale Renoise
-gives the parameter. The duck is a curve of points at every trigger hit; dips
-that overlap add up, never past the depth, as SuperCollider's do.
+Values are written as Renoise shows them (Hz, dB, ms, %), and the bridge tool
+finds the parameter value that shows each one. The names are those Renoise
+3.5.4 gives its devices (scripts/renoise-check lists them). A #Send's mode
+isn't a parameter, so it is set in the device's preset data. Automation
+becomes points in each pattern: one at each lane point, one every beat along
+a move, and one at each pattern's start and end, so a move sounds the same
+whatever scale Renoise gives the parameter. The duck is a curve of points at
+every trigger hit; dips that overlap add up, never past the depth, as
+SuperCollider's do.
 
 Every device has a role, which the renders switch on and off: a stem is
 rendered with the strips, sends, effects and master devices off and the duck
@@ -48,21 +51,22 @@ MODES = {  # the roles left on in each kind of render
 }
 
 # Parameter names as Renoise shows them; the first one a device has is used.
+# Renoise 3.5.4's, as scripts/renoise-check listed them on Dean's Mac (2026-11-20).
 TYPE = ("Type", "Filter Type")
-MODEL = ("Model", "Filter Model")
+MODEL = ("Model", "Filter Model")  # not a parameter in 3.5.4: the filter keeps its own
 CUTOFF = ("Cutoff", "Frequency", "Freq.", "Freq")
-Q = ("Q", "Resonance", "Resonance/Q", "Reso")
+RESONANCE = ("Resonance", "Reso")  # a share of the knob, shown in %, not a Q
 GAIN = ("Gain",)
 PANNING = ("Panning", "Pan")
 AMOUNT = ("Amount",)
-RECEIVER = ("Receiver",)
-KEEP_SOURCE = ("Mute Source", "Mute Src.", "Mute Src")  # set Off: the voice carries on
-WET_ONLY = ("Mute Src.", "Mute Source", "Mute Src", "Dry Mute")  # a send's effect, fully wet
+RECEIVER = ("Receiver",)  # shows the send track's number, from 0
+MUTE_SOURCE = ("MuteSource",)  # a #Send's mode: in its preset data, not a parameter
+WET_ONLY = ("Mute Dry", "Mute Src.", "Mute Source", "Mute Src", "Dry Mute")  # On: fully wet
 DURATION = ("Duration",)
 PREDELAY = ("Predelay", "Pre-Delay", "Pre Delay", "PreDelay")
 DRY = ("Dry Mix", "Dry")
 WET = ("Wet Mix", "Wet")
-DAMPING = ("High Cut", "Damping", "Damp", "HF Damp")
+DAMPING = ("High Cut", "Damping", "Damp", "HF Damp")  # mpReverb 2 has none in 3.5.4
 
 STEP = 1 / 256  # Renoise places automation points to 1/256 of a line
 SILENT_DB = mix.SILENT_DB  # silence; the tool sets the parameter's lowest value
@@ -105,8 +109,10 @@ class Curve:
 
 def param(names: Sequence[str], value: Data, unit: str, *, optional: bool = False) -> Param:
     """One parameter setting. ``unit`` says how the tool finds the value: by
-    what Renoise shows (Hz, dB, ms or a plain number), a choice's text, a
-    fraction of the range, a raw value, or a send track's name."""
+    what Renoise shows (Hz, dB, ms, % or a plain number, read only in that
+    unit), a choice's text, a fraction of the range, a raw value, a send
+    track's name, or ``preset``: a setting in the device's preset data, by
+    its XML tag."""
     found: Param = {"names": list(names), "value": value, "unit": unit}
     if optional:
         found["optional"] = True
@@ -117,20 +123,16 @@ def _decibels(value: float) -> float:
     return round(max(value, SILENT_DB), 4)
 
 
-def resonance_q(resonance: float) -> float:
-    """The strip's low-pass resonance (0 to 1) as a filter Q: the reciprocal of
-    the SuperCollider strip's rq (REQ-MIX-01)."""
-    return 1 / ((1 - resonance * 0.85) * math.sqrt(2))
-
-
-def _filter(name: str, kind: str, hz: float, role: str, q: float | None = None) -> Device:
+def _filter(name: str, kind: str, hz: float, role: str, resonance: float = 0.0) -> Device:
+    """A Digital Filter. The strip's resonance (0 to 1) turns Renoise's own
+    resonance knob that share of the way, as a Renoise user would set it by
+    ear: Renoise shows resonance in %, not as a Q."""
     params = [
         param(TYPE, kind, "choice"),
         param(MODEL, "Butterworth 4n", "choice", optional=True),  # 24 dB an octave
         param(CUTOFF, round(hz, 3), "Hz"),
+        param(RESONANCE, round(resonance * 100, 3), "%"),
     ]
-    if q is not None:
-        params.append(param(Q, round(q, 4), "number", optional=True))
     return {"path": FILTER, "name": name, "role": role, "params": params}
 
 
@@ -149,7 +151,7 @@ def _send(to: str, index: int, db: float) -> Device:
         "params": [
             param(AMOUNT, _decibels(db), "dB"),
             param(RECEIVER, {"name": to, "index": index}, "send"),
-            param(KEEP_SOURCE, "Off", "choice", optional=True),
+            param(MUTE_SOURCE, "false", "preset", optional=True),  # the voice carries on
         ],
     }
 
@@ -163,8 +165,7 @@ def strip_devices(own: Strip, sends: Sequence[str], role: str) -> tuple[list[Dev
         devices.append(_filter("Highpass", "HighPass", own.start("highpass"), role))
         moves["highpass"] = (len(devices), CUTOFF, "Hz")
     if own.uses("lowpass"):
-        q = resonance_q(own.resonance)
-        devices.append(_filter("Lowpass", "LowPass", own.start("lowpass"), role, q))
+        devices.append(_filter("Lowpass", "LowPass", own.start("lowpass"), role, own.resonance))
         moves["lowpass"] = (len(devices), CUTOFF, "Hz")
     if own.level or own.pan or own.lane("level"):
         devices.append(_gainer("Level", own.start("level"), own.pan, role))
@@ -307,20 +308,25 @@ def voice_track(score: Score, name: str, timeline: Timeline, duck: Curve | None)
 
 def _effect(send: Send, timeline: Timeline) -> Device:
     """A send's effect, fully wet: a Multitap's first tap for a delay, line-synced,
-    with its low-pass in the feedback path; mpReverb 2 for a reverb."""
+    with its low-pass on the input and in the feedback path (so the first echo
+    is filtered once and each one after it once more, as in SuperCollider);
+    mpReverb 2 for a reverb.
+
+    With line sync on, a tap's time in lines is its "Sync Time". Its "Sync
+    DelayTime" is a pattern command's target that always reads -1."""
     if send.kind == mix.DELAY:
         lines = max(1, round(send.setting("beats") * timeline.lpb))
-        feedback = round(send.setting("feedback"), 4)
+        feedback = round(send.setting("feedback") * 100, 3)
         params = [
             param(WET_ONLY, "On", "choice"),
             param(("T1 Line Sync",), "On", "choice"),
-            param(("T1 Sync L DelayTime",), lines, "raw"),
-            param(("T1 Sync R DelayTime",), lines, "raw"),
-            param(("T1 L Feedback",), feedback, "raw"),
-            param(("T1 R Feedback",), feedback, "raw"),
+            param(("T1 L Sync Time",), lines, "number"),
+            param(("T1 R Sync Time",), lines, "number"),
+            param(("T1 L Feedback",), feedback, "%"),
+            param(("T1 R Feedback",), feedback, "%"),
             param(("T1 Ping Pong",), "On" if send.setting("pingpong") else "Off", "choice"),
             param(("T1 Amount",), 0.0, "dB"),
-            param(("T1 Flt Mode",), "Feedback", "choice"),
+            param(("T1 Flt Mode",), "In + Feed", "choice"),
             param(("T1 Flt Type",), "Lowpass", "choice"),
             param(("T1 Flt Freq.",), round(send.setting("lowpass"), 3), "Hz"),
         ]
@@ -331,8 +337,8 @@ def _effect(send: Send, timeline: Timeline) -> Device:
     params = [
         param(DURATION, round(send.setting("decay_s") * 1000, 3), "ms"),
         param(PREDELAY, round(send.setting("predelay_ms"), 3), "ms"),
-        param(DRY, SILENT_DB, "dB"),
-        param(WET, 0.0, "dB", optional=True),
+        param(DRY, 0.0, "%"),
+        param(WET, 100.0, "%"),
         param(DAMPING, round(send.setting("damping"), 3), "Hz", optional=True),
     ]
     return {"path": REVERB, "name": send.name, "role": EFFECT, "params": params}

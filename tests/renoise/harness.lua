@@ -20,8 +20,22 @@ local function load_data(path)
   return chunk()
 end
 
--- A device as the tool left it: its name, whether it's on, and what each
--- parameter shows.
+-- The settings in a device's preset data that aren't parameters, by tag.
+local function preset_settings(device)
+  local found = {}
+  local data = device.active_preset_data
+  if type(data) == "string" then
+    for tag, value in data:gmatch("<([%w_]+)>([^<]*)</%1>") do
+      if tag ~= "Value" and tag ~= "Visualization" then
+        found[tag] = value
+      end
+    end
+  end
+  return found
+end
+
+-- A device as the tool left it: its name, whether it's on, what each
+-- parameter shows, and its other preset settings.
 local function device_state(device)
   local shown = {}
   for _, parameter in ipairs(device.parameters or {}) do
@@ -32,6 +46,7 @@ local function device_state(device)
     display_name = device.display_name,
     active = device.is_active,
     shows = shown,
+    preset = preset_settings(device),
   }
 end
 

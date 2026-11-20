@@ -2,9 +2,9 @@
 REQ-REN-03, REQ-REN-09 to REQ-REN-12).
 
 build.lua and mixer.lua run under Lua 5.1 against fake_renoise.lua, whose
-devices show their values the way its author guessed Renoise does ("2.50
-kHz", "-6.021 dB", "-INF dB"). scripts/renoise-check builds the same kind of
-song in real Renoise on the Mac.
+devices are named and show their values as Renoise 3.5.4's do ("2.50 kHz",
+"-6.021 dB", "-INF dB", "40.000 %"). scripts/renoise-check builds the same
+kind of song in real Renoise on the Mac.
 """
 
 from __future__ import annotations
@@ -141,11 +141,14 @@ def build(tmp_path: Path, song: dict[str, Any], *mode: str) -> dict[str, Any]:
 
 
 def number(shown: str) -> float:
-    """A value as the fake shows it, in Hz, dB or ms."""
+    """A value as the fake shows it, in Hz, dB, ms or %."""
     value, _, unit = shown.partition(" ")
     if value.upper().endswith("INF"):
         return -math.inf if value.startswith("-") else math.inf
     return float(value) * (1000 if unit in ("kHz", "s") else 1)
+
+
+KHZ_STEP = 10  # Hz: Renoise shows a filter's frequency in kHz, to two places
 
 
 def devices(built: dict[str, Any], track: int) -> list[tuple[str, str, bool]]:
@@ -157,6 +160,14 @@ def devices(built: dict[str, Any], track: int) -> list[tuple[str, str, bool]]:
 def shows(built: dict[str, Any], track: int, name: str) -> dict[str, str]:
     found: dict[str, str] = next(
         d["shows"] for d in built["mixer"][track - 1]["devices"] if d["display_name"] == name
+    )
+    return found
+
+
+def preset(built: dict[str, Any], track: int, name: str) -> dict[str, str]:
+    """A device's settings in its preset data, as the fake holds them."""
+    found: dict[str, str] = next(
+        d["preset"] for d in built["mixer"][track - 1]["devices"] if d["display_name"] == name
     )
     return found
 
@@ -192,49 +203,83 @@ def test_the_tool_builds_the_mixer(tmp_path: Path) -> None:
     # Each parameter shows what the score asks for.
     assert shows(built, 1, "Level")["Gain"] == "-2.000 dB"
     highpass, lowpass = shows(built, 2, "Highpass"), shows(built, 2, "Lowpass")
-    assert (highpass["Type"], number(highpass["Cutoff"])) == ("HighPass", 30.0)
+    assert (highpass["Type"], highpass["Cutoff"], highpass["Resonance"]) == (
+        "HighPass",
+        "0.03 kHz",
+        "0.000 %",
+    )
     assert (lowpass["Type"], number(lowpass["Cutoff"])) == ("LowPass", 400.0)
-    assert number(lowpass["Q"]) == pytest.approx(1 / ((1 - 0.3 * 0.85) * math.sqrt(2)), abs=0.002)
+    assert number(lowpass["Resonance"]) == pytest.approx(30.0, abs=0.1)  # resonance 0.3
     level = shows(built, 3, "Level")
-    assert (level["Gain"], level["Panning"]) == ("0.000 dB", "0.250")
+    assert (level["Gain"], level["Panning"]) == ("0.000 dB", "25 L")  # pan -0.5
     echo, hall = shows(built, 3, "Send to echo"), shows(built, 3, "Send to hall")
-    assert (echo["Amount"], echo["Receiver"], echo["Mute Source"]) == ("-INF dB", "echo", "Off")
+    # The send keeps its source: the fake's #Send starts muted, and the tool
+    # unmutes it in the preset data. Receivers are send tracks counted from 0.
+    assert (echo["Amount"], echo["Receiver"]) == ("-INF dB", "0")
     assert number(hall["Amount"]) == pytest.approx(-14.0, abs=0.01)
-    assert hall["Receiver"] == "hall"
-    assert number(shows(built, 4, "Highpass")["Cutoff"]) == 25.0
+    assert hall["Receiver"] == "1"
+    assert preset(built, 3, "Send to echo")["MuteSource"] == "false"
+    assert preset(built, 3, "Send to hall")["MuteSource"] == "false"
+    assert preset(built, 5, "Send to hall")["MuteSource"] == "false"
+    assert number(shows(built, 4, "Highpass")["Cutoff"]) == pytest.approx(25.0, abs=KHZ_STEP / 2)
     tap = shows(built, 5, "echo")
-    assert (tap["Mute Src."], tap["T1 Line Sync"], tap["T1 Ping Pong"]) == ("On", "On", "On")
-    assert (tap["T1 Sync L DelayTime"], tap["T1 Sync R DelayTime"]) == ("6", "6")  # 3/4 beat
-    assert (tap["T1 L Feedback"], tap["T1 R Feedback"]) == ("0.500", "0.500")
+    assert (tap["Mute Dry"], tap["T1 Line Sync"], tap["T1 Ping Pong"]) == ("On", "On", "On")
+    assert (tap["T1 L Sync Time"], tap["T1 R Sync Time"]) == ("6", "6")  # 3/4 beat, in lines
+    assert number(tap["T1 L Feedback"]) == pytest.approx(50.0, abs=0.1)
+    assert number(tap["T1 R Feedback"]) == pytest.approx(50.0, abs=0.1)
     assert (tap["T1 Amount"], tap["T2 Amount"], tap["T4 Amount"]) == (
         "0.000 dB",
         "-INF dB",
         "-INF dB",
     )
-    assert (tap["T1 Flt Mode"], tap["T1 Flt Type"]) == ("Feedback", "Lowpass")
+    assert (tap["T1 Flt Mode"], tap["T1 Flt Type"]) == ("In + Feed", "Lowpass")
     assert number(tap["T1 Flt Freq."]) == 2500.0
+    assert tap["T1 Sync L DelayTime"] == "-1"  # a pattern command's target: always -1
     assert number(shows(built, 5, "Send to hall")["Amount"]) == pytest.approx(-12.0, abs=0.01)
     reverb = shows(built, 6, "hall")
     assert number(reverb["Duration"]) == pytest.approx(1500, rel=0.01)
-    assert number(reverb["Predelay"]) == pytest.approx(20, rel=0.01)
-    assert (reverb["Dry Mix"], reverb["Wet Mix"]) == ("-INF dB", "0.000 dB")
+    assert number(reverb["Predelay"]) == pytest.approx(20, abs=1)
+    assert (reverb["Dry Mix"], reverb["Wet Mix"]) == ("0.000 %", "100.000 %")  # fully wet
     assert shows(built, 6, "Level")["Gain"] == "-3.000 dB"
-    # What each kind of device has, for the render's notes (REQ-REN-03).
+
+
+@pytest.mark.req("REQ-REN-03")
+def test_the_result_says_what_renoise_has(tmp_path: Path) -> None:
+    built = build(tmp_path, planned(tmp_path))
+    lowpass = shows(built, 2, "Lowpass")
+    # What each kind of device has, for the render's notes.
     gainer = built["described"][GAINER]
     assert [(p["name"], p["shows"]) for p in gainer] == [
         ("Gain", ["-INF dB", "0.000 dB", "12.041 dB"]),
-        ("Panning", ["0.000", "0.500", "1.000"]),
+        ("Panning", ["50 L", "Center", "50 R"]),
     ]
     assert set(built["described"]) == {FILTER, GAINER, SEND, MULTITAP, REVERB, AHDSR}
-    # And what each planned device shows, by track, for the result file.
+    # And what each planned device shows, by track, for the result file: with
+    # the optional settings Renoise doesn't have, and the device's other
+    # preset settings, where such a setting might be found instead.
     shown = {entry["track"]: entry["devices"] for entry in built["shown"]["tracks"]}
     assert list(shown) == ["kick", "bass", "stab", "master", "send echo", "send hall"]
     assert shown["bass"][2] == {
         "name": "Lowpass",
+        "path": FILTER,
         "active": True,
-        "shows": {"Type": "LowPass", "Cutoff": lowpass["Cutoff"], "Q": lowpass["Q"]},
+        "shows": {
+            "Type": "LowPass",
+            "Cutoff": lowpass["Cutoff"],
+            "Resonance": lowpass["Resonance"],
+        },
+        "missing": ["Model"],
+        "preset": [],
     }
-    assert shown["kick"][0] == {"name": "Filter", "active": False, "shows": []}  # nothing set
+    assert shown["kick"][0] == {"name": "Filter", "path": FILTER, "active": False, "shows": []}
+    sent = shown["stab"][2]
+    assert (sent["shows"]["MuteSource"], "missing" in sent) == ("false", False)
+    assert sent["preset"] == [
+        "MuteSource=false",
+        "SmoothParameterChanges=true",
+        "ApplyPostVolume=true",
+    ]
+    assert shown["send hall"][0]["missing"] == ["High Cut"]  # mpReverb 2 has no damping
 
 
 @pytest.mark.req("REQ-REN-10")
@@ -304,6 +349,7 @@ def test_melodic_voices_play_sampled_synths(tmp_path: Path) -> None:
     released = [number(e["release"]) for e in envelopes]
     assert released == pytest.approx([20.0, 20.0, 120.0], rel=0.01)
     assert "Modulation/AHDSR" in built["described"]
+    assert built["shown"]["refused_ends"] == 0  # the fake takes points up to a pattern's end
     # Notes: accents play the accent instrument; the tied note's successor glides.
     notes = {n["line"]: n for n in built["notes"] if n["track"] == 2}
     assert (notes[0]["note"], notes[0]["instrument"]) == (24, 1)
@@ -357,12 +403,21 @@ def test_a_build_names_everything_renoise_lacks(tmp_path: Path) -> None:
     level = song["mix"]["tracks"][0]["devices"][1]
     level["params"].append({"names": ["Shimmer", "Sparkle"], "value": 1, "unit": "number"})
     level["params"].append({"names": ["Width"], "value": 1, "unit": "number", "optional": True})
+    sent = song["mix"]["tracks"][2]["devices"][2]
+    sent["params"].append({"names": ["Glow"], "value": "true", "unit": "preset"})
+    reverb = song["mix"]["sends"][1]["devices"][0]
+    reverb["params"].append({"names": ["Wet Mix"], "value": -6.0, "unit": "dB"})  # it shows %
     highpass = song["mix"]["master"]["devices"][0]
     highpass["params"][0]["value"] = "Wobble"
+    song["mix"]["sends"][0]["devices"][0]["path"] = "Audio/Effects/Native/Multitap Delay"
     built = build(tmp_path, song)
     assert built["error"].splitlines() == [
         "kick, Level: no parameter called Shimmer or Sparkle (it has Gain, Panning)",
+        "stab, Send to echo: no setting called Glow in its preset data",
         "master, Highpass: Type never shows Wobble",
+        "send echo: Renoise has no device Audio/Effects/Native/Multitap Delay"
+        " (it has Audio/Effects/Native/Multitap)",
+        "send hall, hall: Wet Mix never shows -6",
     ]
-    assert set(built["described"]) == {FILTER, GAINER, SEND, MULTITAP, REVERB, AHDSR}
+    assert set(built["described"]) == {FILTER, GAINER, SEND, REVERB, AHDSR}  # no Multitap
     assert built["automation"] == []  # nothing automated once a device is wrong

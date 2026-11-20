@@ -40,8 +40,9 @@ device or parameter the plan names isn't there, or never shows the value
 asked for, the build fails naming all of them, with the parameters the
 device does have. The result file lists the parameters of every kind of
 mixer device the song uses, and what each of the song's mixer devices shows
-once built, and mph keeps it in the render folder, so a parameter Renoise
-names or shows differently comes to light in one run.
+once built, with the optional settings it doesn't have and the other
+settings in its preset data. mph keeps it in the render folder, so a
+parameter Renoise names or shows differently comes to light in one run.
 mph deletes each rendered WAV once it has read it.
 mph starts Renoise in the background and waits for the result. If Renoise is
 already open when a render command starts, mph refuses and asks the user to
@@ -165,30 +166,42 @@ sampled from its SuperCollider synth, the way a sampler holds a synth patch:
 A score's mix (spec/components/mix.md) is built from Renoise's own devices:
 - On each voice's track, after its duck (REQ-REN-11): a Digital Filter for
   each strip filter it uses (high-pass, then low-pass, with the low-pass's
-  resonance as its Q), a Gainer for the strip's level and pan, then a
-  #Send for each send, routed to that send's track and keeping the source.
+  resonance turning Renoise's resonance knob that share of the way), a
+  Gainer for the strip's level and pan, then a #Send for each send, routed
+  to that send's track and keeping the source.
 - Each send is a send track after the master, holding its effect, fully
   wet, then its return strip: the same filters, Gainer and #Sends, to sends
-  after it. A delay is a Multitap's first tap, line-synced to the echo time,
-  with the feedback, ping-pong when asked, and its low-pass in the feedback
-  path. A reverb is mpReverb 2, with the decay as its duration and the
-  predelay.
+  after it. A delay is a Multitap's first tap with its dry signal muted,
+  line-synced to the echo time, with the feedback, ping-pong when asked,
+  and its low-pass on the input and in the feedback path, so the first echo
+  is filtered once and each repeat once more. A reverb is mpReverb 2, all
+  wet, with the decay as its duration and the predelay.
 - The master's strip is on the master track.
 - Automation (REQ-MIX-03) becomes automation in the patterns, on the
   parameter each lane moves: a point at each of the lane's points and one
   every beat along a move, so filters move evenly in octaves and levels in
   dB whatever scale Renoise gives the parameter. A jump is two points 1/256
   of a line apart. Each pattern starts and ends on the lane's value there.
-- Values are given as Renoise shows them (Hz, dB, ms, lines). The bridge
+- Values are given as Renoise shows them (Hz, dB, ms, %, lines). The bridge
   finds the value that shows each one, from a table of what each
   parameter shows across its range, so Renoise's own scales needn't be
-  known.
+  known. A number is read only in its own unit, so a level is never taken
+  from a percentage. A setting that isn't a parameter, such as a #Send's
+  mode, is set in the device's preset data, by its XML tag.
 - **Why:** Dean's rule (2026-11-11). Renoise users mix with send tracks,
   native devices and automation drawn in the patterns, where Dean can see
   and change it. The Multitap is Renoise's echo with ping-pong and a filter
   in its feedback path, so each echo is darker than the one before, as in
   the SuperCollider take. Renoise doesn't document its parameters' scales,
-  and what it shows is the unit the score is written in.
+  and what it shows is the unit the score is written in. The first run in
+  real Renoise (3.5.4, 2026-11-20) found what the names had guessed wrong:
+  the Multitap's dry switch is "Mute Dry"; with line sync on, a tap's time
+  in lines is its "Sync Time", while its "Sync DelayTime" is a pattern
+  command's target that always reads -1; feedback, resonance and the
+  reverb's wet and dry mix are shown in %; the #Send's "keep source" mode
+  isn't a parameter; and neither the filter's model nor the reverb's
+  damping is a parameter at all, so those keep Renoise's own. Read as dB,
+  the reverb's "0.000 %" would have silenced the hall without an error.
 - **Verify:** test, with the fake Renoise; inspect on the Mac with
   `scripts/renoise-check`; listen
 

@@ -34,13 +34,23 @@ def renoise_check() -> ModuleType:
 class Renoise:
     """Renoise and the bridge tool as the check sees them: a process that
     starts and quits, and jobs answered as soon as mph waits for them. The
-    mixed song is built by the tool in the fake Renoise (tests/renoise), and
-    its stem is the dry render times ``duck``."""
+    mixed song is built by the tool in the fake Renoise (tests/renoise). Its
+    bass stem is the dry render times ``duck``, and its stab, rendered with
+    its sends, is the dry stab (unless ``muted``) plus the thrown note's echo,
+    ``echo_s`` later."""
 
     def __init__(
-        self, cfg: config.Config, *, keeps: bool = True, quits: bool = True, duck: float = 0.25
+        self,
+        cfg: config.Config,
+        *,
+        keeps: bool = True,
+        quits: bool = True,
+        duck: float = 0.25,
+        echo_s: float = 0.375,
+        muted: bool = False,
     ) -> None:
         self.cfg, self.keeps, self.quits, self.duck = cfg, keeps, quits, duck
+        self.echo_s, self.muted = echo_s, muted
         self.open = False
         self.opened: list[str] = []
         self.waited = 0.0
@@ -94,6 +104,15 @@ class Renoise:
         dry = (0.5 * np.sin(2 * np.pi * 440 * t)).astype(np.float32)[:, None]
         audio.write_float(renders["M dry.wav"], dry, 48000)
         audio.write_float(renders["M stem.wav"], dry * self.duck, 48000)
+        stab = np.zeros((5 * 48000, 2), dtype=np.float32)  # two bars and the tail
+        blip = 0.5 * np.sin(2 * np.pi * 440 * t) * np.exp(-30 * t)
+        for start in (0.25, 0.75, 1.25, 1.75, 2.25, 2.75, 3.25, 3.75):  # the stab's notes
+            stab[round(start * 48000) : round(start * 48000) + len(t)] += blip[:, None]
+        sent = stab * (0.0 if self.muted else 0.7)  # its pan and high-pass cost a little
+        at = round((1.25 + self.echo_s) * 48000)
+        sent[at : at + len(t), 0] += 0.6 * blip  # the echo, on the left
+        audio.write_float(renders["M stab dry.wav"], stab, 48000)
+        audio.write_float(renders["M stab.wav"], sent, 48000)
         return {"devices": built["described"], "shown": [{"song": "M", **built["shown"]}]}
 
 
@@ -126,9 +145,15 @@ def test_the_check_passes_when_renoise_never_asks(
     assert renoise_check.check(cfg, renoise.runner(), home, renoise.clock()) == 0
     out = capsys.readouterr().out
     assert "job 2: kept A as 20261113-081500 A.xrns" in out
-    assert "    Cutoff: 20.0 Hz | 20.00 kHz | 20.00 kHz (quantum 0)" in out  # the filter's
+    assert "    Cutoff: 0.02 kHz | 20.00 kHz | 20.00 kHz (quantum 0)" in out  # the filter's
+    assert "  Audio/Effects/Native/Digital Filter has no Model (optional: it keeps its own)" in out
+    assert (
+        "  Audio/Effects/Native/#Send preset data: MuteSource=false, "
+        "SmoothParameterChanges=true, ApplyPostVolume=true"
+    ) in out
     assert "every planned parameter shows what was asked" in out
     assert "the duck dipped the bass 12.0 dB at the first kick" in out
+    assert "the stab keeps sounding while it sends, and its echo comes back on time" in out
     assert out.strip().endswith("PASS: Renoise never asked to save")
     assert renoise.opened == ["A.xrns", "B.xrns"] and not renoise.open
     # The tool from before is back, and the check's songs and A's copy are gone.
@@ -216,14 +241,39 @@ def test_the_check_fails_when_the_mixer_isnt_as_planned(
     flat = Renoise(cfg, duck=1.0)
     assert renoise_check.check(cfg, flat.runner(), home, flat.clock()) == 1
     assert "FAIL: the duck dipped the bass 0.0 dB at the first kick" in capsys.readouterr().out
-    # What a device shows is read the way the tool reads it.
+    # A #Send that mutes its source, and an echo at a sixteenth's delay with
+    # its first repeat at 1.625 s: both are caught.
+    wrong = Renoise(cfg, echo_s=0.125, muted=True)
+    assert renoise_check.check(cfg, wrong.runner(), home, wrong.clock()) == 1
+    out = capsys.readouterr().out
+    assert "FAIL: the stab is " in out and "while it sends: its #Send mutes it" in out
+    assert "the stab's echo should come back at 1.625 s" in out
+    assert "the loudest sound then is at 1.375 s" in out
+    # What a device shows is read the way the tool reads it, in its own unit only.
     shown, mismatch = renoise_check.shown_number, renoise_check.mismatch
     assert (shown("2.50 kHz", "Hz"), shown("1.5 s", "ms"), shown("-INF dB", "dB")) == (
         2500.0,
         1500.0,
         -float("inf"),
     )
+    assert (shown("40.000 %", "%"), shown("6", "number")) == (40.0, 6.0)
     assert shown("Lowpass", "Hz") is None
+    assert shown("40.000 %", "dB") is None  # a share is no level
+    assert shown("-INF dB", "%") is None
+    assert shown("6 lines", "number") is None
+    assert renoise_check.resolution("0.03 kHz", "Hz") == pytest.approx(5.0)
+    low = {"names": ["Cutoff"], "value": 25.0, "unit": "Hz"}
+    assert mismatch(low, {"Cutoff": "0.03 kHz"}) == ""  # as near as Renoise shows it
+    assert mismatch(low, {"Cutoff": "0.04 kHz"}) == "Cutoff shows '0.04 kHz', not 25.0"
+    wet = {"names": ["Wet Mix"], "value": 100.0, "unit": "%"}
+    assert mismatch(wet, {"Wet Mix": "100.000 %"}) == ""
+    assert mismatch(wet, {"Wet Mix": "40.000 %"}) == "Wet Mix shows '40.000 %', not 100.0"
+    lines = {"names": ["T1 L Sync Time"], "value": 6, "unit": "number"}
+    assert mismatch(lines, {"T1 L Sync Time": "6"}) == ""
+    assert mismatch(lines, {"T1 L Sync Time": "-1"}) == "T1 L Sync Time shows '-1', not 6"
+    keep = {"names": ["MuteSource"], "value": "false", "unit": "preset", "optional": True}
+    assert mismatch(keep, {"MuteSource": "false"}) == mismatch(keep, {}) == ""
+    assert mismatch(keep, {"MuteSource": "true"}) == "MuteSource shows 'true', not false"
     cutoff = {"names": ["Cutoff", "Frequency"], "value": 400.0, "unit": "Hz"}
     assert mismatch(cutoff, {"Frequency": "405.0 Hz"}) == ""
     assert mismatch(cutoff, {"Cutoff": "1.20 kHz"}) == "Cutoff shows '1.20 kHz', not 400.0"
@@ -241,10 +291,11 @@ def test_the_check_fails_when_the_mixer_isnt_as_planned(
         "no synth envelope was reported"
     ]
     send = {"names": ["Receiver"], "value": {"name": "hall", "index": 1}, "unit": "send"}
-    assert mismatch(send, {"Receiver": "02: hall"}) == ""
-    mute = {"names": ["Mute Src."], "value": "On", "unit": "choice"}
-    assert mismatch(mute, {"Mute Src.": "Enabled"}) == ""
-    assert mismatch(mute, {"Mute Src.": "Off"}) == "Mute Src. shows 'Off', not On"
+    assert mismatch(send, {"Receiver": "02: hall"}) == mismatch(send, {"Receiver": "1"}) == ""
+    assert mismatch(send, {"Receiver": "0"}) == "Receiver shows '0', not hall"
+    mute = {"names": ["Mute Dry"], "value": "On", "unit": "choice"}
+    assert mismatch(mute, {"Mute Dry": "Enabled"}) == ""
+    assert mismatch(mute, {"Mute Dry": "Off"}) == "Mute Dry shows 'Off', not On"
 
 
 @pytest.mark.lua

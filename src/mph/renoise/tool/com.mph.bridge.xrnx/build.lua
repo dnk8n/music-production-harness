@@ -166,7 +166,12 @@ local function release_envelope(instrument, release_s, described)
   local set = instrument.sample_modulation_sets[1]
   set:init()
   set.name = "Gate"
-  local envelope = set:insert_device_at(M.AHDSR, renoise.SampleModulationDevice.TARGET_VOLUME, 1)
+  local volume = renoise.SampleModulationDevice.TARGET_VOLUME
+  local ok, envelope = pcall(set.insert_device_at, set, M.AHDSR, volume, 1)
+  if not ok or envelope == nil then
+    error(string.format("%s: Renoise has no modulation device %s (it has %s)", instrument.name,
+      M.AHDSR, mixer.near(set.available_devices, M.AHDSR)), 0)
+  end
   if described[M.AHDSR] == nil then
     described[M.AHDSR] = mixer.describe(envelope)
   end
@@ -305,7 +310,11 @@ function M.shown(song, plan)
   if plan.mix == nil and #envelopes == 0 then
     return nil
   end
-  return { tracks = plan.mix and mixer.shown(song, plan) or {}, envelopes = envelopes }
+  return {
+    tracks = plan.mix and mixer.shown(song, plan) or {},
+    envelopes = envelopes,
+    refused_ends = mixer.refused(), -- automations kept to their pattern's last line
+  }
 end
 
 -- Mutes every sequencer track except `solo` (nil: none muted).

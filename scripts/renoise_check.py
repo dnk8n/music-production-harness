@@ -11,8 +11,12 @@ tool, then, in one Renoise that mph starts:
    job must keep it as a copy in mph's scratch folder before it builds C;
 3. a third job builds M, a song with a mix and sampled synths (REQ-REN-09 to
    REQ-REN-11): every planned parameter must show what the plan asks for,
-   and the bass's duck must dip it about 12 dB at the first kick. It prints
-   each kind of device's parameters as Renoise names and shows them;
+   the bass's duck must dip it about 12 dB at the first kick, the stab must
+   still sound on its own track while it sends (its #Send keeps its source),
+   and the stab's echo must come back a dotted eighth after the note thrown
+   into it. It prints each kind of device's parameters as Renoise names and
+   shows them, the optional settings Renoise doesn't have, and the other
+   settings in those devices' preset data;
 4. B is opened the same way, and Renoise is asked to quit.
 
 Renoise has to do all of that without asking to save anything: a question
@@ -50,7 +54,24 @@ DUCK_DB = (9.0, 14.0)  # the dip at the first kick, 5 to 20 ms in: about 11.9 dB
 DUCK_WINDOW_S = (0.005, 0.02)
 SHOWN_SLACK = {"Hz": 0.03, "ms": 0.03}  # a share of the value asked for
 SHOWN_SLACK_DB = 0.25
+SHOWN_SLACK_PERCENT = 0.5
+UNITS = {  # what may follow a number in each unit, and its scale, as mixer.lua reads them
+    "Hz": {"hz": 1.0, "khz": 1000.0},
+    "ms": {"ms": 1.0, "s": 1000.0, "sec": 1000.0, "secs": 1000.0},
+    "dB": {"db": 1.0},
+    "%": {"%": 1.0},
+    "number": {"": 1.0},
+}
 ON, OFF = {"on", "enabled", "yes", "true"}, {"off", "disabled", "no", "false"}  # as mixer.lua
+# The stab in M: its first note, and the one note thrown into the echo (its
+# echo send opens from bar 1.5 to 1.75), which comes back a dotted eighth later.
+STAB_NOTE_S = 0.25
+THROWN_S, ECHO_S = 1.25, 0.375
+ONSET_WINDOW_S = (0.005, 0.025)  # after a note starts
+KEPT_DB = 10.0  # the stab with its strip and sends on, at most this much under it dry
+ECHO_SEARCH_S = (1.36, 1.74)  # after the thrown note has died away, before the next note
+ECHO_SLACK_S = 0.015
+ECHO_FLOOR_DB = 20.0  # the echo, at most this much under the thrown note
 
 # Every kind of device the mixer uses, and both kinds of synth note (REQ-REN-09 to 11).
 MIXED = """
@@ -216,26 +237,35 @@ def mixed_song(folder: Path, sample: Path) -> dict[str, luadata.Data]:
         {"file": str(folder / "M.wav")},
         {"file": str(folder / "M stem.wav"), "solo": 2, "mode": "stem"},
         {"file": str(folder / "M dry.wav"), "solo": 2, "mode": "dry"},
+        {"file": str(folder / "M stab.wav"), "solo": 3},  # with its strip, sends and their effects
+        {"file": str(folder / "M stab dry.wav"), "solo": 3, "mode": "dry"},
     ]
     save = str(folder / "M.xrns")
     return song_plan.song(loaded, events, tracks, rate=RATE, save=save, renders=renders)
 
 
 def shown_number(text: str, unit: str) -> float | None:
-    """A shown value as a number in the plan's unit, read as the tool reads it."""
-    words = text.strip().lower().replace(",", ".").split()
-    if not words:
-        return None
-    if "inf" in words[0]:
-        return -float("inf") if words[0].startswith("-") else float("inf")
+    """A shown value as a number in the plan's unit, read as the tool reads it:
+    only in that unit, so "40.000 %" is no level."""
+    shown = text.strip().lower().replace(",", ".")
+    if "inf" in shown:
+        if unit != "dB":
+            return None
+        return -float("inf") if shown.startswith("-") else float("inf")
+    number, _, rest = shown.partition(" ")
+    scale = UNITS.get(unit, UNITS["number"]).get(rest.strip())
     try:
-        value = float(words[0])
+        return None if scale is None else float(number) * scale
     except ValueError:
         return None
-    rest = words[1] if len(words) > 1 else ""
-    if (unit == "Hz" and rest.startswith("k")) or (unit == "ms" and rest in ("s", "sec")):
-        value *= 1000
-    return value
+
+
+def resolution(text: str, unit: str) -> float:
+    """Half the step between two values as Renoise shows them, in the plan's
+    unit: a filter shows "0.03 kHz", so 25 Hz shows as 20 or 30."""
+    number, _, rest = text.strip().lower().partition(" ")
+    places = len(number.partition(".")[2])
+    return 0.5 * 10.0**-places * UNITS.get(unit, UNITS["number"]).get(rest.strip(), 1.0)
 
 
 def same_choice(wanted: str, shown: str) -> bool:
@@ -255,11 +285,18 @@ def mismatch(setting: dict[str, Any], shows: dict[str, str]) -> str:
     if text is None:
         return "" if setting.get("optional") else f"{names[0]} isn't there"
     wanted = value["name"] if unit == "send" else value
-    if unit in ("choice", "send"):
+    if unit in ("choice", "preset"):
         ok = same_choice(str(wanted), text)
-    elif unit in ("Hz", "ms"):
+    elif unit == "send":  # Renoise shows the send track's number, from 0
+        ok = same_choice(str(wanted), text) or text.strip() == str(value["index"])
+    elif unit in ("Hz", "ms", "%", "number"):
         found = shown_number(text, unit)
-        ok = found is not None and abs(found - value) <= SHOWN_SLACK[unit] * abs(value)
+        slack = max(
+            SHOWN_SLACK.get(unit, 0.0) * abs(value),
+            SHOWN_SLACK_PERCENT if unit == "%" else 0.0,
+            resolution(text, unit),
+        )
+        ok = found is not None and abs(found - value) <= slack
     elif unit == "dB":
         found = shown_number(text, unit)
         silent = value <= song_plan.mixplan.SILENT_DB and found is not None and found <= value
@@ -267,6 +304,21 @@ def mismatch(setting: dict[str, Any], shows: dict[str, str]) -> str:
     else:
         ok = True  # a raw value or a share of the range: shown however Renoise likes
     return "" if ok else f"{names[0]} shows {text!r}, not {wanted}"
+
+
+def devices_wrong(planned: dict[str, Any], outcome: dict[str, Any]) -> list[str]:
+    """Each planned parameter that doesn't show what the plan asks for."""
+    mix = planned["mix"]
+    built = {t["track"]: t["devices"] for s in outcome.get("shown", []) for t in s["tracks"]}
+    tracks = [*mix["tracks"], mix["master"], *mix["sends"]]  # in the order the tool lists them
+    wrong = []
+    for label, entry in zip(built, tracks, strict=False):
+        for device, plan in zip(built[label], entry["devices"], strict=False):
+            for setting in plan["params"]:
+                problem = mismatch(setting, device["shows"] or {})
+                if problem:
+                    wrong.append(f"{label}, {device['name']}: {problem}")
+    return wrong
 
 
 def released_wrong(planned: dict[str, Any], outcome: dict[str, Any]) -> list[str]:
@@ -294,10 +346,59 @@ def report_devices(outcome: dict[str, Any]) -> None:
             print(f"    {p['name']}: {low} | {default} | {high} (quantum {p.get('quantum')})")
 
 
-def level_db(data: np.ndarray, rate: int) -> float:
-    first, last = (round(s * rate) for s in DUCK_WINDOW_S)
+def report_settings(outcome: dict[str, Any]) -> None:
+    """The optional settings Renoise doesn't have, which keep Renoise's own
+    values, and the other settings in those devices' preset data, once per kind."""
+    missing, presets = set(), {}
+    for song in outcome.get("shown", []):
+        for track in song["tracks"]:
+            for device in track["devices"]:
+                kind = device.get("path", device["name"])
+                missing |= {(kind, name) for name in device.get("missing", [])}
+                if device.get("preset"):
+                    presets.setdefault(kind, device["preset"])
+    for kind, name in sorted(missing):
+        print(f"  {kind} has no {name} (optional: it keeps its own)")
+    for kind, tags in sorted(presets.items()):
+        print(f"  {kind} preset data: {', '.join(tags)}")
+
+
+def level_db(data: np.ndarray, rate: int, window: tuple[float, float] = DUCK_WINDOW_S) -> float:
+    first, last = (round(s * rate) for s in window)
     part = data[first:last]
     return float(10 * np.log10(np.mean(part**2) + 1e-20))
+
+
+def envelope_db(data: np.ndarray, rate: int, window: tuple[float, float]) -> np.ndarray:
+    """The level in 2 ms frames, a millisecond apart, from the window's start."""
+    mono = data.mean(axis=1) if data.ndim > 1 else data
+    frame, hop = round(0.002 * rate), round(0.001 * rate)
+    first, last = (round(s * rate) for s in window)
+    starts = range(first, last - frame, hop)
+    return np.array([10 * np.log10(np.mean(mono[k : k + frame] ** 2) + 1e-20) for k in starts])
+
+
+def sends_wrong(mixed: np.ndarray, dry: np.ndarray, rate: int) -> list[str]:
+    """What's wrong with the stab's sends, from the stab rendered with its
+    strip, sends and their effects (``mixed``) and dry: whether it still
+    sounds on its own track, and where its echo comes back."""
+    wrong = []
+    window = (STAB_NOTE_S + ONSET_WINDOW_S[0], STAB_NOTE_S + ONSET_WINDOW_S[1])
+    lost = level_db(dry, rate, window) - level_db(mixed, rate, window)
+    if lost > KEPT_DB:
+        wrong.append(f"the stab is {lost:.1f} dB quieter while it sends: its #Send mutes it")
+    levels = envelope_db(mixed, rate, ECHO_SEARCH_S)
+    if not len(levels):
+        return [*wrong, "M stab is too short to hear the echo"]
+    peak_s = ECHO_SEARCH_S[0] + 0.001 * int(np.argmax(levels))
+    thrown = level_db(dry, rate, (THROWN_S + ONSET_WINDOW_S[0], THROWN_S + ONSET_WINDOW_S[1]))
+    if abs(peak_s - (THROWN_S + ECHO_S)) > ECHO_SLACK_S or levels.max() < thrown - ECHO_FLOOR_DB:
+        wrong.append(
+            f"the stab's echo should come back at {THROWN_S + ECHO_S:.3f} s, a dotted eighth "
+            f"after the note thrown into it, but the loudest sound then is at {peak_s:.3f} s, "
+            f"{thrown - levels.max():.1f} dB under the note"
+        )
+    return wrong
 
 
 class Check:
@@ -346,22 +447,19 @@ class Check:
         except bridge.BridgeError as failed:
             print("job 3 failed. What Renoise has:")
             report_devices(failed.outcome)
+            report_settings(failed.outcome)
             raise
         print("job 3: built, rendered and saved M, a song with a mix and sampled synths")
         print("what each kind of device has (lowest | default | highest):")
         report_devices(outcome)
-        wrong = []
-        mix = planned["mix"]
-        assert isinstance(mix, dict)  # noqa: S101 - the plan always has a mix here
-        built = {t["track"]: t["devices"] for s in outcome.get("shown", []) for t in s["tracks"]}
-        tracks = [*mix["tracks"], mix["master"], *mix["sends"]]
-        for label, entry in zip(built, tracks, strict=False):
-            for device, plan in zip(built[label], entry["devices"], strict=False):
-                for setting in plan["params"]:
-                    problem = mismatch(setting, device["shows"] or {})
-                    if problem:
-                        wrong.append(f"{label}, {device['name']}: {problem}")
-        wrong += released_wrong(planned, outcome)
+        report_settings(outcome)
+        refused = sum(song.get("refused_ends", 0) for song in outcome.get("shown", []))
+        if refused:
+            print(
+                f"Renoise refused points after the start of a pattern's last line in {refused} "
+                "automations: they were kept to that line"
+            )
+        wrong = devices_wrong(planned, outcome) + released_wrong(planned, outcome)
         if wrong:
             raise CheckFailed("M's devices don't show what was planned:\n  " + "\n  ".join(wrong))
         print("every planned parameter shows what was asked")
@@ -373,6 +471,12 @@ class Check:
                 f"the duck dipped the bass {dip:.1f} dB at the first kick, not about 12"
             )
         print(f"the duck dipped the bass {dip:.1f} dB at the first kick")
+        mixed, _ = audio.read(folder / "M stab.wav")
+        alone, _ = audio.read(folder / "M stab dry.wav")
+        wrong = sends_wrong(mixed, alone, rate)
+        if wrong:
+            raise CheckFailed("; ".join(wrong))
+        print("the stab keeps sounding while it sends, and its echo comes back on time")
 
     def quit(self) -> None:
         asked = self.runner.run(QUIT)

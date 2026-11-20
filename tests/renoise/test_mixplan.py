@@ -60,14 +60,13 @@ def test_a_mix_becomes_devices_send_tracks_and_a_master() -> None:
     duck, highpass, lowpass, level, echo, hall = stab["devices"]
     assert params(highpass)["Type"] == ("HighPass", "choice")
     assert params(highpass)["Cutoff"] == (200.0, "Hz")
+    assert params(highpass)["Resonance"] == (0.0, "%")  # a plain high-pass
     assert params(lowpass)["Cutoff"] == (1200.0, "Hz")  # the lane's first value
-    assert params(lowpass)["Q"] == (
-        pytest.approx(1 / ((1 - 0.3 * 0.85) * math.sqrt(2)), abs=1e-4),
-        "number",
-    )
+    assert params(lowpass)["Resonance"] == (30.0, "%")  # resonance 0.3: that share of the knob
     assert params(level) == {"Gain": (0.0, "dB"), "Panning": (0.25, "fraction")}  # pan -0.5
     assert params(echo)["Amount"] == (-90.0, "dB")  # the echo lane starts silent
     assert params(echo)["Receiver"] == ({"name": "echo", "index": 0}, "send")
+    assert params(echo)["MuteSource"] == ("false", "preset")  # keep the source
     assert params(hall)["Receiver"] == ({"name": "hall", "index": 1}, "send")
     assert params(duck) == {"Gain": (0.0, "dB")}
     # Sends are send tracks: the effect, fully wet, then the return strip.
@@ -79,11 +78,11 @@ def test_a_mix_becomes_devices_send_tracks_and_a_master() -> None:
     ]
     tap = params(delay["devices"][0])
     assert delay["devices"][0]["path"] == mixplan.MULTITAP
-    assert tap["Mute Src."] == ("On", "choice")
-    assert tap["T1 Sync L DelayTime"] == (3, "raw")  # 0.75 beats at 4 lines a beat
-    assert tap["T1 L Feedback"] == (0.5, "raw")
+    assert tap["Mute Dry"] == ("On", "choice")
+    assert tap["T1 L Sync Time"] == (3, "number")  # 0.75 beats at 4 lines a beat
+    assert tap["T1 L Feedback"] == (50.0, "%")
     assert tap["T1 Ping Pong"] == ("On", "choice")
-    assert tap["T1 Flt Mode"] == ("Feedback", "choice")
+    assert tap["T1 Flt Mode"] == ("In + Feed", "choice")  # each echo darker than the last
     assert tap["T1 Flt Freq."] == (2500.0, "Hz")
     assert tap["T2 Amount"] == (-90.0, "dB")
     assert params(delay["devices"][2])["Amount"] == (-12.0, "dB")
@@ -91,7 +90,7 @@ def test_a_mix_becomes_devices_send_tracks_and_a_master() -> None:
     assert reverb["devices"][0]["path"] == mixplan.REVERB
     assert hall_effect["Duration"] == (1500.0, "ms")
     assert hall_effect["Predelay"] == (20.0, "ms")
-    assert hall_effect["Dry Mix"] == (-90.0, "dB")
+    assert (hall_effect["Dry Mix"], hall_effect["Wet Mix"]) == ((0.0, "%"), (100.0, "%"))
     assert [d["name"] for d in reverb["devices"]] == ["hall", "Level"]
     # The master's strip, on the master track.
     assert [(d["name"], d["role"]) for d in mixer["master"]["devices"]] == [
@@ -172,4 +171,3 @@ def test_a_score_without_a_mix_or_a_sidechain_has_no_mixer() -> None:
     song = song_plan.song(plain, score.events(plain), [], rate=48000, save="x", renders=[])
     assert "mix" not in song and "modes" not in song
     assert (song["tpl"], song["headroom_db"]) == (12, 0.0)  # REQ-REN-12
-    assert mixplan.resonance_q(0.0) == pytest.approx(1 / math.sqrt(2))

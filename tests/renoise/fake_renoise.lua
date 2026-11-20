@@ -9,11 +9,13 @@
 -- changes makes Renoise ask whether to save it. Nobody answers in a test, so
 -- the question is recorded in `prompts` and the new song never starts.
 --
--- Its mixer devices have parameters named and shown the way this fake's
--- author guessed Renoise does (a frequency as "1.20 kHz", a level as
--- "-6.021 dB" or "-INF dB"): enough to drive the tool's search for the value
--- that shows what a plan asks for. What real Renoise shows is checked on the
--- Mac (scripts/renoise-check).
+-- Its mixer devices have the parameters Renoise 3.5.4 has, named and shown
+-- as scripts/renoise-check listed them on Dean's Mac (2026-11-20): a
+-- frequency as "1.20 kHz", a level as "-6.021 dB" or "-INF dB", a share as
+-- "40.000 %", a pan as "25 L". Their scales are this fake's own, since the
+-- tool only goes by what they show. A #Send's mode is in its preset data, as
+-- in Renoise; this fake's #Send starts with its source muted, the harder case
+-- for the tool, because Renoise's own default isn't known yet.
 
 local fake = { renders = {}, writes = 0 }
 
@@ -29,12 +31,26 @@ local function watched(object)
 end
 
 -- How parameters show their values.
-local function hz(value) -- 0 to 1: 20 Hz to 20 kHz, evenly in octaves
-  local f = 20 * 1000 ^ value
-  if f < 1000 then
-    return string.format("%.1f Hz", f)
+local function khz(value) -- 0 to 1: 20 Hz to 20 kHz, evenly in octaves, always in kHz
+  return string.format("%.2f kHz", 20 * 1000 ^ value / 1000)
+end
+
+local function percent(value) -- a share: 1 is 100 %
+  return string.format("%.3f %%", value * 100)
+end
+
+local function pan(value) -- 0 to 1: hard left to hard right
+  local side = math.floor((value - 0.5) * 100 + 0.5)
+  if side == 0 then
+    return "Center"
   end
-  return string.format("%.2f kHz", f / 1000)
+  return string.format("%d %s", math.abs(side), side < 0 and "L" or "R")
+end
+
+local function whole_ms(low, high) -- 0 to 1: low to high ms, evenly in decades
+  return function(value)
+    return string.format("%d ms", math.floor(low * (high / low) ^ value + 0.5))
+  end
 end
 
 local function db(value) -- a linear gain
@@ -99,64 +115,104 @@ local function new_parameter(spec)
   })
 end
 
-local function receiver(song)
-  return function(value)
-    local track = song.tracks[song.sequencer_track_count + 2 + math.floor(value + 0.5)]
-    return track and track.name or "none"
+local function reads(text) -- a parameter that always shows the same
+  return function()
+    return text
   end
 end
 
--- Each native device's parameters. The filter has no model, and the reverb no
--- damping, so a plan's optional parameters are sometimes missing.
+-- Each native device's parameters, as Renoise 3.5.4 names them (only those the
+-- tool might touch). The filter has no model and the reverb no damping, so a
+-- plan's optional parameters are missing, as they are in Renoise.
 local DEVICES = {
   ["Audio/Effects/Native/Digital Filter"] = function()
     return {
       { "Type", 0, 3, 0, 1, choice({ "LowPass", "BandPass", "BandStop", "HighPass" }) },
-      { "Cutoff", 0, 1, 1, 0, hz },
-      { "Q", 0, 1, 0.05, 0, function(value) return number(0.5 + 19.5 * value) end },
+      { "Cutoff", 0, 1, 1, 0, khz },
+      { "Resonance", 0, 1, 0.125, 0, percent },
     }
   end,
   ["Audio/Effects/Native/Gainer"] = function()
     return {
       { "Gain", 0, 4, 1, 0, db },
-      { "Panning", 0, 1, 0.5, 0, number },
+      { "Panning", 0, 1, 0.5, 0, pan },
     }
   end,
-  ["Audio/Effects/Native/#Send"] = function(song)
+  ["Audio/Effects/Native/#Send"] = function()
     return {
       { "Amount", 0, 1, 1, 0, db },
-      { "Receiver", 0, 15, 0, 1, receiver(song) },
-      { "Mute Source", 0, 1, 0, 1, onoff },
+      { "Panning", 0, 1, 0.5, 0, pan },
+      { "Receiver", 0, 255, 0, 1, whole }, -- the send track's number, from 0
     }
   end,
   ["Audio/Effects/Native/Multitap"] = function()
-    local found = { { "Mute Src.", 0, 1, 0, 1, onoff } }
+    local found = { { "No Panic", 0, 255, 0, 1, whole }, { "Mute Dry", 0, 1, 0, 1, onoff } }
     for tap = 1, 4 do
       local t = "T" .. tap .. " "
-      found[#found + 1] = { t .. "Line Sync", 0, 1, 0, 1, onoff }
-      found[#found + 1] = { t .. "Sync L DelayTime", 0, 255, 4, 1, whole }
-      found[#found + 1] = { t .. "Sync R DelayTime", 0, 255, 4, 1, whole }
-      found[#found + 1] = { t .. "L Feedback", -1, 1, 0, 0, number }
-      found[#found + 1] = { t .. "R Feedback", -1, 1, 0, 0, number }
+      found[#found + 1] = { t .. "Dly Left", 0, 1, 0.5, 0, ms }
+      found[#found + 1] = { t .. "Dly Right", 0, 1, 0.5, 0, ms }
+      found[#found + 1] = { t .. "Amount", 0, 1, tap == 1 and 1 or 0, 0, db }
+      found[#found + 1] = { t .. "L Feedback", -1, 1, 0.5, 0, percent }
+      found[#found + 1] = { t .. "R Feedback", -1, 1, 0.5, 0, percent }
       found[#found + 1] = { t .. "Ping Pong", 0, 1, 0, 1, onoff }
-      found[#found + 1] = { t .. "Amount", 0, 1, tap == 1 and 1 or 0.5, 0, db }
       found[#found + 1] =
-        { t .. "Flt Mode", 0, 4, 0, 1, choice({ "Off", "Input", "Feedback", "In + Feed", "Output" }) }
+        { t .. "Flt Mode", 0, 4, 3, 1, choice({ "Off", "Input", "Feedback", "In + Feed", "Output" }) }
       found[#found + 1] =
         { t .. "Flt Type", 0, 3, 0, 1, choice({ "Lowpass", "Highpass", "Bandpass", "Notch" }) }
-      found[#found + 1] = { t .. "Flt Freq.", 0, 1, 1, 0, hz }
+      found[#found + 1] = { t .. "Flt Freq.", 0, 1, 1, 0, khz }
+      found[#found + 1] = { t .. "Line Sync", 0, 1, 0, 1, onoff }
+      -- A pattern command's target: Renoise always shows it as -1.
+      found[#found + 1] = { t .. "Sync L DelayTime", 0, 255, 0, 1, reads("-1") }
+      found[#found + 1] = { t .. "Sync R DelayTime", 0, 255, 0, 1, reads("-1") }
+      found[#found + 1] = { t .. "L Sync Time", 0, 255, 1, 1, whole } -- lines, with line sync
+      found[#found + 1] = { t .. "R Sync Time", 0, 255, 3, 1, whole }
     end
     return found
   end,
   ["Audio/Effects/Native/mpReverb 2"] = function()
     return {
-      { "Duration", 0, 1, 0.6, 0, ms },
-      { "Predelay", 0, 1, 0.2, 0, ms },
-      { "Dry Mix", 0, 1, 1, 0, db },
-      { "Wet Mix", 0, 1, 0.5, 0, db },
+      { "Duration", 0, 1, 0.75, 0, whole_ms(100, 10000) },
+      { "Predelay", 0, 1, 0.04, 0, whole_ms(1, 251) }, -- Renoise's starts at 0 ms
+      { "Wet Mix", 0, 1, 0.4, 0, percent },
+      { "Dry Mix", 0, 1, 1, 0, percent },
     }
   end,
 }
+
+-- Settings a device keeps in its preset data rather than in a parameter, in
+-- the order the data lists them.
+local PRESETS = {
+  ["Audio/Effects/Native/#Send"] = {
+    { "MuteSource", "true" },
+    { "SmoothParameterChanges", "true" },
+    { "ApplyPostVolume", "true" },
+  },
+}
+
+-- A device's preset data, as XML like Renoise's: its active state, each
+-- parameter's value, then its other settings.
+local function preset_xml(path, parameters, settings)
+  local lines = {
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<FilterDevicePreset doc_version="13">',
+    '  <DeviceSlot type="' .. path:match("[^/]+$") .. '">',
+    "    <IsActive>",
+    "      <Value>1.0</Value>",
+    "      <Visualization>Device only</Visualization>",
+    "    </IsActive>",
+  }
+  for k, parameter in ipairs(parameters) do
+    lines[#lines + 1] = string.format("    <Parameter%d>", k)
+    lines[#lines + 1] = string.format("      <Value>%s</Value>", tostring(parameter.value))
+    lines[#lines + 1] = "    </Parameter" .. k .. ">"
+  end
+  for _, setting in ipairs(settings) do
+    lines[#lines + 1] = string.format("    <%s>%s</%s>", setting[1], setting[2], setting[1])
+  end
+  lines[#lines + 1] = "  </DeviceSlot>"
+  lines[#lines + 1] = "</FilterDevicePreset>"
+  return table.concat(lines, "\n")
+end
 
 local function new_device(path, song)
   local make = DEVICES[path]
@@ -165,12 +221,36 @@ local function new_device(path, song)
   for _, spec in ipairs(make(song)) do
     parameters[#parameters + 1] = new_parameter(spec)
   end
-  return watched({
+  local settings = {}
+  for k, setting in ipairs(PRESETS[path] or {}) do
+    settings[k] = { setting[1], setting[2] }
+  end
+  local object = {
     name = path,
     device_path = path,
     display_name = "",
     is_active = true,
     parameters = parameters,
+  }
+  return setmetatable({}, {
+    __index = function(_, key)
+      if key == "active_preset_data" then
+        return preset_xml(path, parameters, settings)
+      end
+      return object[key]
+    end,
+    __newindex = function(_, key, value)
+      if key == "active_preset_data" then -- Renoise loads it: each setting from its tag
+        for _, setting in ipairs(settings) do
+          local found = value:match("<" .. setting[1] .. ">([^<]*)</" .. setting[1] .. ">")
+          assert(found, "preset data without " .. setting[1])
+          setting[2] = found
+        end
+      else
+        object[key] = value
+      end
+      fake.writes = fake.writes + 1
+    end,
   })
 end
 
@@ -285,7 +365,7 @@ local function new_envelope()
 end
 
 local function new_modulation_set()
-  local set = { name = "", devices = {} }
+  local set = { name = "", devices = {}, available_devices = { "Modulation/AHDSR" } }
   function set:init()
     self.devices = {}
   end
@@ -331,7 +411,12 @@ local function new_track(name, song, kind)
     visible_effect_columns = 0,
     volume_column_visible = false,
     delay_column_visible = false,
+    available_devices = {},
   }
+  for path in pairs(DEVICES) do
+    track.available_devices[#track.available_devices + 1] = path
+  end
+  table.sort(track.available_devices)
   function track:insert_device_at(path, index)
     assert(index >= 2, "nothing goes before a track's mixer device")
     local device = new_device(path, song)

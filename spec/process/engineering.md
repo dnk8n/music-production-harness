@@ -77,11 +77,13 @@ Renoise, with Renoise closed first: three small jobs in one Renoise that mph
 starts, songs opened the way "Open in Renoise" opens them, then a request to
 quit, which Renoise must obey without asking to save (REQ-REN-08). The third
 job builds a song with a mix and sampled synths: every planned setting must
-show what was asked, and the duck must dip its target about 12 dB
-(REQ-REN-09 to REQ-REN-11). It prints how Renoise names and shows each kind
-of device, so a name the plan guessed wrong is fixed from one run. It puts
-back the bridge tool that was installed before. Run it before merging a
-change to the bridge tool.
+show what was asked, the duck must dip its target about 12 dB, a part must
+still sound on its own track while it sends, and its echo must come back
+on time (REQ-REN-09 to REQ-REN-11). It prints how Renoise names and shows
+each kind of device, the optional settings Renoise doesn't have, and the
+other settings in those devices' preset data, so a name the plan got wrong
+is fixed from one run. It puts back the bridge tool that was installed
+before. Run it before merging a change to the bridge tool.
 
 `scripts/kit-diff REF [BASE]` checks a change against Dean's own library:
 the sounds every benchmark take would pick, and the sounds whose roles

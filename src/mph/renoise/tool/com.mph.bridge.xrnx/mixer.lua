@@ -3,10 +3,13 @@
 --
 -- The plan names each device, its role and its parameters. A parameter's value
 -- is given as Renoise shows it: a frequency ("Hz"), a level ("dB"), a time
--- ("ms"), a plain number, a choice's text, a fraction of its range, a raw
--- value, or a send track's name. The value that shows it is found from a table
--- of what the parameter shows across its range, so Renoise's own scales
--- needn't be known. Automation is written the same way, pattern by pattern.
+-- ("ms"), a percentage ("%"), a plain number, a choice's text, a fraction of
+-- its range, a raw value, or a send track's name. The value that shows it is
+-- found from a table of what the parameter shows across its range, so
+-- Renoise's own scales needn't be known; a number is only read in its own
+-- unit, so a level is never taken from a percentage. A setting that isn't a
+-- parameter (a #Send's mode) is a "preset" setting: an XML tag in the device's
+-- preset data. Automation is written the same way, pattern by pattern.
 --
 --   mix = { tracks = { { devices, automation }, ... }, -- one per sequencer track
 --           sends = { { name, devices, automation }, ... }, -- send tracks
@@ -17,7 +20,8 @@
 --   modes = { mix = { role, ... }, stem = { ... }, dry = { ... } }: the roles left on
 --
 -- The result file gets what each kind of device has (M.describe) and what each
--- planned device shows once built (M.shown), so one run on the Mac shows how
+-- planned device shows once built (M.shown), with the optional settings it
+-- doesn't have and its other preset settings, so one run on the Mac shows how
 -- Renoise names and shows them.
 
 local M = {}
@@ -28,10 +32,40 @@ M.SILENT_DB = -90 -- a level at or below this is silence: the parameter's lowest
 local ON = { on = true, enabled = true, yes = true, ["true"] = true }
 local OFF = { off = true, disabled = true, no = true, ["false"] = true }
 
+-- What may follow a number in each unit, and what it multiplies the number by.
+-- A plain number ("number") has nothing after it.
+local UNITS = {
+  Hz = { hz = 1, khz = 1000 },
+  ms = { ms = 1, s = 1000, sec = 1000, secs = 1000 },
+  dB = { db = 1 },
+  ["%"] = { ["%"] = 1 },
+  number = { [""] = 1 },
+}
+
 local cache = {} -- what each kind of device's parameters show, for one build
+local refused = 0 -- automations whose last points Renoise refused, for one build
 
 function M.reset()
   cache = {}
+  refused = 0
+end
+
+-- How many automations had their points kept to the start of a pattern's
+-- last line, because Renoise refused points after it.
+function M.refused()
+  return refused
+end
+
+-- What `available` offers that looks like `path`, for an error message.
+function M.near(available, path)
+  local word = ((path:match("([^/]+)$") or path):lower():match("%a+")) or ""
+  local found = {}
+  for _, each in ipairs(available or {}) do
+    if word ~= "" and each:lower():find(word, 1, true) then
+      found[#found + 1] = each
+    end
+  end
+  return #found > 0 and table.concat(found, ", ") or "nothing like it"
 end
 
 local function trim(text)
@@ -39,23 +73,22 @@ local function trim(text)
 end
 
 -- What Renoise shows, as a number in the plan's unit: "1.20 kHz" is 1200 (Hz),
--- "1.5 s" is 1500 (ms) and "-INF dB" is minus infinity. Nil for anything else.
+-- "1.5 s" is 1500 (ms) and "-INF dB" is minus infinity. Nil for anything
+-- else, such as "40.000 %" read as dB.
 function M.parse(text, unit)
   local shown = trim(text):lower():gsub(",", ".")
   if shown:find("inf", 1, true) then
+    if unit ~= "dB" then
+      return nil
+    end
     return shown:sub(1, 1) == "-" and -math.huge or math.huge
   end
   local number, rest = shown:match("^([%+%-]?%d*%.?%d+)%s*(.-)$")
-  if not number then
+  local scale = number and (UNITS[unit] or UNITS.number)[rest]
+  if scale == nil then
     return nil
   end
-  local value = tonumber(number)
-  if unit == "Hz" and rest:sub(1, 1) == "k" then
-    value = value * 1000
-  elseif unit == "ms" and (rest == "s" or rest == "sec" or rest == "secs") then
-    value = value * 1000
-  end
-  return value
+  return tonumber(number) * scale
 end
 
 -- What a parameter shows across its range, lowest value first.
@@ -224,6 +257,54 @@ local function names_of(device)
   return table.concat(found, ", ")
 end
 
+-- A device's preset data (XML), or nil if Renoise won't give it.
+local function preset_data(device)
+  local ok, data = pcall(function()
+    return device.active_preset_data
+  end)
+  if ok and type(data) == "string" then
+    return data
+  end
+  return nil
+end
+
+local function tag_pattern(tag)
+  return "<" .. tag .. ">([^<]*)</" .. tag .. ">"
+end
+
+-- A setting kept in a device's preset data rather than in a parameter: the
+-- first of `names` (XML tags) the data has, what it holds, and the data.
+function M.preset_setting(device, names)
+  local data = device and preset_data(device)
+  if data == nil then
+    return nil
+  end
+  for _, tag in ipairs(names) do
+    local value = data:match(tag_pattern(tag))
+    if value ~= nil then
+      return tag, trim(value), data
+    end
+  end
+  return nil
+end
+
+-- A device's other preset settings, "Tag=value", for the result file: its
+-- simple tags, not the parameters' own <Value> and <Visualization>.
+local function preset_tags(device)
+  local data = preset_data(device)
+  if data == nil then
+    return nil
+  end
+  local found, seen = {}, {}
+  for tag, value in data:gmatch("<([%w_]+)>([^<]*)</%1>") do
+    if tag ~= "Value" and tag ~= "Visualization" and not seen[tag] then
+      seen[tag] = true
+      found[#found + 1] = tag .. "=" .. trim(value)
+    end
+  end
+  return found
+end
+
 -- A device's parameters, for the result file: each one's range and what it
 -- shows at its lowest, default and highest values.
 function M.describe(device)
@@ -252,6 +333,35 @@ local function wanted_text(setting)
     return tostring(setting.value.name)
   end
   return tostring(setting.value)
+end
+
+-- Sets a preset setting by rewriting its tag in the device's preset data.
+local function settle_preset(device, setting, problems, label)
+  local tag, now, data = M.preset_setting(device, setting.names)
+  if tag == nil then
+    if not setting.optional then
+      problems[#problems + 1] = string.format(
+        "%s: no setting called %s in its preset data",
+        label,
+        table.concat(setting.names, " or ")
+      )
+    end
+    return
+  end
+  local wanted = tostring(setting.value)
+  if now:lower() == wanted:lower() then
+    return
+  end
+  local replacement = "<" .. tag .. ">" .. wanted:gsub("%%", "%%%%") .. "</" .. tag .. ">"
+  local changed = data:gsub(tag_pattern(tag), replacement, 1)
+  local ok = pcall(function()
+    device.active_preset_data = changed
+  end)
+  local _, after = M.preset_setting(device, { tag })
+  if not ok or after == nil or after:lower() ~= wanted:lower() then
+    problems[#problems + 1] =
+      string.format("%s: %s stayed %s, not %s", label, tag, tostring(after or now), wanted)
+  end
 end
 
 local function settle(device, kind, setting, problems, label)
@@ -287,14 +397,27 @@ local function add_devices(track, devices, described, problems, label)
   for _, entry in ipairs(devices) do
     local ok, device = pcall(track.insert_device_at, track, entry.path, #track.devices + 1)
     if not ok or device == nil then
-      problems[#problems + 1] = string.format("%s: Renoise has no device %s", label, entry.path)
+      problems[#problems + 1] = string.format(
+        "%s: Renoise has no device %s (it has %s)",
+        label,
+        entry.path,
+        M.near(track.available_devices, entry.path)
+      )
     else
       if described[entry.path] == nil then
         described[entry.path] = M.describe(device)
       end
+      local where = label .. ", " .. entry.name
+      for _, setting in ipairs(entry.params) do -- preset data first: it holds every setting
+        if setting.unit == "preset" then
+          settle_preset(device, setting, problems, where)
+        end
+      end
       device.display_name = entry.name
       for _, setting in ipairs(entry.params) do
-        settle(device, entry.path, setting, problems, label .. ", " .. entry.name)
+        if setting.unit ~= "preset" then
+          settle(device, entry.path, setting, problems, where)
+        end
       end
     end
   end
@@ -308,6 +431,7 @@ local function place(automation, points)
   end) then
     return
   end
+  refused = refused + 1
   local kept, seen = {}, {}
   for _, point in ipairs(points) do
     point.time = math.min(point.time, automation.length)
@@ -392,22 +516,48 @@ function M.switch(song, plan, mode)
   end)
 end
 
--- What each planned device shows once built, for the result file: whether it's
--- on, and each parameter the plan sets, by the name Renoise gives it.
+-- What a planned device shows once built: each setting the plan makes, by the
+-- name Renoise gives it, and the optional ones it doesn't have. A device with
+-- a preset setting, or a missing one, also lists its other preset settings,
+-- where a setting Renoise doesn't make a parameter can be found.
+local function device_shown(device, entry)
+  local shows, missing, presets = {}, {}, false
+  for _, setting in ipairs(entry.params) do
+    if setting.unit == "preset" then
+      presets = true
+      local tag, value = M.preset_setting(device, setting.names)
+      if tag then
+        shows[tag] = value
+      else
+        missing[#missing + 1] = setting.names[1]
+      end
+    else
+      local parameter = device and M.parameter(device, setting.names)
+      if parameter then
+        shows[parameter.name] = parameter.value_string
+      else
+        missing[#missing + 1] = setting.names[1]
+      end
+    end
+  end
+  local found = { name = entry.name, path = entry.path, active = device and device.is_active }
+  found.shows = shows
+  if #missing > 0 then
+    found.missing = missing
+  end
+  if device and (presets or #missing > 0) then
+    found.preset = preset_tags(device)
+  end
+  return found
+end
+
+-- What each planned device shows once built, for the result file, track by track.
 function M.shown(song, plan)
   local found = {}
   every_track(plan, function(index, planned, label)
     local track, devices = song:track(index), {}
     for k, entry in ipairs(planned.devices) do
-      local device = track:device(k + 1)
-      local shows = {}
-      for _, setting in ipairs(entry.params) do
-        local parameter = device and M.parameter(device, setting.names)
-        if parameter then
-          shows[parameter.name] = parameter.value_string
-        end
-      end
-      devices[#devices + 1] = { name = entry.name, active = device and device.is_active, shows = shows }
+      devices[#devices + 1] = device_shown(track:device(k + 1), entry)
     end
     found[#found + 1] = { track = label, devices = devices }
   end)

@@ -224,8 +224,8 @@ that overlap add up but never pass the depth, as in SuperCollider
 (REQ-BEN-12). The Duck's smoothing is off (`SmoothParameterChanges` in its
 preset data), so it steps to each new gain at the tick that reads it. The
 whole curve is drawn one tick early, so its first step down lands on the
-hit's own tick, and the Duck's own gain starts where the curve does, so a
-hit on the song's first line doesn't step down. Each point is placed on the
+hit's own tick, and the Duck's own gain starts where its automation does,
+so a hit on the song's first line doesn't step down. Each point is placed on the
 nearest 1/256 of a line with the gain the curve has at its own time, so the
 floor of a 2 ms attack isn't missed. Every song runs at 16 ticks a line,
 Renoise's most. A song with a duck doubles its lines per beat until the

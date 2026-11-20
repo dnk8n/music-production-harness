@@ -210,30 +210,45 @@ def strip_devices(own: Strip, sends: Sequence[str], role: str) -> tuple[list[Dev
     return devices, moves
 
 
+def _slots(curve: Curve, start: int, length: int) -> dict[int, float]:
+    """A curve's points in the pattern at ``start``, by 1/256 of a line from
+    there: the pattern's start and end, each bend, and both sides of each
+    jump, each with the value the curve has at its own time."""
+    last = start + length - STEP
+    slots: dict[int, float] = {0: curve.value(start)}
+    lo = bisect.bisect_right(curve.times, start)
+    hi = bisect.bisect_left(curve.times, last)
+    for t in curve.times[lo:hi]:
+        slot = round((t - start) / STEP)
+        if slot > 0 and abs(curve.value(t) - curve.before(t)) > JUMP:
+            slots[slot - 1] = curve.before(t)
+        slots[slot] = curve.value(t)  # its own value, so a dip's floor isn't missed
+    slots[round(length / STEP) - 1] = curve.value(last)
+    return slots
+
+
+def _written(value: float) -> float:
+    return round(max(value, SILENT_DB), 4)
+
+
 def pattern_points(curve: Curve, timeline: Timeline) -> list[dict[str, Data]]:
-    """The curve as automation points in each pattern, at its own lines from 1:
-    the pattern's start and end, each bend, and both sides of each jump. Each
-    point is placed on the nearest 1/256 of a line with the value the curve
-    has at its own time; silence is written as SILENT_DB."""
+    """The curve as automation points in each pattern, at its own lines from 1,
+    each placed on the nearest 1/256 of a line (``_slots``); silence is
+    written as SILENT_DB."""
     out: list[dict[str, Data]] = []
     for position, (start, length) in enumerate(
         zip(timeline.starts, timeline.lengths, strict=True), start=1
     ):
-        last = start + length - STEP
-        slots: dict[int, float] = {0: curve.value(start)}
-        lo = bisect.bisect_right(curve.times, start)
-        hi = bisect.bisect_left(curve.times, last)
-        for t in curve.times[lo:hi]:
-            slot = round((t - start) / STEP)
-            if slot > 0 and abs(curve.value(t) - curve.before(t)) > JUMP:
-                slots[slot - 1] = curve.before(t)
-            slots[slot] = curve.value(t)  # its own value, so a dip's floor isn't missed
-        slots[round(length / STEP) - 1] = curve.value(last)
-        points: list[Data] = [
-            [1 + slot * STEP, round(max(v, SILENT_DB), 4)] for slot, v in sorted(slots.items())
-        ]
+        slots = _slots(curve, start, length)
+        points: list[Data] = [[1 + slot * STEP, _written(v)] for slot, v in sorted(slots.items())]
         out.append({"pattern": position, "points": points})
     return out
+
+
+def first_point(curve: Curve, timeline: Timeline) -> float:
+    """The value a curve's automation starts the song on: its first pattern's
+    first point, which may be a dip's floor placed on the first line."""
+    return _written(_slots(curve, timeline.starts[0], timeline.lengths[0])[0])
 
 
 def lane_curve(lane: Lane, timeline: Timeline) -> Curve:
@@ -352,12 +367,12 @@ def _strip(
 
 def voice_track(score: Score, name: str, timeline: Timeline, duck: Curve | None) -> dict[str, Data]:
     """A voice's devices and automation: its duck, its strip, or REQ-REN-06's
-    bypassed filter. The Duck starts where its curve does, so a hit on the
-    song's first line doesn't step there."""
+    bypassed filter. The Duck starts where its automation does, so a hit on
+    the song's first line doesn't step there."""
     devices: list[Device] = []
     lanes: list[dict[str, Data]] = []
     if duck is not None:
-        devices.append(_duck(duck.value(0.0)))
+        devices.append(_duck(first_point(duck, timeline)))
         lanes.append(automation(1, GAIN, "dB", duck, timeline))
     own = score.voice(name).strip
     if own is None or not (own.uses("highpass") or own.uses("lowpass")):

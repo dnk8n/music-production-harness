@@ -197,22 +197,24 @@ def test_a_score_without_a_mix_or_a_sidechain_has_no_mixer() -> None:
     assert (song["tpl"], song["headroom_db"]) == (16, 0.0)  # REQ-REN-12
 
 
+def ducked(sidechain: str) -> score.Score:
+    """A bar of four kicks ducking a bass, with ``sidechain``'s settings."""
+    return score.load_text(
+        'id = "X"\nbpm = 120\nbars = 1\n'
+        '[voices.kick]\ngrid = "x . . . x . . . x . . . x . . ."\nsound = { role = "kick" }\n'
+        f'[voices.bass]\nnotes = "{" ".join(["C2"] * 16)}"\ngate = "{" ".join("x" * 16)}"\n'
+        'sound = { synth = "mph_bass" }\n'
+        f'[sidechain]\ntrigger = "kick"\ntargets = ["bass"]\n{sidechain}\n'
+    )
+
+
 @pytest.mark.req("REQ-REN-11")
 def test_a_song_with_a_duck_gets_lines_enough_for_its_release() -> None:
     # The Duck steps once a tick, so a song has enough lines a beat that its
     # release moves at most DUCK_TICK_STEP_DB a tick: at 120 BPM, 16 ticks a
     # line and 8 lines a beat, a tick is 3.9 ms.
     def song_lpb(sidechain: str) -> int:
-        return song_plan.lpb(
-            score.load_text(
-                'id = "X"\nbpm = 120\nbars = 1\n'
-                '[voices.kick]\ngrid = "x . . . x . . . x . . . x . . ."\n'
-                'sound = { role = "kick" }\n'
-                f'[voices.bass]\nnotes = "{" ".join(["C2"] * 16)}"\ngate = "{" ".join("x" * 16)}"\n'
-                'sound = { synth = "mph_bass" }\n'
-                f'[sidechain]\ntrigger = "kick"\ntargets = ["bass"]\n{sidechain}\n'
-            )
-        )
+        return song_plan.lpb(ducked(sidechain))
 
     remix = score.Sidechain("kick", ("bass",), depth_db=24, release_ms=430)
     assert mixplan.release_step_db(remix, 0.5 / 8 / 16) == pytest.approx(0.462, abs=0.001)
@@ -223,3 +225,24 @@ def test_a_song_with_a_duck_gets_lines_enough_for_its_release() -> None:
     # A duck too steep for even the finest grid gets the finest a pattern holds.
     assert song_lpb("depth_db = 48\nrelease_ms = 100") == 32
     assert mixplan.release_step_db(score.Sidechain("kick", ("bass",), depth_db=0), 0.001) == 0.0
+
+
+@pytest.mark.req("REQ-REN-11")
+def test_the_duck_starts_where_its_automation_does() -> None:
+    # At 16 lines a beat a tick (1.95 ms) is shorter than the remix's 2 ms
+    # attack, so the first dip's floor lands on the song's first line, where
+    # Renoise holds it: the Duck's own gain starts there too.
+    loaded = ducked("depth_db = 24\nattack_ms = 2\nrelease_ms = 430")
+    line_s = loaded.beat_s / 16
+    found = mixplan.plan(
+        loaded, score.events(loaded), [64], line_s=line_s, lpb=16, bar_lines=64, tpl=16
+    )
+    assert found is not None
+    mixer: dict[str, Any] = dict(found)
+    bass = mixer["tracks"][1]
+    first = bass["automation"][0]["patterns"][0]["points"][0]
+    assert first == [1.0, pytest.approx(-24.0, abs=0.01)]
+    assert params(bass["devices"][0])["Gain"] == (first[1], "dB")
+    # Each later kick: 0 dB a tick before it, the floor on its own line.
+    points = dict((t, v) for t, v in bass["automation"][0]["patterns"][0]["points"])
+    assert points[1 + 16 - 1 / 16] == 0.0 and points[1 + 16] == pytest.approx(-24.0, abs=0.01)

@@ -12,8 +12,9 @@ tool, then, in one Renoise that mph starts:
 3. a third job builds M, a song with a mix and sampled synths (REQ-REN-09 to
    REQ-REN-11): every planned parameter must show what the plan asks for,
    the duck (the remix's own: 24 dB in 2 ms, back over 430 ms) must pass
-   REQ-BEN-12's own checks at every kick on a steady tone and on the bass, as
-   a render's report measures it, the stab must still sound on its own track
+   REQ-BEN-12's own checks at every kick on a steady tone and on the bass,
+   rendered in a take's order and measured as a render's report measures it,
+   the stab must still sound on its own track
    while it sends (its #Send keeps its source), and the stab's echo must come
    back a dotted eighth after the note thrown into it. It prints each kind of
    device's parameters as Renoise names and shows them, the optional settings
@@ -236,9 +237,11 @@ def song(folder: Path, sample: Path, name: str) -> dict[str, luadata.Data]:
 
 def mixed_song(folder: Path, sample: Path) -> dict[str, luadata.Data]:
     """Song M: the mixed score, its synths sampled from the blip, and a steady
-    tone. Rendered as a mix after a warm-up, then the bass alone with its duck
-    (a stem) and without, the stab with its sends and without, and the tone
-    with its duck and without."""
+    tone. Rendered in a take's order (bench.render): a warm-up and the mix,
+    then stems, the kick's first, then the ducked parts dry. A take's first
+    stem follows the switch from the mix, and in Renoise 3.5.4 the bass's
+    first 0.6 ms came out about 6 dB quieter when its stem did. Last, the
+    stab with its sends and without."""
     loaded = score.load_text(MIXED)
     events = score.events(loaded)
 
@@ -265,12 +268,13 @@ def mixed_song(folder: Path, sample: Path) -> dict[str, luadata.Data]:
     renders: list[luadata.Data] = [
         {"file": str(folder / "M warm-up.wav")},
         {"file": str(folder / "M.wav")},
+        {"file": str(folder / "M kick stem.wav"), "solo": 1, "mode": "stem"},
         {"file": str(folder / "M stem.wav"), "solo": 2, "mode": "stem"},
+        {"file": str(folder / "M tone stem.wav"), "solo": 4, "mode": "stem"},
         {"file": str(folder / "M dry.wav"), "solo": 2, "mode": "dry"},
+        {"file": str(folder / "M tone dry.wav"), "solo": 4, "mode": "dry"},
         {"file": str(folder / "M stab.wav"), "solo": 3},  # with its strip, sends and their effects
         {"file": str(folder / "M stab dry.wav"), "solo": 3, "mode": "dry"},
-        {"file": str(folder / "M tone stem.wav"), "solo": 4, "mode": "stem"},
-        {"file": str(folder / "M tone dry.wav"), "solo": 4, "mode": "dry"},
     ]
     save = str(folder / "M.xrns")
     return song_plan.song(loaded, events, tracks, rate=RATE, save=save, renders=renders)

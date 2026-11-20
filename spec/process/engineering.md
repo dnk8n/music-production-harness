@@ -78,7 +78,8 @@ starts, songs opened the way "Open in Renoise" opens them, then a request to
 quit, which Renoise must obey without asking to save (REQ-REN-08). The third
 job builds a song with a mix and sampled synths: every planned setting must
 show what was asked, the duck must pass REQ-BEN-12's own checks at every
-kick, as a render's report measures it, a part must still sound on its own
+kick, rendered in a take's order and measured as a render's report measures
+it, a part must still sound on its own
 track while it sends, and its echo must come back on time (REQ-REN-09 to
 REQ-REN-11). The duck is the remix's own (24 dB in 2 ms, back over 430 ms),
 on the bass and on a steady tone. It prints how Renoise names and shows each

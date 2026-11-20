@@ -439,7 +439,8 @@ def test_remix_ones_whole_track_weaves_the_vocals_and_horn_through_new_parts() -
         clip = whole.voice(play.voice).clips[play.clip]
         assert (play.bar - clip.first) % 2 == 0, clip.name
     assert whole.mixed and whole.sidechain is not None
-    assert [v.name for v in score.all_variants(whole)] == ["supercollider"]
+    # A take per software (REQ-BEN-07): Renoise builds it with its own mixer (REQ-REN-10).
+    assert [v.name for v in score.all_variants(whole)] == ["renoise", "supercollider"]
 
 
 # --- sections in Renoise (REQ-TRK-04) ------------------------------------------------------

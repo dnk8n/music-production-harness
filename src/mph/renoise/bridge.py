@@ -25,7 +25,7 @@ from mph.renoise import luadata
 
 TOOL_ID = "com.mph.bridge"
 TOOL_FOLDER = f"{TOOL_ID}.xrnx"
-TOOL_FILES = ("manifest.xml", "main.lua", "build.lua", "json.lua")
+TOOL_FILES = ("manifest.xml", "main.lua", "build.lua", "mixer.lua", "json.lua")
 SETTINGS = "settings.lua"
 APP = "/Applications/Renoise.app"
 PROCESS = "Renoise"
@@ -38,7 +38,12 @@ PREFERENCE_ROOTS = ("Library/Preferences/Renoise", ".renoise")
 
 
 class BridgeError(RuntimeError):
-    pass
+    """Something went wrong with Renoise or its job; ``outcome`` holds the job's
+    result file, if the tool wrote one."""
+
+    def __init__(self, message: str, outcome: dict[str, Any] | None = None) -> None:
+        super().__init__(message)
+        self.outcome = outcome or {}
 
 
 @dataclass(frozen=True, slots=True)
@@ -244,7 +249,7 @@ def run_job(
     outcome = wait(result, timeout_s, clock or Clock())
     session.kept += kept_songs(outcome)
     if not outcome.get("ok"):
-        raise BridgeError(f"Renoise: {outcome.get('error', 'unknown error')}")
+        raise BridgeError(f"Renoise: {outcome.get('error', 'unknown error')}", outcome)
     return outcome
 
 

@@ -4,9 +4,13 @@
 -- mph wrote: a list of songs, each with its plan, where to save it, and the
 -- renders wanted, and where scratch songs go. For a job this tool first saves
 -- the open song if it's mph's. Then, for each song, it starts a new song,
--- builds it (build.lua), saves it, renders each WAV, and saves it again. Last
--- it saves the open song as mph's scratch song and writes
--- `<name>.result.json`, with the error if anything failed. Heavy work runs
+-- builds it (build.lua), saves it, renders each WAV, and saves it again. A
+-- render can solo a track and switch the mixer to a kind of render ("stem"
+-- or "dry", mixer.lua); the song is saved with nothing muted and every
+-- device as built. Last it saves the open song as mph's scratch song and
+-- writes `<name>.result.json`, with the error if anything failed, the
+-- parameters of every kind of mixer device the songs used, and what each
+-- song's mixer devices and synth envelopes show once built. Heavy work runs
 -- from the idle loop, never inside a notifier.
 --
 -- Nothing is left unsaved (REQ-REN-08). Renoise can count a step's changes as
@@ -74,6 +78,8 @@ local function finish(result)
   result.renoise = renoise.RENOISE_VERSION
   result.files = job.files
   result.kept = job.kept
+  result.devices = job.devices
+  result.shown = job.shown
   write_atomically(job.base .. ".result.json", json.encode(result) .. "\n")
   os.remove(job.base .. ".working")
   job = nil
@@ -141,10 +147,12 @@ local function next_render()
   local wanted = plan.renders[job.render]
   if wanted == nil then
     build.solo(song, nil)
+    build.switch(song, plan, "mix")
     job.phase = "save" -- on the next idle step, after this change
     return
   end
   build.solo(song, wanted.solo)
+  build.switch(song, plan, wanted.mode)
   job.phase = "rendering"
   local options = {
     sample_rate = plan.rate,
@@ -162,13 +170,19 @@ local function next_render()
 end
 
 local function save_song()
-  renoise.app():save_song_as(current_song().save) -- saved with nothing muted
+  renoise.app():save_song_as(current_song().save) -- saved with nothing muted, as built
   next_song()
 end
 
 local function build_song()
   local plan = current_song()
-  build.build(renoise.song(), plan)
+  local song = renoise.song()
+  build.build(song, plan, job.devices)
+  local shown = build.shown(song, plan)
+  if shown then
+    shown.song = stem(plan.save)
+    job.shown[#job.shown + 1] = shown
+  end
   renoise.app():save_song_as(plan.save)
   job.render = 0
   next_render()
@@ -180,7 +194,7 @@ local function start(folder, name)
   if not os.rename(join(folder, name), working) then
     return
   end
-  job = { base = base, song = 0, files = {}, kept = {} }
+  job = { base = base, song = 0, files = {}, kept = {}, devices = {}, shown = {} }
   local data, problem = load_data(working)
   if type(data) ~= "table" or type(data.songs) ~= "table" or type(data.scratch) ~= "table" then
     fail("unreadable job: " .. tostring(problem))

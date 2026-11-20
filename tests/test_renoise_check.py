@@ -9,9 +9,11 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+import numpy as np
 import pytest
 
 from mph import config
+from mph.bench import audio
 from mph.proc import Result
 from mph.renoise import bridge, luadata
 from tests.fakes import FakeRunner
@@ -31,10 +33,14 @@ def renoise_check() -> ModuleType:
 
 class Renoise:
     """Renoise and the bridge tool as the check sees them: a process that
-    starts and quits, and jobs answered as soon as mph waits for them."""
+    starts and quits, and jobs answered as soon as mph waits for them. The
+    mixed song is built by the tool in the fake Renoise (tests/renoise), and
+    its stem is the dry render times ``duck``."""
 
-    def __init__(self, cfg: config.Config, *, keeps: bool = True, quits: bool = True) -> None:
-        self.cfg, self.keeps, self.quits = cfg, keeps, quits
+    def __init__(
+        self, cfg: config.Config, *, keeps: bool = True, quits: bool = True, duck: float = 0.25
+    ) -> None:
+        self.cfg, self.keeps, self.quits, self.duck = cfg, keeps, quits, duck
         self.open = False
         self.opened: list[str] = []
         self.waited = 0.0
@@ -63,8 +69,10 @@ class Renoise:
         for job in sorted(bridge.jobs_dir(self.cfg).glob("*.job.lua")):
             for saved in saves(job):
                 Path(saved).write_text("xrns", "utf-8")
-            job.unlink()
             result: dict[str, Any] = {"ok": True, "files": [], "kept": []}
+            if job.name.startswith("renoise-check-3"):
+                result.update(self.mixed(job))
+            job.unlink()
             if job.name.startswith("renoise-check-2") and self.keeps:
                 opened = next(bridge.scratch_dir(self.cfg).glob("renoise-check-*/A.xrns"))
                 copy = bridge.scratch_dir(self.cfg) / "20261113-081500 A.xrns"
@@ -73,6 +81,20 @@ class Renoise:
             job.with_name(job.name.replace(".job.lua", ".result.json")).write_text(
                 json.dumps(result), "utf-8"
             )
+
+    def mixed(self, job: Path) -> dict[str, Any]:
+        (song,) = lua.run("data", str(job))["songs"]
+        plan = job.with_name("mixed.plan.lua")
+        plan.write_text(luadata.document(song), "utf-8")
+        built = lua.run("build", str(plan))
+        plan.unlink()
+        assert built.get("error") is None, built["error"]
+        renders = {Path(r["file"]).name: Path(r["file"]) for r in song["renders"]}
+        t = np.arange(4800) / 48000
+        dry = (0.5 * np.sin(2 * np.pi * 440 * t)).astype(np.float32)[:, None]
+        audio.write_float(renders["M dry.wav"], dry, 48000)
+        audio.write_float(renders["M stem.wav"], dry * self.duck, 48000)
+        return {"devices": built["described"], "shown": [{"song": "M", **built["shown"]}]}
 
 
 def saves(job: Path) -> list[str]:
@@ -104,6 +126,9 @@ def test_the_check_passes_when_renoise_never_asks(
     assert renoise_check.check(cfg, renoise.runner(), home, renoise.clock()) == 0
     out = capsys.readouterr().out
     assert "job 2: kept A as 20261113-081500 A.xrns" in out
+    assert "    Cutoff: 20.0 Hz | 20.00 kHz | 20.00 kHz (quantum 0)" in out  # the filter's
+    assert "every planned parameter shows what was asked" in out
+    assert "the duck dipped the bass 12.0 dB at the first kick" in out
     assert out.strip().endswith("PASS: Renoise never asked to save")
     assert renoise.opened == ["A.xrns", "B.xrns"] and not renoise.open
     # The tool from before is back, and the check's songs and A's copy are gone.
@@ -179,3 +204,58 @@ def test_the_checks_songs_build_with_the_tool(renoise_check: ModuleType, tmp_pat
     assert [t["name"] for t in built["tracks"]] == ["blip", "clip"]
     zone = built["tracks"][1]["zones"][0]
     assert (zone["name"], zone["base_note"], zone["autoseek"]) == ("blip", 48, True)
+
+
+@pytest.mark.lua
+@pytest.mark.req("REQ-REN-10")
+@pytest.mark.req("REQ-REN-11")
+def test_the_check_fails_when_the_mixer_isnt_as_planned(
+    renoise_check: ModuleType, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg, home, _ = setup(tmp_path)
+    flat = Renoise(cfg, duck=1.0)
+    assert renoise_check.check(cfg, flat.runner(), home, flat.clock()) == 1
+    assert "FAIL: the duck dipped the bass 0.0 dB at the first kick" in capsys.readouterr().out
+    # What a device shows is read the way the tool reads it.
+    shown, mismatch = renoise_check.shown_number, renoise_check.mismatch
+    assert (shown("2.50 kHz", "Hz"), shown("1.5 s", "ms"), shown("-INF dB", "dB")) == (
+        2500.0,
+        1500.0,
+        -float("inf"),
+    )
+    assert shown("Lowpass", "Hz") is None
+    cutoff = {"names": ["Cutoff", "Frequency"], "value": 400.0, "unit": "Hz"}
+    assert mismatch(cutoff, {"Frequency": "405.0 Hz"}) == ""
+    assert mismatch(cutoff, {"Cutoff": "1.20 kHz"}) == "Cutoff shows '1.20 kHz', not 400.0"
+    assert mismatch(cutoff, {"Gain": "0 dB"}) == "Cutoff isn't there"
+    assert mismatch({**cutoff, "optional": True}, {}) == ""
+    silent = {"names": ["Amount"], "value": -90.0, "unit": "dB"}
+    assert mismatch(silent, {"Amount": "-INF dB"}) == ""
+    assert mismatch(silent, {"Amount": "-60.0 dB"}) == "Amount shows '-60.0 dB', not -90.0"
+    planned = {"tracks": [{"name": "bass", "zones": [], "release": 0.02}]}
+    envelopes = [{"instrument": "bass accent", "release": "45.0 ms"}]
+    assert renoise_check.released_wrong(planned, {"shown": [{"envelopes": envelopes}]}) == [
+        "bass accent, its envelope: Release shows '45.0 ms', not 20 ms"
+    ]
+    assert renoise_check.released_wrong(planned, {"shown": []}) == [
+        "no synth envelope was reported"
+    ]
+    send = {"names": ["Receiver"], "value": {"name": "hall", "index": 1}, "unit": "send"}
+    assert mismatch(send, {"Receiver": "02: hall"}) == ""
+    mute = {"names": ["Mute Src."], "value": "On", "unit": "choice"}
+    assert mismatch(mute, {"Mute Src.": "Enabled"}) == ""
+    assert mismatch(mute, {"Mute Src.": "Off"}) == "Mute Src. shows 'Off', not On"
+
+
+@pytest.mark.lua
+@pytest.mark.req("REQ-REN-09")
+def test_the_checks_mixed_song_builds_with_the_tool(
+    renoise_check: ModuleType, tmp_path: Path
+) -> None:
+    sample = renoise_check.blip(tmp_path / "blip.wav")
+    plan = tmp_path / "plan.lua"
+    plan.write_text(luadata.document(renoise_check.mixed_song(tmp_path, sample)), "utf-8")
+    built = lua.run("build", str(plan))
+    assert built.get("error") is None
+    assert [t["name"] for t in built["mixer"]] == ["kick", "bass", "stab", "Master", "echo", "hall"]
+    assert built["instruments"] == 4  # the bass's accents get their own

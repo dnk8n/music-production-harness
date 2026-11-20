@@ -37,17 +37,21 @@ CODE = (
     "bench/audio.py",
     "bench/checks.py",
     "bench/levels.py",
+    "bench/mix.py",
     "bench/osc.py",
     "bench/render.py",
+    "bench/sampling.py",
     "bench/sc.py",
     "bench/score.py",
     "bench/synthdefs.scd",
     "deliver.py",
     "renoise/luadata.py",
+    "renoise/mixplan.py",
     "renoise/plan.py",
     "renoise/tool/com.mph.bridge.xrnx/build.lua",
     "renoise/tool/com.mph.bridge.xrnx/json.lua",
     "renoise/tool/com.mph.bridge.xrnx/main.lua",
+    "renoise/tool/com.mph.bridge.xrnx/mixer.lua",
 )
 DOCUMENTED = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
 

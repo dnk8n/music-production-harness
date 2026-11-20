@@ -6,11 +6,13 @@ gains -> engine -> stems and master -> checks -> delivered AIFF -> ``report.json
 The engine is Renoise when its bridge tool is installed (ADR-0009): mph
 builds a small song with one track per voice, renders it, renders it again,
 then renders each track alone for its stem. Without Renoise, SuperCollider
-renders everything in one NRT pass, as in step 3. A score with a melodic
-voice (BM-BASS-01) always renders in SuperCollider, because its glides and
-per-note filter envelopes can't be one-shot samples yet. Either way, each voice is
-also rendered alone as a *template* for measuring. Everything for one render
-lives in ``data_dir/renders/<id>/<score hash>/``.
+renders everything in one NRT pass, as in step 3. A benchmark with a melodic
+voice (BM-BASS-01), a sidechain or a mix renders in SuperCollider. An
+arranged track's Renoise take plays its melodic voices from samples of
+their synths (REQ-REN-09), mixes them with Renoise's own devices (REQ-REN-10)
+and ducks them with an automated Gainer (REQ-REN-11). Either way, each voice
+is also rendered alone as a *template* for measuring. Everything for one
+render lives in ``data_dir/renders/<id>/<score hash>/``.
 
 A track's clip voices (spec/components/tracks.md, REQ-TRK-02) play bars of a
 recording at its own tempo and level: Renoise loads each clip cut, sample for
@@ -39,7 +41,7 @@ from typing import Any
 import numpy as np
 
 from mph import __version__, checkout, retention
-from mph.bench import audio, checks, feedback, kit, levels, rerender, sc
+from mph.bench import audio, checks, feedback, kit, levels, rerender, sampling, sc
 from mph.bench.score import (
     Event,
     Play,
@@ -98,6 +100,9 @@ CLIP_WINDOW_S = 0.5  # each cue is checked over this long near its start and its
 CLIP_EDGE_S = 0.02  # clear of the fades at a cue's ends
 CLIP_SEARCH_S = 0.01  # how far either way a cue is looked for
 CLIP_PART = 0.25  # the loudest window in a cue's first and last quarter is checked
+SAMPLE_GAP_S = 0.25  # silence between a synth's samples in the render that makes them
+SAMPLE_MARGIN_S = 0.01  # kept after each sample's release (REQ-REN-09)
+RENOISE_DEVICES = "renoise-devices.json"  # what the bridge tool found of Renoise's devices
 
 
 @dataclass(frozen=True, slots=True)
@@ -522,9 +527,12 @@ def probe(runner: Runner, tools: sc.Tools, plan: sc.Plan, work: Path) -> list[ch
 
 
 def renoise_tracks(
-    setup: Setup, clips: dict[str, list[Path]] | None = None
+    setup: Setup,
+    clips: dict[str, list[Path]] | None = None,
+    synths: dict[str, song_plan.Synth] | None = None,
 ) -> list[song_plan.Track]:
-    """One track per voice. A clip voice's track loads its cut clips (REQ-TRK-02)."""
+    """One track per voice. A clip voice's track loads its cut clips (REQ-TRK-02),
+    and a melodic voice's its synth's samples (REQ-REN-09)."""
     plan = setup.plan
     tracks = []
     for n, (voice, choice) in enumerate(zip(setup.score.voices, setup.choices, strict=True)):
@@ -533,19 +541,67 @@ def renoise_tracks(
             semitones = 12 * math.log2(plan.slice_rate)
             starts = tuple(s.start for s in plan.slices)
         cut = (clips or {}).get(voice.name, [])
+        synth = (synths or {}).get(voice.name)
+        own = voice.clips or synth is not None
         tracks.append(
             song_plan.Track(
                 name=voice.name,
-                sample="" if voice.clips else str(setup.sounds[choice.voice]),
+                sample="" if own else str(setup.sounds[choice.voice]),
                 gain=plan.gains[n] if plan.gains else 1.0,
                 semitones=semitones,
                 slices=starts,
                 clips=tuple((str(f), c.name) for f, c in zip(cut, voice.clips, strict=True))
                 if voice.clips
                 else None,
+                synth=synth,
             )
         )
     return tracks
+
+
+def synth_samples(runner: Runner, tools: sc.Tools, setup: Setup) -> dict[str, song_plan.Synth]:
+    """Each melodic voice's sounds sampled from its synth, for Renoise (REQ-REN-09):
+    every pitch it plays, plain and accented, a chord whole at its root, one
+    after another in one SuperCollider render, each held for its longest note
+    plus the synth's release, at full velocity and unit gain. They go in the
+    render folder's ``sounds/<voice>/``."""
+    score, plan = setup.score, setup.plan
+    notes: list[Event] = []
+    windows: dict[str, list[tuple[sampling.Sound, float, float]]] = {}
+    timing: dict[str, tuple[float, float]] = {}
+    for voice, choice in zip(score.voices, plan.choices, strict=True):
+        if not voice.melodic:
+            continue
+        params = {**choice.params, **dict(voice.params)}
+        release = sampling.release_s(choice.synthdef, params)
+        timing[voice.name] = release, sampling.glide_s(choice.synthdef, params)
+        at, windows[voice.name] = 0.0, []
+        own = [e for e in setup.found if e.voice == voice.name]
+        for (pitch, accent), held in sorted(sampling.sounds(own).items()):
+            notes.append(Event(voice.name, 0, at, 1.0, pitch=pitch, accent=accent, length_s=held))
+            span = held + release + SAMPLE_MARGIN_S
+            windows[voice.name].append(((pitch, accent), at, span))
+            at += span + SAMPLE_GAP_S
+    if not notes:
+        return {}
+    end = max(at + span for found in windows.values() for _, at, span in found)
+    solo = replace(plan, score=replace(template_score(score, notes), tail_s=end), gains=())
+    out = setup.folder / "work" / "samples.wav"
+    stems = audio.split(
+        audio.read(sc.render(runner, tools, solo, notes, out))[0], [v.name for v in score.voices]
+    )
+    out.unlink(missing_ok=True)
+    synths = {}
+    for name, found in windows.items():
+        zones: dict[bool, list[song_plan.Zone]] = {False: [], True: []}
+        for (pitch, accent), at, span in found:
+            first = round(at * plan.rate)
+            path = setup.folder / "sounds" / name / f"{pitch}{'-accent' if accent else ''}.wav"
+            audio.write_float(path, stems[name][first : first + round(span * plan.rate)], plan.rate)
+            zones[accent].append(song_plan.Zone(str(path), song_plan.renoise_note(pitch)))
+        release, glide = timing[name]
+        synths[name] = song_plan.Synth(tuple(zones[False]), tuple(zones[True]), release, glide)
+    return synths
 
 
 def cut_clips(setup: Setup) -> dict[str, list[Path]]:
@@ -567,11 +623,22 @@ def cut_clips(setup: Setup) -> dict[str, list[Path]]:
     return found
 
 
+def _ducked(score: Score) -> tuple[str, ...]:
+    """The voices an active sidechain ducks (REQ-BEN-12)."""
+    chain = score.sidechain
+    return chain.targets if chain is not None and chain.active else ()
+
+
 def renoise_job(
-    setup: Setup, clips: dict[str, list[Path]] | None = None
+    setup: Setup,
+    clips: dict[str, list[Path]] | None = None,
+    synths: dict[str, song_plan.Synth] | None = None,
 ) -> tuple[dict[str, Any], list[Event]]:
+    """The songs to build and render: the score, with each voice's stem dry and
+    each ducked voice once more without its duck (REQ-REN-03), and the
+    templates."""
     score, folder, work = setup.score, setup.folder, setup.folder / "work"
-    tracks = renoise_tracks(setup, clips)
+    tracks = renoise_tracks(setup, clips, synths)
     # The first render of a freshly built song starts ~30 samples late, so warm up first.
     warm_up: dict[str, Any] = {"file": str(work / "warm-up.wav")}
     renders: list[Any] = [
@@ -580,8 +647,13 @@ def renoise_job(
         {"file": str(work / "again.wav")},
     ]
     renders += [
-        {"file": str(work / f"stem-{v.name}.wav"), "solo": n}
+        {"file": str(work / f"stem-{v.name}.wav"), "solo": n, "mode": "stem"}
         for n, v in enumerate(score.voices, start=1)
+    ]
+    renders += [
+        {"file": str(work / f"dry-{v.name}.wav"), "solo": n, "mode": "dry"}
+        for n, v in enumerate(score.voices, start=1)
+        if v.name in _ducked(score)
     ]
     main = song_plan.song(
         score,
@@ -616,40 +688,74 @@ def renoise_timeout_s(job: dict[str, Any]) -> float:
     return RENOISE_TIMEOUT_S + RENOISE_SECONDS_PER_SECOND * float(rendered_s)
 
 
+def _keep_devices(folder: Path, outcome: dict[str, Any]) -> None:
+    """What the bridge tool found of each kind of Renoise device the song used,
+    and what each of the song's mixer devices showed once built (REQ-REN-03),
+    kept beside the render, whether it built or not."""
+    kinds = outcome.get("devices")
+    if kinds:
+        found = {"kinds": kinds, "built": outcome.get("shown") or []}
+        (folder / RENOISE_DEVICES).write_text(json.dumps(found, indent=2) + "\n", "utf-8")
+
+
 def _render_renoise(
     cfg: Config,
     runner: Runner,
     home: Path,
     setup: Setup,
+    tools: sc.Tools | None,
     *,
     clock: bridge.Clock | None,
     session: bridge.Session | None,
 ) -> Rendered:
     score, work = setup.score, setup.folder / "work"
     work.mkdir(parents=True, exist_ok=True)
-    job, templates = renoise_job(setup, cut_clips(setup))
+    synths = synth_samples(runner, tools, setup) if tools is not None else {}
+    job, templates = renoise_job(setup, cut_clips(setup), synths)
     name = f"{score.id}-{setup.folder.name}"
-    outcome = bridge.run_job(
-        cfg, runner, home, name, job, timeout_s=renoise_timeout_s(job), clock=clock, session=session
-    )
+    try:
+        outcome = bridge.run_job(
+            cfg,
+            runner,
+            home,
+            name,
+            job,
+            timeout_s=renoise_timeout_s(job),
+            clock=clock,
+            session=session,
+        )
+    except bridge.BridgeError as failed:
+        _keep_devices(setup.folder, failed.outcome)
+        raise
+    _keep_devices(setup.folder, outcome)
     frames = round(score.length_s * setup.rate)
 
-    def take(path: Path, length: int) -> audio.Audio:
+    def take(file: str, length: int) -> audio.Audio:
+        """A render, read and then deleted: renders are made again on demand (ADR-0010)."""
+        path = work / file
         data, rate = audio.read(path)
         if rate != setup.rate:
             raise sc.RenderError(f"Renoise rendered {path.name} at {rate} Hz, not {setup.rate}")
+        path.unlink()
         return _fit(data, length)
 
-    solo_frames = round(template_score(score, templates).length_s * setup.rate)
-    reference = take(work / "templates.wav", solo_frames)
+    (work / "warm-up.wav").unlink(missing_ok=True)
+    reference = take("templates.wav", round(template_score(score, templates).length_s * setup.rate))
+    stems = {v.name: take(f"stem-{v.name}.wav", frames) for v in score.voices}
+    dry = {name: take(f"dry-{name}.wav", frames) for name in _ducked(score)}
+    files = {"project": f"{score.id}.xrns"}
+    if (setup.folder / RENOISE_DEVICES).is_file():
+        files["renoise_devices"] = RENOISE_DEVICES
     return Rendered(
-        master=take(work / "render.wav", frames),
-        again=take(work / "again.wav", frames),
-        stems={v.name: take(work / f"stem-{v.name}.wav", frames) for v in score.voices},
+        master=take("render.wav", frames),
+        again=take("again.wav", frames),
+        stems=stems,
         reference={v.name: reference for v in score.voices},
         templates=templates,
         tools={"renoise": str(outcome.get("renoise", "unknown"))},
-        files={"project": f"{score.id}.xrns"},
+        files=files,
+        extra_checks=_ducking(setup, stems, dry),
+        dry=dry,
     )
 
 
@@ -903,7 +1009,7 @@ def run(
     setup, tools, gains = _prepare(cfg, runner, score, choices, chosen)
     folder, rate = setup.folder, setup.rate
     if chosen == "renoise":
-        rendered = _render_renoise(cfg, runner, home, setup, clock=clock, session=session)
+        rendered = _render_renoise(cfg, runner, home, setup, tools, clock=clock, session=session)
     else:
         assert tools is not None  # noqa: S101 - _prepare refuses otherwise
         rendered = _render_supercollider(runner, tools, setup)

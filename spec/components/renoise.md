@@ -1,7 +1,9 @@
 # Renoise bridge
 
 **Status:** draft (benchmark songs built in step 3, the track template in
-step 4). Target: Renoise 3.5.4 arm64 (licensed), Lua API 6. Decision: ADR-0009.
+step 4; synths, the mixer and ducking for remix 1's second version,
+2026-11-15). Target: Renoise 3.5.4 arm64 (licensed), Lua API 6. Decision:
+ADR-0009.
 
 ### REQ-REN-01: Songs are generated, not hand-built
 Python turns score data into a song plan: tempo, lines per beat, tracks,
@@ -29,7 +31,18 @@ renders each requested WAV (32-bit float at the production rate, with
 other tracks muted for a stem), saves it again, then writes a result file
 with any error. It leaves nothing unsaved behind it (REQ-REN-08). The first render of a freshly
 built song starts about 30 samples late in Renoise 3.5.4, so mph asks for a
-throwaway warm-up render first and measures only the renders after it.
+throwaway warm-up render first and measures only the renders after it. A
+song with a mix (REQ-REN-10) renders its stems dry: each stem with the
+strip devices, the sends and the master's devices switched off and its duck
+on, and each sidechain target once more with its duck off too (REQ-REN-11).
+The song is saved with nothing muted and every device as built. If a
+device or parameter the plan names isn't there, or never shows the value
+asked for, the build fails naming all of them, with the parameters the
+device does have. The result file lists the parameters of every kind of
+mixer device the song uses, and what each of the song's mixer devices shows
+once built, and mph keeps it in the render folder, so a parameter Renoise
+names or shows differently comes to light in one run.
+mph deletes each rendered WAV once it has read it.
 mph starts Renoise in the background and waits for the result. If Renoise is
 already open when a render command starts, mph refuses and asks the user to
 save their work and quit Renoise: it only renders in a Renoise it started
@@ -58,7 +71,8 @@ Plug-ins are listed in config, and doctor checks they're installed.
 ### REQ-REN-06: Tracks ready for hands-on mixing
 Each sound's level-matching gain (REQ-BEN-09) is set on its sample's
 volume, so every track's own volume starts at 0 dB, free for mixing by hand.
-Every track also has a filter device that starts bypassed. Notes
+Every track also has a filter device that starts bypassed, unless its
+voice's strip already filters it (REQ-REN-10). Notes
 use the volume and delay columns, so velocity and swing are visible and
 editable in the pattern. Choked voices get a note-off.
 - **Why:** Dean should be able to tame a sound, or move a note, without
@@ -105,3 +119,98 @@ they are an hour old (REQ-RET-05).
   are called scratch songs because a stash in mph is a sound Dean chose to
   keep.
 - **Verify:** test, with a fake Renoise that counts a step's changes as unsaved even after a save in that step, and asks before closing a changed song; inspect on the Mac: two renders in one Renoise, then Renoise quits without asking
+
+### REQ-REN-09: Synth parts as sampled instruments
+A melodic voice (REQ-BEN-17, REQ-BEN-18) plays from a Renoise instrument
+sampled from its SuperCollider synth, the way a sampler holds a synth patch:
+- SuperCollider renders one sample for each sound the voice makes: each
+  pitch it plays, plain and accented, with a chord sampled whole at its root
+  (chord memory). Each is held for the longest note of its pitch (notes
+  tied together count as one) plus the synth's release, at the production
+  rate, full velocity and unit gain.
+- Each sample sits on its own key, and the keys between sampled notes play
+  the nearest one transposed, so any note Dean types sounds. A voice with
+  accents has a second instrument, named after it with "accent", that holds
+  its accented samples: an accented note plays that instrument. Velocity
+  stays in the volume column for both.
+- An AHDSR on volume ends notes as the synth does: a note-off at the end of
+  a note's gate releases it over the synth's release time, and a new note
+  in the column releases the one before it.
+- A song with a melodic voice runs at 8 lines per beat, so a line is half
+  a sixteenth and a plain note's gate (half a step, BM-BASS-01's rule) ends
+  on a line of its own, where its note-off goes. A note and its note-off
+  can't share a line. A triplet song's 12 lines per beat already allow it
+  (REQ-BEN-13).
+- A tied note (a slide) doesn't start a new note: the next note carries a
+  glide command (0Gxx) in the effect column, fast enough to cover the
+  interval in the synth's glide time, and the sample that is playing bends
+  to the new pitch.
+- Each sample's volume holds its voice's level-matching gain (REQ-BEN-09,
+  REQ-REN-06).
+- **Why:** Dean's rule (2026-11-11): each take is built the way its
+  software's users would build it. Renoise users play synth sounds from
+  sampled instruments, which Renoise makes itself from a plug-in ("render
+  plug-in to instrument"), and Detroit's chord memory is a chord sampled
+  once and played from one key (#40). The notes stay notes, so Dean can
+  move, re-pitch and lengthen them in the pattern. A sampler bends a glided
+  note's sample rather than keep the synth running, and a glided note keeps
+  the first note's accent. A native Renoise patch for the acid line is
+  #30's job. At 4 lines per beat a plain note's note-off would fall on
+  its own note's line and be lost, so every note would ring on until the
+  next one; Renoise users raise the lines per beat for short gates.
+- **Verify:** test, with the fake Renoise; measure, with the checks the
+  SuperCollider take passes
+
+### REQ-REN-10: The mix as a Renoise mixer
+A score's mix (spec/components/mix.md) is built from Renoise's own devices:
+- On each voice's track, after its duck (REQ-REN-11): a Digital Filter for
+  each strip filter it uses (high-pass, then low-pass, with the low-pass's
+  resonance as its Q), a Gainer for the strip's level and pan, then a
+  #Send for each send, routed to that send's track and keeping the source.
+- Each send is a send track after the master, holding its effect, fully
+  wet, then its return strip: the same filters, Gainer and #Sends, to sends
+  after it. A delay is a Multitap's first tap, line-synced to the echo time,
+  with the feedback, ping-pong when asked, and its low-pass in the feedback
+  path. A reverb is mpReverb 2, with the decay as its duration and the
+  predelay.
+- The master's strip is on the master track.
+- Automation (REQ-MIX-03) becomes automation in the patterns, on the
+  parameter each lane moves: a point at each of the lane's points and one
+  every beat along a move, so filters move evenly in octaves and levels in
+  dB whatever scale Renoise gives the parameter. A jump is two points 1/256
+  of a line apart. Each pattern starts and ends on the lane's value there.
+- Values are given as Renoise shows them (Hz, dB, ms, lines). The bridge
+  finds the value that shows each one, from a table of what each
+  parameter shows across its range, so Renoise's own scales needn't be
+  known.
+- **Why:** Dean's rule (2026-11-11). Renoise users mix with send tracks,
+  native devices and automation drawn in the patterns, where Dean can see
+  and change it. The Multitap is Renoise's echo with ping-pong and a filter
+  in its feedback path, so each echo is darker than the one before, as in
+  the SuperCollider take. Renoise doesn't document its parameters' scales,
+  and what it shows is the unit the score is written in.
+- **Verify:** test, with the fake Renoise; inspect on the Mac with
+  `scripts/renoise-check`; listen
+
+### REQ-REN-11: The duck as Gainer automation
+A sidechain (REQ-BEN-12) is a Gainer named Duck, first on each target's
+track, whose gain is automated at every trigger hit: down to the depth
+over the attack, held for the hold, and back along the release's
+half-cosine curve, with a point at least every sixteenth of the release.
+Dips that overlap add up but never pass the depth, as in SuperCollider
+(REQ-BEN-12). Each point is placed on the nearest 1/256 of a line with the
+gain the curve has at its own time, so the floor of a 2 ms attack isn't
+missed.
+- **Why:** Renoise has no sidechain that follows the pattern, and an
+  automated Gainer is how Renoise users draw an exact pump (#30). Dean can
+  see and edit the curve in the automation editor. Points every sixteenth
+  of the release keep each step well under the 0.5 dB that REQ-BEN-12
+  allows.
+- **Verify:** test; measure, with REQ-BEN-12's checks on the Renoise take
+
+### REQ-REN-12: Track headroom at 0 dB
+Every song the bridge builds sets Renoise's global track headroom to 0 dB,
+so a take's levels are the ones REQ-BEN-09 set.
+- **Why:** a new song's headroom is -6 dB, so every Renoise take came out
+  6 dB quieter than the SuperCollider take of the same score (#35).
+- **Verify:** test

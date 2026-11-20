@@ -124,9 +124,11 @@ top of the voices' share. Any SuperCollider render, mixed or not, fails
 with a plain reason if a synth couldn't start, since a note or a part of
 the mix would be missing.
 
-Renoise refuses a score with a mix for now. Its songs will carry the mix
-the Renoise way, with send tracks, effect devices and automation in the
-patterns, when the bridge can build them (#30, #50).
+In Renoise the mix is built the Renoise way, with send tracks, native
+effect devices and automation in the patterns (REQ-REN-10). Its stems are
+rendered dry too, with the strips, sends and master devices switched off.
+Renoise builds a mix for arranged tracks first (REQ-BEN-07); a benchmark
+with a mix renders in SuperCollider until its Renoise take is built (#50).
 - **Why:** measuring the dry voices keeps every existing check meaningful.
   One pass for stems and master, instead of a separate bypass render and a
   full second render, keeps an 8-minute track within the Mac's disk (about

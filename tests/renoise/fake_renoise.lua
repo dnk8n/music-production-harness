@@ -8,6 +8,12 @@
 -- leaves nothing unsaved. Starting a new song while the open one has unsaved
 -- changes makes Renoise ask whether to save it. Nobody answers in a test, so
 -- the question is recorded in `prompts` and the new song never starts.
+--
+-- Its mixer devices have parameters named and shown the way this fake's
+-- author guessed Renoise does (a frequency as "1.20 kHz", a level as
+-- "-6.021 dB" or "-INF dB"): enough to drive the tool's search for the value
+-- that shows what a plan asks for. What real Renoise shows is checked on the
+-- Mac (scripts/renoise-check).
 
 local fake = { renders = {}, writes = 0 }
 
@@ -22,8 +28,181 @@ local function watched(object)
   })
 end
 
+-- How parameters show their values.
+local function hz(value) -- 0 to 1: 20 Hz to 20 kHz, evenly in octaves
+  local f = 20 * 1000 ^ value
+  if f < 1000 then
+    return string.format("%.1f Hz", f)
+  end
+  return string.format("%.2f kHz", f / 1000)
+end
+
+local function db(value) -- a linear gain
+  if value <= 0 then
+    return "-INF dB"
+  end
+  return string.format("%.3f dB", 20 * math.log10(value))
+end
+
+local function ms(value) -- 0 to 1: 1 ms to 10 s, evenly in decades
+  local t = 10 ^ (value * 4)
+  if t < 1000 then
+    return string.format("%.1f ms", t)
+  end
+  return string.format("%.2f s", t / 1000)
+end
+
+local function number(value)
+  return string.format("%.3f", value)
+end
+
+local function whole(value)
+  return string.format("%d", math.floor(value + 0.5))
+end
+
+local function choice(names)
+  return function(value)
+    return names[math.floor(value + 0.5) + 1]
+  end
+end
+
+local onoff = choice({ "Off", "On" })
+
+-- A parameter: { name, min, max, default, quantum, show }.
+local function new_parameter(spec)
+  local state = {
+    name = spec[1],
+    value_min = spec[2],
+    value_max = spec[3],
+    value_default = spec[4],
+    value_quantum = spec[5],
+    value = spec[4],
+  }
+  local show = spec[6]
+  return setmetatable({}, {
+    __index = function(_, key)
+      if key == "value_string" then
+        return show(state.value)
+      end
+      return state[key]
+    end,
+    __newindex = function(_, key, value)
+      assert(key == "value", "can't set a parameter's " .. key)
+      assert(value >= state.value_min - 1e-9 and value <= state.value_max + 1e-9, "out of range")
+      if state.value_quantum > 0 then
+        local steps = math.floor((value - state.value_min) / state.value_quantum + 0.5)
+        value = state.value_min + steps * state.value_quantum
+      end
+      state.value = value
+      fake.writes = fake.writes + 1
+    end,
+  })
+end
+
+local function receiver(song)
+  return function(value)
+    local track = song.tracks[song.sequencer_track_count + 2 + math.floor(value + 0.5)]
+    return track and track.name or "none"
+  end
+end
+
+-- Each native device's parameters. The filter has no model, and the reverb no
+-- damping, so a plan's optional parameters are sometimes missing.
+local DEVICES = {
+  ["Audio/Effects/Native/Digital Filter"] = function()
+    return {
+      { "Type", 0, 3, 0, 1, choice({ "LowPass", "BandPass", "BandStop", "HighPass" }) },
+      { "Cutoff", 0, 1, 1, 0, hz },
+      { "Q", 0, 1, 0.05, 0, function(value) return number(0.5 + 19.5 * value) end },
+    }
+  end,
+  ["Audio/Effects/Native/Gainer"] = function()
+    return {
+      { "Gain", 0, 4, 1, 0, db },
+      { "Panning", 0, 1, 0.5, 0, number },
+    }
+  end,
+  ["Audio/Effects/Native/#Send"] = function(song)
+    return {
+      { "Amount", 0, 1, 1, 0, db },
+      { "Receiver", 0, 15, 0, 1, receiver(song) },
+      { "Mute Source", 0, 1, 0, 1, onoff },
+    }
+  end,
+  ["Audio/Effects/Native/Multitap"] = function()
+    local found = { { "Mute Src.", 0, 1, 0, 1, onoff } }
+    for tap = 1, 4 do
+      local t = "T" .. tap .. " "
+      found[#found + 1] = { t .. "Line Sync", 0, 1, 0, 1, onoff }
+      found[#found + 1] = { t .. "Sync L DelayTime", 0, 255, 4, 1, whole }
+      found[#found + 1] = { t .. "Sync R DelayTime", 0, 255, 4, 1, whole }
+      found[#found + 1] = { t .. "L Feedback", -1, 1, 0, 0, number }
+      found[#found + 1] = { t .. "R Feedback", -1, 1, 0, 0, number }
+      found[#found + 1] = { t .. "Ping Pong", 0, 1, 0, 1, onoff }
+      found[#found + 1] = { t .. "Amount", 0, 1, tap == 1 and 1 or 0.5, 0, db }
+      found[#found + 1] =
+        { t .. "Flt Mode", 0, 4, 0, 1, choice({ "Off", "Input", "Feedback", "In + Feed", "Output" }) }
+      found[#found + 1] =
+        { t .. "Flt Type", 0, 3, 0, 1, choice({ "Lowpass", "Highpass", "Bandpass", "Notch" }) }
+      found[#found + 1] = { t .. "Flt Freq.", 0, 1, 1, 0, hz }
+    end
+    return found
+  end,
+  ["Audio/Effects/Native/mpReverb 2"] = function()
+    return {
+      { "Duration", 0, 1, 0.6, 0, ms },
+      { "Predelay", 0, 1, 0.2, 0, ms },
+      { "Dry Mix", 0, 1, 1, 0, db },
+      { "Wet Mix", 0, 1, 0.5, 0, db },
+    }
+  end,
+}
+
+local function new_device(path, song)
+  local make = DEVICES[path]
+  assert(make, "Renoise has no device " .. path)
+  local parameters = {}
+  for _, spec in ipairs(make(song)) do
+    parameters[#parameters + 1] = new_parameter(spec)
+  end
+  return watched({
+    name = path,
+    device_path = path,
+    display_name = "",
+    is_active = true,
+    parameters = parameters,
+  })
+end
+
 local function new_column()
   return { note_value = 121, instrument_value = 255, volume_value = 255, delay_value = 0 }
+end
+
+-- An automation; its points are checked as Renoise checks them.
+local function new_automation(parameter, pattern)
+  local state = { dest_parameter = parameter, playmode = 1, points = {} }
+  return setmetatable({}, {
+    __index = function(_, key)
+      if key == "length" then
+        return pattern.number_of_lines
+      end
+      return state[key]
+    end,
+    __newindex = function(_, key, value)
+      if key == "points" then
+        local seen = {}
+        for _, point in ipairs(value) do
+          local time = math.floor(point.time * 256 + 0.5)
+          assert(not seen[time], "two automation points at one time")
+          assert(time >= 256 and time < (pattern.number_of_lines + 1) * 256, "point out of the pattern")
+          assert(point.value >= 0 and point.value <= 1, "automation value out of range")
+          seen[time] = true
+        end
+      end
+      state[key] = value
+      fake.writes = fake.writes + 1
+    end,
+  })
 end
 
 local function new_pattern()
@@ -32,17 +211,29 @@ local function new_pattern()
     self.tracks = {}
   end
   function pattern:track(index)
-    self.tracks[index] = self.tracks[index] or { lines = {} }
+    self.tracks[index] = self.tracks[index] or { lines = {}, automation = {} }
     local track = self.tracks[index]
     function track:line(line_index)
       assert(line_index >= 1 and line_index <= pattern.number_of_lines, "line out of range")
-      self.lines[line_index] = self.lines[line_index] or { columns = {} }
+      self.lines[line_index] = self.lines[line_index] or { columns = {}, effects = {} }
       local line = self.lines[line_index]
       function line:note_column(column)
         self.columns[column] = self.columns[column] or new_column()
         return self.columns[column]
       end
+      function line:effect_column(column)
+        self.effects[column] = self.effects[column] or { number_string = "00", amount_value = 0 }
+        return self.effects[column]
+      end
       return line
+    end
+    function track:find_automation(parameter)
+      return self.automation[parameter]
+    end
+    function track:create_automation(parameter)
+      assert(not self.automation[parameter], "already automated")
+      self.automation[parameter] = new_automation(parameter, pattern)
+      return self.automation[parameter]
     end
     return track
   end
@@ -56,6 +247,8 @@ local function new_sample()
     transpose = 0,
     fine_tune = 0,
     interpolation_mode = 3,
+    new_note_action = 1,
+    modulation_set_index = 0,
     slice_markers = {},
     autoseek = false,
     autofade = false,
@@ -74,8 +267,40 @@ local function new_sample()
   return sample
 end
 
+local function new_envelope()
+  local envelope = {
+    name = "AHDSR",
+    display_name = "",
+    tempo_sync_switching_allowed = true,
+    tempo_synced = true,
+    attack = new_parameter({ "Attack", 0, 1, 0.1, 0, ms }),
+    hold = new_parameter({ "Hold", 0, 1, 0, 0, ms }),
+    duration = new_parameter({ "Decay", 0, 1, 0.5, 0, ms }),
+    sustain = new_parameter({ "Sustain", 0, 1, 0.5, 0, number }),
+    release = new_parameter({ "Release", 0, 1, 0.5, 0, ms }),
+  }
+  envelope.parameters =
+    { envelope.attack, envelope.hold, envelope.duration, envelope.sustain, envelope.release }
+  return envelope
+end
+
+local function new_modulation_set()
+  local set = { name = "", devices = {} }
+  function set:init()
+    self.devices = {}
+  end
+  function set:insert_device_at(path, target, index)
+    assert(path == "Modulation/AHDSR", "this fake only has an AHDSR")
+    local device = new_envelope()
+    device.target = target
+    table.insert(self.devices, index, device)
+    return device
+  end
+  return set
+end
+
 local function new_instrument()
-  local instrument = { name = "", samples = {} }
+  local instrument = { name = "", samples = {}, sample_modulation_sets = {} }
   function instrument:insert_sample_at(index)
     local sample = new_sample()
     function sample.insert_slice_marker(this, position)
@@ -87,22 +312,38 @@ local function new_instrument()
     table.insert(self.samples, index, sample)
     return sample
   end
+  function instrument:delete_sample_at(index)
+    table.remove(self.samples, index)
+  end
+  function instrument:insert_sample_modulation_set_at(index)
+    table.insert(self.sample_modulation_sets, index, new_modulation_set())
+  end
   return instrument
 end
 
-local function new_track(name)
+local function new_track(name, song, kind)
   local track = {
     name = name,
+    type = kind or 1,
     mute_state = 1,
-    devices = { { name = "TrackVolPan", is_active = true } },
+    devices = { { name = "TrackVolPan", is_active = true, parameters = {} } },
     visible_note_columns = 1,
+    visible_effect_columns = 0,
     volume_column_visible = false,
     delay_column_visible = false,
   }
   function track:insert_device_at(path, index)
-    local device = { name = path, is_active = true }
+    assert(index >= 2, "nothing goes before a track's mixer device")
+    local device = new_device(path, song)
     table.insert(self.devices, index, device)
     return device
+  end
+  function track:device(index)
+    return self.devices[index]
+  end
+  function track:delete_device_at(index)
+    assert(index >= 2, "a track's mixer device stays")
+    table.remove(self.devices, index)
   end
   return watched(track)
 end
@@ -111,25 +352,43 @@ end
 function fake.new_song(file_name)
   local song = {
     file_name = file_name or "",
-    transport = watched({ bpm = 120, lpb = 4 }),
+    transport = watched({ bpm = 120, lpb = 4, tpl = 6, track_headroom = math.db2lin(-6) }),
     sequencer_track_count = 0,
+    send_track_count = 0,
     tracks = {},
     instruments = { new_instrument() },
     patterns = { new_pattern() },
     sequencer = { pattern_sequence = { 1 }, sections = {} },
   }
   for n = 1, 8 do
-    song.tracks[n] = new_track("Track 0" .. n)
+    song.tracks[n] = new_track("Track 0" .. n, song)
   end
+  song.tracks[9] = new_track("Master", song, 2)
+  song.tracks[9]:insert_device_at("Audio/Effects/Native/Gainer", 2) -- as a template might
   song.sequencer_track_count = 8
+  -- At or behind the master, a new track is a send track (the API's own
+  -- words), and send tracks always come after the master.
   function song:insert_track_at(index)
-    table.insert(self.tracks, index, new_track("new"))
-    self.sequencer_track_count = self.sequencer_track_count + 1
+    if index <= self.sequencer_track_count then
+      table.insert(self.tracks, index, new_track("new", self))
+      self.sequencer_track_count = self.sequencer_track_count + 1
+    else
+      assert(index <= #self.tracks + 1, "no such track position")
+      local at = math.max(index, self.sequencer_track_count + 2)
+      table.insert(self.tracks, at, new_track("send", self, 3))
+      self.send_track_count = self.send_track_count + 1
+    end
   end
   function song:delete_track_at(index)
-    assert(self.sequencer_track_count > 1, "can't delete the last track")
+    local master = self.sequencer_track_count + 1
+    assert(index ~= master, "can't delete the master")
+    if index < master then
+      assert(self.sequencer_track_count > 1, "can't delete the last track")
+      self.sequencer_track_count = self.sequencer_track_count - 1
+    else
+      self.send_track_count = self.send_track_count - 1
+    end
     table.remove(self.tracks, index)
-    self.sequencer_track_count = self.sequencer_track_count - 1
   end
   function song:track(index)
     return self.tracks[index]
@@ -164,13 +423,21 @@ function fake.new_song(file_name)
     self.sections[position] = name
   end
   function song:render(options, file, done)
-    local active = {}
+    local active, on = {}, {}
     for index = 1, self.sequencer_track_count do
       if self.tracks[index].mute_state == 1 then
         active[#active + 1] = self.tracks[index].name
       end
     end
-    fake.renders[#fake.renders + 1] = { file = file, active = active, rate = options.sample_rate }
+    for index, track in ipairs(self.tracks) do
+      for k = 2, #track.devices do
+        if track.devices[k].is_active then
+          on[#on + 1] = index .. ":" .. (track.devices[k].display_name or track.devices[k].name)
+        end
+      end
+    end
+    fake.renders[#fake.renders + 1] =
+      { file = file, active = active, rate = options.sample_rate, devices_on = on }
     local handle = assert(io.open(file, "w"))
     handle:write(table.concat(active, ","))
     handle:close()
@@ -183,17 +450,19 @@ end
 -- The global `renoise` the tool sees.
 function fake.install(bundle_path)
   local idle, new_document = {}, {}
+  renoise = {
+    RENOISE_VERSION = "3.5.4 (fake)",
+    Sample = { INTERPOLATE_SINC = 4, NEW_NOTE_ACTION_NOTE_OFF = 2 },
+    SampleModulationDevice = { TARGET_VOLUME = 1 },
+    PatternTrackAutomation = { PLAYMODE_POINTS = 1, PLAYMODE_LINES = 2, PLAYMODE_CURVES = 3 },
+    Track = { MUTE_STATE_ACTIVE = 1, MUTE_STATE_OFF = 2, MUTE_STATE_MUTED = 3 },
+  }
   local state = {
     song = fake.new_song(),
     saved = {},
     prompts = {}, -- songs Renoise asked about saving
     unsaved = false, -- whether the open song has unsaved changes
     refuse_new_song = false,
-  }
-  renoise = {
-    RENOISE_VERSION = "3.5.4 (fake)",
-    Sample = { INTERPOLATE_SINC = 4 },
-    Track = { MUTE_STATE_ACTIVE = 1, MUTE_STATE_OFF = 2, MUTE_STATE_MUTED = 3 },
   }
   function renoise.song()
     if state.loading then
@@ -296,6 +565,15 @@ function fake.install(bundle_path)
     end
   end
   return state
+end
+
+-- Renoise's additions to Lua's math library, which a new song already uses.
+function math.db2lin(value)
+  return 10 ^ (value / 20)
+end
+
+function math.lin2db(value)
+  return 20 * math.log10(value)
 end
 
 return fake

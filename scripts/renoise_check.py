@@ -9,7 +9,11 @@ tool, then, in one Renoise that mph starts:
    with a named section and a track that plays a clip (REQ-TRK-02, REQ-TRK-04);
 2. A is opened the way "Open in Renoise" opens a render's song, and a second
    job must keep it as a copy in mph's scratch folder before it builds C;
-3. B is opened the same way, and Renoise is asked to quit.
+3. a third job builds M, a song with a mix and sampled synths (REQ-REN-09 to
+   REQ-REN-11): every planned parameter must show what the plan asks for,
+   and the bass's duck must dip it about 12 dB at the first kick. It prints
+   each kind of device's parameters as Renoise names and shows them;
+4. B is opened the same way, and Renoise is asked to quit.
 
 Renoise has to do all of that without asking to save anything: a question
 would hold up a job, or keep Renoise open after it was asked to quit. The
@@ -26,20 +30,94 @@ import tempfile
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
 from mph import config, proc
-from mph.bench import audio
+from mph.bench import audio, sampling, score
 from mph.config import Config
 from mph.proc import Runner
 from mph.renoise import bridge, luadata
+from mph.renoise import plan as song_plan
 
 RATE = 48000
 JOB_TIMEOUT_S = 300.0  # longer than the tool waits for a new song, so its own error shows
 LOAD_S = 5.0  # time for Renoise to open a song
 QUIT_S = 30.0  # time for Renoise to quit
 QUIT = ("osascript", "-e", 'tell application "Renoise" to quit')
+DUCK_DB = (9.0, 14.0)  # the dip at the first kick, 5 to 20 ms in: about 11.9 dB planned
+DUCK_WINDOW_S = (0.005, 0.02)
+SHOWN_SLACK = {"Hz": 0.03, "ms": 0.03}  # a share of the value asked for
+SHOWN_SLACK_DB = 0.25
+ON, OFF = {"on", "enabled", "yes", "true"}, {"off", "disabled", "no", "false"}  # as mixer.lua
+
+# Every kind of device the mixer uses, and both kinds of synth note (REQ-REN-09 to 11).
+MIXED = """
+id = "RC-MIX"
+bpm = 120
+bars = 2
+
+[voices.kick]
+grid = "X . . . X . . . X . . . X . . ."
+sound = { role = "kick" }
+
+[voices.kick.mix]
+level = -2
+
+[voices.bass]
+notes  = "C2 C2 C3 C2 C2 C2 C3 C2 F1 F1 F2 F1 F1 F2 G1 G1"
+gate   = "x  x  x  x  x  x  x  x  x  x  x  x  x  x  x  x"
+accent = ".  .  X  .  .  .  X  .  .  .  X  .  .  .  .  ."
+slide  = ".  .  .  .  .  .  .  .  .  .  .  .  .  S  .  ."
+sound = { synth = "mph_bass" }
+
+[voices.bass.mix]
+highpass = 30
+lowpass = 400
+resonance = 0.3
+
+[voices.bass.automate]
+lowpass = [[1, 400], [2, 2000]]
+
+[voices.stab]
+gate  = ". . x - . . x - . . x - . . x -"
+notes = "C4 C4 C4 C4 C4 C4 C4 C4 C4 C4 C4 C4 C4 C4 C4 C4"
+sound = { synth = "mph_stab" }
+
+[voices.stab.mix]
+highpass = 200
+pan = -0.5
+send = { echo = -8, hall = -14 }
+
+[voices.stab.automate]
+echo = [[1, -inf], [1.5, -inf], [1.5, 0], [1.75, 0], [1.75, -inf]]
+
+[sends.echo]
+kind = "delay"
+beats = 0.75
+feedback = 0.5
+lowpass = 2500
+pingpong = true
+send = { hall = -12 }
+
+[sends.hall]
+kind = "reverb"
+decay_s = 1.5
+level = -3
+
+[master]
+highpass = 25
+
+[master.automate]
+level = [[2, 0], [3, -6]]
+
+[sidechain]
+trigger = "kick"
+targets = ["bass"]
+depth_db = 12
+release_ms = 300
+"""
 
 
 class CheckFailed(RuntimeError):
@@ -108,13 +186,127 @@ def song(folder: Path, sample: Path, name: str) -> dict[str, luadata.Data]:
     }
 
 
+def mixed_song(folder: Path, sample: Path) -> dict[str, luadata.Data]:
+    """Song M: the mixed score, its synths sampled from the blip. Rendered as a
+    mix after a warm-up, then the bass alone with its duck (a stem) and without."""
+    loaded = score.load_text(MIXED)
+    events = score.events(loaded)
+
+    def synth(voice: str) -> song_plan.Synth:
+        found = sampling.sounds([e for e in events if e.voice == voice])
+        zones = {
+            accent: tuple(
+                song_plan.Zone(str(sample), song_plan.renoise_note(pitch))
+                for pitch, accented in sorted(found)
+                if accented == accent
+            )
+            for accent in (False, True)
+        }
+        made = loaded.voice(voice).sound.synth
+        release, glide = sampling.release_s(made, {}), sampling.glide_s(made, {})
+        return song_plan.Synth(zones[False], zones[True], release, glide)
+
+    tracks = [
+        song_plan.Track("kick", str(sample), 1.0),
+        song_plan.Track("bass", "", 1.0, synth=synth("bass")),
+        song_plan.Track("stab", "", 1.0, synth=synth("stab")),
+    ]
+    renders: list[luadata.Data] = [
+        {"file": str(folder / "M warm-up.wav")},
+        {"file": str(folder / "M.wav")},
+        {"file": str(folder / "M stem.wav"), "solo": 2, "mode": "stem"},
+        {"file": str(folder / "M dry.wav"), "solo": 2, "mode": "dry"},
+    ]
+    save = str(folder / "M.xrns")
+    return song_plan.song(loaded, events, tracks, rate=RATE, save=save, renders=renders)
+
+
+def shown_number(text: str, unit: str) -> float | None:
+    """A shown value as a number in the plan's unit, read as the tool reads it."""
+    words = text.strip().lower().replace(",", ".").split()
+    if not words:
+        return None
+    if "inf" in words[0]:
+        return -float("inf") if words[0].startswith("-") else float("inf")
+    try:
+        value = float(words[0])
+    except ValueError:
+        return None
+    rest = words[1] if len(words) > 1 else ""
+    if (unit == "Hz" and rest.startswith("k")) or (unit == "ms" and rest in ("s", "sec")):
+        value *= 1000
+    return value
+
+
+def same_choice(wanted: str, shown: str) -> bool:
+    """Whether a choice shows what was asked: the same words, or on and off in
+    any of their spellings, as the tool matches them."""
+    want, text = wanted.strip().lower(), shown.strip().lower()
+    for words in (ON, OFF):
+        if want in words:
+            return text in words
+    return want == text or want in text
+
+
+def mismatch(setting: dict[str, Any], shows: dict[str, str]) -> str:
+    """Why a planned parameter doesn't show what was asked, or ""."""
+    names, value, unit = setting["names"], setting["value"], setting["unit"]
+    text = next((shows[n] for n in shows if n.lower() in (m.lower() for m in names)), None)
+    if text is None:
+        return "" if setting.get("optional") else f"{names[0]} isn't there"
+    wanted = value["name"] if unit == "send" else value
+    if unit in ("choice", "send"):
+        ok = same_choice(str(wanted), text)
+    elif unit in ("Hz", "ms"):
+        found = shown_number(text, unit)
+        ok = found is not None and abs(found - value) <= SHOWN_SLACK[unit] * abs(value)
+    elif unit == "dB":
+        found = shown_number(text, unit)
+        silent = value <= song_plan.mixplan.SILENT_DB and found is not None and found <= value
+        ok = found is not None and (silent or abs(found - value) <= SHOWN_SLACK_DB)
+    else:
+        ok = True  # a raw value or a share of the range: shown however Renoise likes
+    return "" if ok else f"{names[0]} shows {text!r}, not {wanted}"
+
+
+def released_wrong(planned: dict[str, Any], outcome: dict[str, Any]) -> list[str]:
+    """Each synth envelope whose release doesn't show its synth's release time."""
+    releases = {t["name"]: 1000 * t["release"] for t in planned["tracks"] if "zones" in t}
+    wrong = []
+    for song in outcome.get("shown", []):
+        for envelope in song.get("envelopes", []):
+            name, text = envelope["instrument"], envelope["release"]
+            wanted = releases[name.removesuffix(" accent")]
+            found = shown_number(text, "ms")
+            if found is None or abs(found - wanted) > SHOWN_SLACK["ms"] * wanted:
+                wrong.append(f"{name}, its envelope: Release shows {text!r}, not {wanted:g} ms")
+    if not any(song.get("envelopes") for song in outcome.get("shown", [])):
+        wrong.append("no synth envelope was reported")
+    return wrong
+
+
+def report_devices(outcome: dict[str, Any]) -> None:
+    """Each kind of device's parameters as Renoise names and shows them."""
+    for path, parameters in sorted((outcome.get("devices") or {}).items()):
+        print(f"  {path}:")
+        for p in parameters:
+            low, default, high = (p.get("shows") or ["?", "?", "?"])[:3]
+            print(f"    {p['name']}: {low} | {default} | {high} (quantum {p.get('quantum')})")
+
+
+def level_db(data: np.ndarray, rate: int) -> float:
+    first, last = (round(s * rate) for s in DUCK_WINDOW_S)
+    part = data[first:last]
+    return float(10 * np.log10(np.mean(part**2) + 1e-20))
+
+
 class Check:
     def __init__(self, cfg: Config, runner: Runner, home: Path, clock: bridge.Clock) -> None:
         self.cfg, self.runner, self.home, self.clock = cfg, runner, home, clock
         self.session = bridge.Session()
 
-    def job(self, name: str, songs: Sequence[luadata.Data]) -> None:
-        bridge.run_job(
+    def job(self, name: str, songs: Sequence[luadata.Data]) -> dict[str, Any]:
+        return bridge.run_job(
             self.cfg,
             self.runner,
             self.home,
@@ -142,9 +334,45 @@ class Check:
         if not copy.is_file():
             raise CheckFailed(f"job 2 said it kept A as {copy}, but that file isn't there")
         print(f"job 2: kept A as {copy.name}, then built, rendered and saved C")
+        self.mixer(folder, sample)
         self.open(folder / "B.xrns")
         print("opened B")
         self.quit()
+
+    def mixer(self, folder: Path, sample: Path) -> None:
+        planned = mixed_song(folder, sample)
+        try:
+            outcome = self.job("renoise-check-3", [planned])
+        except bridge.BridgeError as failed:
+            print("job 3 failed. What Renoise has:")
+            report_devices(failed.outcome)
+            raise
+        print("job 3: built, rendered and saved M, a song with a mix and sampled synths")
+        print("what each kind of device has (lowest | default | highest):")
+        report_devices(outcome)
+        wrong = []
+        mix = planned["mix"]
+        assert isinstance(mix, dict)  # noqa: S101 - the plan always has a mix here
+        built = {t["track"]: t["devices"] for s in outcome.get("shown", []) for t in s["tracks"]}
+        tracks = [*mix["tracks"], mix["master"], *mix["sends"]]
+        for label, entry in zip(built, tracks, strict=False):
+            for device, plan in zip(built[label], entry["devices"], strict=False):
+                for setting in plan["params"]:
+                    problem = mismatch(setting, device["shows"] or {})
+                    if problem:
+                        wrong.append(f"{label}, {device['name']}: {problem}")
+        wrong += released_wrong(planned, outcome)
+        if wrong:
+            raise CheckFailed("M's devices don't show what was planned:\n  " + "\n  ".join(wrong))
+        print("every planned parameter shows what was asked")
+        stem, rate = audio.read(folder / "M stem.wav")
+        dry, _ = audio.read(folder / "M dry.wav")
+        dip = level_db(dry, rate) - level_db(stem, rate)
+        if not DUCK_DB[0] <= dip <= DUCK_DB[1]:
+            raise CheckFailed(
+                f"the duck dipped the bass {dip:.1f} dB at the first kick, not about 12"
+            )
+        print(f"the duck dipped the bass {dip:.1f} dB at the first kick")
 
     def quit(self) -> None:
         asked = self.runner.run(QUIT)

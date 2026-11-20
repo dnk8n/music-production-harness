@@ -25,6 +25,9 @@ function M.encode(value)
   elseif kind == "boolean" then
     return tostring(value)
   elseif kind == "number" then
+    if value ~= value or value == math.huge or value == -math.huge then
+      return "null" -- JSON has no infinity
+    end
     return string.format("%.17g", value)
   elseif kind == "string" then
     return quote(value)

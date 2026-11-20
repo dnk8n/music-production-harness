@@ -286,7 +286,7 @@ class Score:
 
     @property
     def melodic(self) -> bool:
-        """Melodic voices glide and filter per note, so only SuperCollider plays them yet."""
+        """True when a voice plays notes: in Renoise, a sampled synth (REQ-REN-09)."""
         return any(v.melodic for v in self.voices)
 
     @property
@@ -296,7 +296,11 @@ class Score:
 
     @property
     def supercollider_only(self) -> str:
-        """Why only SuperCollider can render this score yet, or "" if Renoise can too."""
+        """Why only SuperCollider can render this score yet, or "" if Renoise can too.
+        Renoise builds an arranged track's melodic parts, mix and sidechain
+        (REQ-BEN-07, REQ-REN-09 to REQ-REN-11); a benchmark's wait for #30 and #50."""
+        if self.sections:
+            return ""
         if self.melodic:
             return "a melodic part (glides and filter envelopes)"
         if self.sidechain:

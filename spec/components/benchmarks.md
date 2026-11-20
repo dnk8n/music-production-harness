@@ -106,8 +106,12 @@ standard variants:
 | `supercollider` | the score as written, rendered in SuperCollider (ADR-0009's fallback engine) |
 | `synth-kit` | every part a SuperCollider synth voice (not for scores with a break, nor for scores whose every part is a synth already) |
 
-A score with a melodic voice or a sidechain has only `supercollider` as a
-standard variant, because it always renders there (REQ-BEN-10, REQ-BEN-12).
+A benchmark with a melodic voice, a sidechain or a mix has only
+`supercollider` as a standard variant, because it always renders there
+(REQ-BEN-10, REQ-BEN-12) until #30 and #50 build its Renoise take. An
+arranged track (a score with sections, REQ-TRK-04) has a `renoise` take
+whatever it holds, because a track is a Renoise song: its synths, mix and
+ducking are built the Renoise way (REQ-REN-09 to REQ-REN-11).
 
 A score can add its own under `[variants.<name>]`: a title, an engine,
 and per-voice changes to `sound` (role, words, `synth`, `pick`, the Nth
@@ -178,9 +182,11 @@ slices become Renoise slice markers. mph renders the song, again for
 determinism, then each track alone for its stem. The templates for matching
 come from a second small song with each voice's sounds spaced apart. Without
 Renoise, or with `--engine supercollider`, the render runs in SuperCollider
-alone as before. A score with a melodic voice (glides, per-note filter
+alone as before. A benchmark with a melodic voice (glides, per-note filter
 envelopes) renders in SuperCollider either way, and asking for Renoise is
-refused with a plain reason. So does a score with a sidechain (REQ-BEN-12).
+refused with a plain reason. So does one with a sidechain (REQ-BEN-12) or a
+mix. An arranged track's `renoise` take renders all of them in Renoise
+(REQ-REN-09 to REQ-REN-11), and its `supercollider` take in SuperCollider.
 The report names the engine and its version.
 - **Why:** what Dean hears is the song he can open and change, while CI and
   machines without Renoise can still render and test every benchmark.
@@ -207,9 +213,11 @@ there for the hold (none unless the score sets one), then rises back along
 a half-cosine curve over the release. Overlapping dips add up, but never
 past the depth. A declared variant can change the depth, attack, hold and
 release, such as `sidechain = { depth_db = 24, release_ms = 430 }`.
-A depth of 0 dB bypasses it. Sidechained scores render in SuperCollider for
-now (asking for Renoise is refused with a plain reason), where a ducker
-after each target's synths applies the gain.
+A depth of 0 dB bypasses it. In SuperCollider a ducker after each target's
+synths applies the gain. In Renoise, a Gainer on each target's track is
+automated at every hit (REQ-REN-11). Sidechained benchmarks render in
+SuperCollider for now (asking for Renoise is refused with a plain reason);
+an arranged track's `renoise` take ducks in Renoise.
 
 To measure it, mph also renders the targets with the sidechain bypassed.
 The note timing checks use that dry render, and two kinds of measurement
@@ -251,7 +259,14 @@ compare against it:
   faded in on the kick read 8 ms, with the dip in place from the hit. In
   remix 1's second version the vocals are close to half the mix's
   loudness, so the same pump in the music under them would measure about
-  half as much with them in.
+  half as much with them in. The kick has to die away for the pump to be
+  heard: a kick that stays within 3 dB of its peak for 150 ms fills the
+  window after the hit with its own body. Remix 1's first kick did that,
+  and silencing every target outright would still only have measured -1.1
+  to -1.9 dB. Measuring all 59 kick one-shots in Dean's library against the
+  rendered blocks picked one down 18 dB by 150 ms, and every block then
+  passed at -2.3 to -3.9 dB (2026-11-15). A kick for a pumping track should
+  be down at least 12 dB 150 ms after it hits.
 - **Verify:** test
 
 ### REQ-BEN-13: Triplet grids and feel

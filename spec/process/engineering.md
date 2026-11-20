@@ -73,9 +73,13 @@ checkout alone. The log goes to `~/Library/Logs/mph/`. No schedule, no
 self-hosted runner, no secrets in the repo or the log.
 
 `scripts/renoise-check [REF]` checks the Renoise bridge tool in the real
-Renoise, with Renoise closed first: two small jobs in one Renoise that mph
+Renoise, with Renoise closed first: three small jobs in one Renoise that mph
 starts, songs opened the way "Open in Renoise" opens them, then a request to
-quit, which Renoise must obey without asking to save (REQ-REN-08). It puts
+quit, which Renoise must obey without asking to save (REQ-REN-08). The third
+job builds a song with a mix and sampled synths: every planned setting must
+show what was asked, and the duck must dip its target about 12 dB
+(REQ-REN-09 to REQ-REN-11). It prints how Renoise names and shows each kind
+of device, so a name the plan guessed wrong is fixed from one run. It puts
 back the bridge tool that was installed before. Run it before merging a
 change to the bridge tool.
 

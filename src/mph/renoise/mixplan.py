@@ -57,7 +57,7 @@ MODES = {  # the roles left on in each kind of render
 TYPE = ("Type", "Filter Type")
 MODEL = ("Model",)  # the filter's model: in its preset data, not a parameter
 CUTOFF = ("Cutoff", "Frequency", "Freq.", "Freq")
-RESONANCE = ("Resonance", "Reso")  # a share of the knob, shown in %, not a Q
+RESONANCE = ("Resonance", "Reso")  # a share of the knob, shown in %, not a Q; Biquad only
 GAIN = ("Gain",)
 PANNING = ("Panning", "Pan")
 AMOUNT = ("Amount",)
@@ -127,14 +127,27 @@ def _decibels(value: float) -> float:
 
 
 def _filter(name: str, kind: str, hz: float, role: str, resonance: float = 0.0) -> Device:
-    """A Digital Filter. The strip's resonance (0 to 1) turns Renoise's own
-    resonance knob that share of the way, as a Renoise user would set it by
-    ear: Renoise shows resonance in %, not as a Q. Its model is Butterworth
-    4n, 24 dB an octave like the SuperCollider strip's filters, if Renoise
-    takes that in the preset data; otherwise it keeps its own."""
+    """A Digital Filter, its model chosen as a Renoise user would. A plain
+    one is Butterworth 4n, 24 dB an octave like the SuperCollider strip's
+    filters. Butterworth has no resonance (Renoise blanks that knob), so a
+    resonant one keeps Biquad, Renoise's own model, with its resonance knob
+    turned the strip's share of the way (0 to 1): Renoise shows resonance in
+    %, not as a Q. The model is set in the preset data; if Renoise won't take
+    it, the filter keeps its own."""
+    if resonance <= 0:
+        return {
+            "path": FILTER,
+            "name": name,
+            "role": role,
+            "params": [
+                param(TYPE, kind, "choice"),
+                param(MODEL, "Butterworth 4n", "preset", optional=True),
+                param(CUTOFF, round(hz, 3), "Hz"),
+            ],
+        }
     params = [
         param(TYPE, kind, "choice"),
-        param(MODEL, "Butterworth 4n", "preset", optional=True),
+        param(MODEL, "Biquad", "preset", optional=True),
         param(CUTOFF, round(hz, 3), "Hz"),
         param(RESONANCE, round(resonance * 100, 3), "%"),
     ]

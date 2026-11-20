@@ -210,13 +210,14 @@ def test_the_tool_builds_the_mixer(tmp_path: Path) -> None:
     # Each parameter shows what the score asks for.
     assert shows(built, 1, "Level")["Gain"] == "-2.000 dB"
     highpass, lowpass = shows(built, 2, "Highpass"), shows(built, 2, "Lowpass")
-    assert (highpass["Type"], highpass["Cutoff"], highpass["Resonance"]) == (
-        "HighPass",
-        "0.03 kHz",
-        "0.000 %",
-    )
+    # A plain filter is Butterworth 4n, which has no resonance; a resonant one
+    # keeps Biquad and its resonance knob.
+    assert (highpass["Type"], highpass["Cutoff"]) == ("HighPass", "0.03 kHz")
+    assert "Resonance" not in highpass and "(void)" in highpass
+    assert preset(built, 2, "Highpass")["Model"] == "Butterworth 4n"
     assert (lowpass["Type"], number(lowpass["Cutoff"])) == ("LowPass", 400.0)
     assert number(lowpass["Resonance"]) == pytest.approx(30.0, abs=0.1)  # resonance 0.3
+    assert preset(built, 2, "Lowpass")["Model"] == "Biquad"
     level = shows(built, 3, "Level")
     assert (level["Gain"], level["Panning"]) == ("0.000 dB", "25 L")  # pan -0.5
     echo, hall = shows(built, 3, "Send to echo"), shows(built, 3, "Send to hall")
@@ -272,14 +273,14 @@ def test_the_result_says_what_renoise_has(tmp_path: Path) -> None:
         "active": True,
         "shows": {
             "Type": "LowPass",
-            "Model": "Butterworth 4n",  # set in its preset data
+            "Model": "Biquad",  # in its preset data
             "Cutoff": lowpass["Cutoff"],
             "Resonance": lowpass["Resonance"],
         },
         "preset": [
             "IsMaximized=true",
             "OversamplingFactor=2x",
-            "Model=Butterworth 4n",
+            "Model=Biquad",
             "ShowResponseView=true",
             "ResponseViewMaxGain=18",
         ],

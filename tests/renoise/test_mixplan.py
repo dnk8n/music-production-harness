@@ -68,9 +68,14 @@ def test_a_mix_becomes_devices_send_tracks_and_a_master() -> None:
         ("Send to hall", "send"),
     ]
     duck, highpass, lowpass, level, echo, hall = stab["devices"]
-    assert params(highpass)["Type"] == ("HighPass", "choice")
-    assert params(highpass)["Cutoff"] == (200.0, "Hz")
-    assert params(highpass)["Resonance"] == (0.0, "%")  # a plain high-pass
+    # A plain filter is Butterworth 4n, 24 dB an octave; a resonant one keeps
+    # Biquad, the model with a resonance knob, turned the strip's share of the way.
+    assert params(highpass) == {
+        "Type": ("HighPass", "choice"),
+        "Model": ("Butterworth 4n", "preset"),
+        "Cutoff": (200.0, "Hz"),
+    }
+    assert params(lowpass)["Model"] == ("Biquad", "preset")
     assert params(lowpass)["Cutoff"] == (1200.0, "Hz")  # the lane's first value
     assert params(lowpass)["Resonance"] == (30.0, "%")  # resonance 0.3: that share of the knob
     assert params(level) == {"Gain": (0.0, "dB"), "Panning": (0.25, "fraction")}  # pan -0.5
@@ -79,7 +84,6 @@ def test_a_mix_becomes_devices_send_tracks_and_a_master() -> None:
     assert params(echo)["MuteSource"] == ("false", "preset")  # keep the source
     assert params(hall)["Receiver"] == ({"name": "hall", "index": 1}, "send")
     assert list(params(duck)) == ["Gain"]  # where its curve starts: see the next test
-    assert params(highpass)["Model"] == ("Butterworth 4n", "preset")  # 24 dB an octave
     # Sends are send tracks: the effect, fully wet, then the return strip.
     delay, reverb = mixer["sends"]
     assert delay["name"] == "echo" and [d["name"] for d in delay["devices"]] == [

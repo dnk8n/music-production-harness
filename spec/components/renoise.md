@@ -165,12 +165,12 @@ sampled from its SuperCollider synth, the way a sampler holds a synth patch:
 ### REQ-REN-10: The mix as a Renoise mixer
 A score's mix (spec/components/mix.md) is built from Renoise's own devices:
 - On each voice's track, after its duck (REQ-REN-11): a Digital Filter for
-  each strip filter it uses (high-pass, then low-pass, with the low-pass's
-  resonance turning Renoise's resonance knob that share of the way, and the
-  Butterworth 4n model, 24 dB an octave like the SuperCollider strip's
-  filters, if Renoise takes it), a Gainer for the strip's level and pan,
-  then a #Send for each send, routed to that send's track and keeping the
-  source.
+  each strip filter it uses (high-pass, then low-pass), a Gainer for the
+  strip's level and pan, then a #Send for each send, routed to that send's
+  track and keeping the source. A plain filter is Butterworth 4n, 24 dB an
+  octave like the SuperCollider strip's filters. A resonant one keeps
+  Renoise's Biquad, the model with a resonance knob, turned the strip's
+  share of the way.
 - Each send is a send track after the master, holding its effect, fully
   wet, then its return strip: the same filters, Gainer and #Sends, to sends
   after it. A delay is a Multitap's first tap with its dry signal muted,
@@ -207,7 +207,10 @@ A score's mix (spec/components/mix.md) is built from Renoise's own devices:
   isn't a parameter, and nor is the filter's model, which is in its preset
   data (Biquad, 12 dB an octave, unless set); and the reverb has no damping,
   so it keeps Renoise's own. Read as dB, the reverb's "0.000 %" would have
-  silenced the hall without an error.
+  silenced the hall without an error. Switched to Butterworth 4n, the filter
+  took the model and blanked its resonance knob to "(void)": Butterworth
+  has no resonance, so a resonant filter stays Biquad, as a Renoise user's
+  would.
 - **Verify:** test, with the fake Renoise; inspect on the Mac with
   `scripts/renoise-check`; listen
 

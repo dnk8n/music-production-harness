@@ -198,6 +198,8 @@ local PRESETS = {
 
 -- The values a preset setting can take, where they're a fixed list (the
 -- filter's models, from Renoise's manual): data with any other isn't loaded.
+-- A Butterworth filter has no resonance, so Renoise blanks that parameter's
+-- name, as renoise-check found on Dean's Mac (2026-11-20).
 local PRESET_CHOICES = {
   Model = {
     Biquad = true,
@@ -270,6 +272,9 @@ local function new_device(path, song)
         end
         for k, setting in ipairs(settings) do
           setting[2] = loaded[k]
+          if setting[1] == "Model" then -- a parameter's name can't be set through the API
+            rawset(parameters[3], "name", setting[2]:find("^Butterworth") and "(void)" or "Resonance")
+          end
         end
       else
         object[key] = value

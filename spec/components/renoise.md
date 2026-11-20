@@ -141,7 +141,8 @@ sampled from its SuperCollider synth, the way a sampler holds a synth patch:
   a sixteenth and a plain note's gate (half a step, BM-BASS-01's rule) ends
   on a line of its own, where its note-off goes. A note and its note-off
   can't share a line. A triplet song's 12 lines per beat already allow it
-  (REQ-BEN-13).
+  (REQ-BEN-13). A song with a duck may run at a multiple of these
+  (REQ-REN-11).
 - A tied note (a slide) doesn't start a new note: the next note carries a
   glide command (0Gxx) in the effect column, fast enough to cover the
   interval in the synth's glide time, and the sample that is playing bends
@@ -218,29 +219,36 @@ A score's mix (spec/components/mix.md) is built from Renoise's own devices:
 A sidechain (REQ-BEN-12) is a Gainer named Duck, first on each target's
 track, whose gain is automated at every trigger hit: down to the depth
 over the attack, held for the hold, and back along the release's
-half-cosine curve, with a point at least every sixteenth of the release.
-Dips that overlap add up but never pass the depth, as in SuperCollider
-(REQ-BEN-12). The whole curve is drawn about 20 ms early, in whole ticks,
-and the Duck's own gain starts where the curve does, so a hit on the song's
-first line doesn't glide down. Each point is placed on the nearest 1/256 of
-a line with the gain the curve has at its own time, so the floor of a 2 ms
-attack isn't missed.
+half-cosine curve, with a point at least every 32nd of the release. Dips
+that overlap add up but never pass the depth, as in SuperCollider
+(REQ-BEN-12). The Duck's smoothing is off (`SmoothParameterChanges` in its
+preset data), so it steps to each new gain at the tick that reads it. The
+whole curve is drawn one tick early, so its first step down lands on the
+hit's own tick, and the Duck's own gain starts where the curve does, so a
+hit on the song's first line doesn't step down. Each point is placed on the
+nearest 1/256 of a line with the gain the curve has at its own time, so the
+floor of a 2 ms attack isn't missed. Every song runs at 16 ticks a line,
+Renoise's most. A song with a duck doubles its lines per beat until the
+release moves at most 0.35 dB in a tick, as long as a four-bar pattern
+still fits in Renoise's 512 lines: at 120 BPM, the remix's duck (24 dB,
+back over 430 ms) gets 16 lines a beat, where a tick is about 2 ms.
 - **Why:** Renoise has no sidechain that follows the pattern, and an
   automated Gainer is how Renoise users draw an exact pump (#30). Dean can
-  see and edit the curve in the automation editor. Points every sixteenth
-  of the release keep each step well under the 0.5 dB that REQ-BEN-12
-  allows. Renoise applies automation once a tick (a twelfth of a line, about
-  5 ms at 120 BPM and 8 lines a beat), and the Gainer then takes a while to
-  reach each new value. In real Renoise (3.5.4, 2026-11-20), drawn at the
-  kick, a 12 dB dip with a 2 ms attack had fallen only 7 dB, on average, 5
-  to 20 ms after the kick, where REQ-BEN-12 wants the full depth within
-  5 ms. A steady tone's level, drawn to jump 24 dB, began to fall about
-  20 ms before the jump and was 23 dB down about 18 ms after it. Drawn
-  about 20 ms early, a dip that takes that long is at full depth by the
-  kick.
-  `scripts/renoise-check` prints the duck's real shape around the kick on a
-  steady tone, and how far apart the ducked and dry renders it compares
-  are, so the lead can be set from what Renoise does.
+  see and edit the curve in the automation editor. Renoise reads automation
+  once a tick, and by default its Gainer glides to each new value, to avoid
+  clicks. In real Renoise (3.5.4, 2026-11-20), the remix's duck (24 dB in
+  2 ms), drawn about 20 ms early on a steady tone, began to fall 15 ms
+  before the kick, was 19.7 dB down at the kick and 22.3 dB down 10 ms
+  after it, and never reached its depth, where REQ-BEN-12 wants the full
+  depth within 5 ms. Renoise's developers say the Gainer's gliding is a
+  setting kept out of its panel, `SmoothParameterChanges`, and that with
+  it off the delay is gone (Renoise forum, 2022). Off, the Gainer steps
+  once a tick instead, so the ticks must be short: at 8 lines a beat and
+  120 BPM a tick is 3.9 ms, and the remix's release would step up to
+  0.46 dB at a time, next to REQ-BEN-12's limit of 0.5 dB. Twice the lines
+  halves that, and Renoise users raise the lines per beat for finer
+  automation. Drawn one tick early, a dip's first step down lands on the
+  kick's tick, as SuperCollider's dip starts on the kick.
 - **Verify:** test; measure, with REQ-BEN-12's checks in `scripts/renoise-check`
   and on the Renoise take
 

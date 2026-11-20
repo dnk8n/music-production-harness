@@ -85,9 +85,10 @@ on the bass and on a steady tone. It prints how Renoise names and shows each
 kind of device, the optional settings Renoise doesn't have or didn't take,
 the other settings in those devices' preset data, how many samples apart
 each ducked render and its dry render are, the duck's shape around a kick
-on the tone, where each part's deepest moment and biggest step fall, and
-REQ-BEN-12's checks on both, so a name the plan got wrong, or how Renoise
-applies automation, is learnt from one run. If a step
+on the tone, where each part's deepest moment and biggest step fall, each
+part's first two milliseconds (where a part that starts with the song starts
+from silence), and REQ-BEN-12's checks on both, so a name the plan got
+wrong, or how Renoise applies automation, is learnt from one run. If a step
 fails, it still asks the Renoise it started to quit. It puts back the bridge
 tool that was installed before. Run it before merging a change to the bridge
 tool.

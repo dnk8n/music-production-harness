@@ -52,7 +52,7 @@ def test_renoise_takes_an_arranged_mixed_track(
         ("stem-stab.wav", 3, "stem"),
         ("dry-bass.wav", 2, "dry"),
     ]
-    assert (main["lpb"], main["tpl"], main["headroom_db"]) == (8, 12, 0.0)
+    assert (main["lpb"], main["tpl"], main["headroom_db"]) == (8, 16, 0.0)
     assert set(main["modes"]) == {"mix", "stem", "dry"}
     # The synths' samples stay with the render, beside what Renoise showed of its
     # devices; the WAVs Renoise rendered are gone once read.

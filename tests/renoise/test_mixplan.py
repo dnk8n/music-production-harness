@@ -18,8 +18,8 @@ from mph.renoise import plan as song_plan
 from tests.bench.test_mix import mixed
 
 LINE_S = 0.125  # 120 BPM, 4 lines a beat
-TPL = 12  # ticks a line
-LEAD_S = 2 * LINE_S / TPL  # the duck is drawn about 20 ms early: two ticks, at this tempo
+TPL = 16  # ticks a line
+LEAD_S = LINE_S / TPL  # the duck is drawn one tick early
 
 
 def slot(seconds: float) -> float:
@@ -83,7 +83,10 @@ def test_a_mix_becomes_devices_send_tracks_and_a_master() -> None:
     assert params(echo)["Receiver"] == ({"name": "echo", "index": 0}, "send")
     assert params(echo)["MuteSource"] == ("false", "preset")  # keep the source
     assert params(hall)["Receiver"] == ({"name": "hall", "index": 1}, "send")
-    assert list(params(duck)) == ["Gain"]  # where its curve starts: see the next test
+    # The Duck steps to each gain at the tick that reads it: Renoise's smoothing
+    # is off. Its gain is where its curve starts: see the next test.
+    assert list(params(duck)) == ["SmoothParameterChanges", "Gain"]
+    assert params(duck)["SmoothParameterChanges"] == ("false", "preset")
     # Sends are send tracks: the effect, fully wet, then the return strip.
     delay, reverb = mixer["sends"]
     assert delay["name"] == "echo" and [d["name"] for d in delay["devices"]] == [
@@ -153,12 +156,12 @@ def test_the_duck_dips_at_every_hit() -> None:
     duck = lane(mixer["tracks"][1], 1)
     assert duck["names"] == ["Gain"] and duck["unit"] == "dB"
     points = duck["patterns"][0]["points"]
-    # Drawn about 20 ms early (REQ-REN-11). The first kick is on the first line,
+    # Drawn one tick early (REQ-REN-11). The first kick is on the first line,
     # so the song starts in its dip, and the Duck's own gain starts there too.
     assert points[0][0] == 1.0 and -12 < points[0][1] < -11.5
-    assert mixer["tracks"][1]["devices"][0]["params"][0]["value"] == points[0][1]
-    # The second kick, a beat in: 0 dB 20 ms before it, the full 12 dB 2 ms
-    # later, then a half-cosine back over 400 ms, with a point every 1/16 of it.
+    assert params(mixer["tracks"][1]["devices"][0])["Gain"] == (points[0][1], "dB")
+    # The second kick, a beat in: 0 dB a tick before it, the full 12 dB 2 ms
+    # later, then a half-cosine back over 400 ms, with a point every 1/32 of it.
     start = slot(0.5 - LEAD_S)
     assert [start, 0.0] in points
     assert [slot(0.502 - LEAD_S), pytest.approx(-12.0)] in points
@@ -191,4 +194,32 @@ def test_a_score_without_a_mix_or_a_sidechain_has_no_mixer() -> None:
     )
     song = song_plan.song(plain, score.events(plain), [], rate=48000, save="x", renders=[])
     assert "mix" not in song and "modes" not in song
-    assert (song["tpl"], song["headroom_db"]) == (12, 0.0)  # REQ-REN-12
+    assert (song["tpl"], song["headroom_db"]) == (16, 0.0)  # REQ-REN-12
+
+
+@pytest.mark.req("REQ-REN-11")
+def test_a_song_with_a_duck_gets_lines_enough_for_its_release() -> None:
+    # The Duck steps once a tick, so a song has enough lines a beat that its
+    # release moves at most DUCK_TICK_STEP_DB a tick: at 120 BPM, 16 ticks a
+    # line and 8 lines a beat, a tick is 3.9 ms.
+    def song_lpb(sidechain: str) -> int:
+        return song_plan.lpb(
+            score.load_text(
+                'id = "X"\nbpm = 120\nbars = 1\n'
+                '[voices.kick]\ngrid = "x . . . x . . . x . . . x . . ."\n'
+                'sound = { role = "kick" }\n'
+                f'[voices.bass]\nnotes = "{" ".join(["C2"] * 16)}"\ngate = "{" ".join("x" * 16)}"\n'
+                'sound = { synth = "mph_bass" }\n'
+                f'[sidechain]\ntrigger = "kick"\ntargets = ["bass"]\n{sidechain}\n'
+            )
+        )
+
+    remix = score.Sidechain("kick", ("bass",), depth_db=24, release_ms=430)
+    assert mixplan.release_step_db(remix, 0.5 / 8 / 16) == pytest.approx(0.462, abs=0.001)
+    assert mixplan.release_step_db(remix, 0.5 / 16 / 16) == pytest.approx(0.231, abs=0.001)
+    assert song_lpb("depth_db = 24\nrelease_ms = 430") == 16  # the remix's duck
+    assert song_lpb("depth_db = 12\nrelease_ms = 400") == 8  # gentle enough at 8
+    assert song_lpb("depth_db = 0") == 8  # no duck at all
+    # A duck too steep for even the finest grid gets the finest a pattern holds.
+    assert song_lpb("depth_db = 48\nrelease_ms = 100") == 32
+    assert mixplan.release_step_db(score.Sidechain("kick", ("bass",), depth_db=0), 0.001) == 0.0

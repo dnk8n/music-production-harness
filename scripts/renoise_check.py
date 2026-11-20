@@ -19,8 +19,9 @@ tool, then, in one Renoise that mph starts:
    device's parameters as Renoise names and shows them, the optional settings
    Renoise doesn't have or didn't take, the other settings in those devices'
    preset data, how far apart in samples each ducked render and its dry
-   render are, the duck's real shape around a kick on the steady tone, and
-   where the bass's worst moments fall;
+   render are, the duck's real shape around a kick on the steady tone, where
+   each part's worst moments fall, and each part's first two milliseconds,
+   where a part that starts with the song starts from silence;
 4. B is opened the same way, and Renoise is asked to quit.
 
 If a step fails, the check still asks the Renoise it started to quit.
@@ -58,6 +59,7 @@ LOAD_S = 5.0  # time for Renoise to open a song
 QUIT_S = 30.0  # time for Renoise to quit
 QUIT = ("osascript", "-e", 'tell application "Renoise" to quit')
 LAG_LIMIT = 2400  # samples: how far apart two renders are looked for
+FIRST_WINDOWS = 4  # the half-millisecond windows printed from the song's start
 SHAPE_MS = (-30, -25, -20, -15, -10, -5, -2.5, 0, 2.5, 5, 10, 20, 50, 100, 200, 300, 400, 430, 440)
 SHOWN_SLACK = {"Hz": 0.03, "ms": 0.03}  # a share of the value asked for
 SHOWN_SLACK_DB = 0.25
@@ -490,6 +492,16 @@ def worst_places(
     )
 
 
+def first_windows(stem: np.ndarray, dry: np.ndarray, rate: int) -> str:
+    """A target's first FIRST_WINDOWS half-millisecond windows: its level
+    against its dry render (dB), then the dry render's own level (dBFS)."""
+    frames = round(checks.DUCK_WINDOW_S * rate)
+    gain = audio.gain_curve(stem, dry, frames)[:FIRST_WINDOWS]
+    alone = mono(dry)[: FIRST_WINDOWS * frames].astype(np.float64).reshape(-1, frames)
+    level = 10 * np.log10(np.maximum((alone**2).mean(axis=1), 1e-30))
+    return ", ".join(f"{g:.1f} | {d:.1f}" for g, d in zip(gain, level, strict=False))
+
+
 def mixed_chain() -> tuple[score.Sidechain, list[float]]:
     """M's sidechain and its kicks."""
     loaded = score.load_text(MIXED)
@@ -553,6 +565,10 @@ def listen_to_duck(folder: Path) -> list[str]:
             shape = ", ".join(f"{ms:+g}: {db:.1f}" for ms, db in duck_shape(stem, dry, rate, kicks))
             print(f"the duck on the steady tone, around a kick (ms: dB): {shape}")
         print(f"the {target}, ducked: {worst_places(stem, dry, rate, chain, kicks)}")
+        print(
+            f"the {target}'s first 2 ms, in 0.5 ms windows (ducked against dry, dB | "
+            f"dry, dBFS): {first_windows(stem, dry, rate)}"
+        )
         found = duck_checks(stem, dry, rate, target)
         failed += report_checks(f"the {target}'s duck, by REQ-BEN-12's checks:", found)
     return failed

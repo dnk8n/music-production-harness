@@ -4,7 +4,10 @@ At 4 lines per beat a pattern line is one sixteenth. A song with a triplet
 voice runs at 12 lines per beat instead, so sixteenths fall every 3 lines and
 triplets every 4 (REQ-BEN-13). A song with a melodic voice runs at 8, so a
 plain note's gate, half a sixteenth, ends on a line of its own, where its
-note-off goes (REQ-REN-09). A note's time becomes its line plus a delay in
+note-off goes (REQ-REN-09). A song with a duck doubles its lines per beat
+until the duck's release, which Renoise reads once a tick, moves at most
+mixplan.DUCK_TICK_STEP_DB in a tick, as long as a pattern still fits in
+Renoise's 512 lines (REQ-REN-11). A note's time becomes its line plus a delay in
 1/256 of a line, so swing and an uneven feel live in the delay column where
 Dean can see and change them. Velocity goes in the volume column (0x80 is
 full). Chokes, and one-shots with a length limit, become note-offs.
@@ -19,7 +22,8 @@ each on its own key with the keys between them sharing the nearest, and a
 second instrument for its accented notes. A note-off ends each note's gate,
 and a note tied into the next makes that one glide (0Gxx) instead of
 starting again. Every song sets the track headroom to 0 dB (REQ-REN-12) and
-12 ticks a line, which the glide speeds count in.
+16 ticks a line, Renoise's most, so automation is read as often as Renoise
+can (REQ-REN-11); the glide speeds count in them.
 """
 
 from __future__ import annotations
@@ -37,6 +41,7 @@ TRIPLET_LPB = 12  # with a triplet voice: a sixteenth is 3 lines, a triplet 4 (R
 MELODIC_LPB = 8  # with a melodic voice: a line is half a sixteenth, a plain note's gate
 BARS_A_PATTERN = 4
 BEATS_A_BAR = 4
+PATTERN_MAX_LINES = 512  # Renoise's longest pattern
 DELAY_STEPS = 256
 FULL_VOLUME = 0x80
 FINE_TUNE_STEPS = 128  # per semitone
@@ -44,7 +49,7 @@ FINE_TUNE_LIMIT = 127
 CLIP_KEYS = 120 - 48  # clips sit on keys from C-4 (48) to B-9 (119)
 TOP_NOTE = 119  # B-9
 MIDI_OFFSET = 12  # Renoise's C-4 (48) is MIDI's middle C (60)
-TPL = 12  # ticks per line, which glide speeds count in
+TPL = 16  # ticks per line: Renoise's most (REQ-REN-11); glide speeds count in them
 GLIDE_STEPS = 16  # 0Gxx glides in sixteenths of a semitone a tick
 FASTEST_GLIDE = 0xFF
 HEADROOM_DB = 0.0  # REQ-REN-12
@@ -84,10 +89,19 @@ class Track:
 
 
 def lpb(score: Score) -> int:
-    """Lines per beat for a score's song (REQ-BEN-13, REQ-REN-09)."""
-    if score.triplets:
-        return TRIPLET_LPB
-    return MELODIC_LPB if score.melodic else LPB
+    """Lines per beat for a score's song (REQ-BEN-13, REQ-REN-09), doubled while
+    its duck's release would move more than mixplan.DUCK_TICK_STEP_DB in a tick
+    and a pattern still fits (REQ-REN-11)."""
+    lines = TRIPLET_LPB if score.triplets else MELODIC_LPB if score.melodic else LPB
+    chain = score.sidechain
+    if chain is None or not chain.active:
+        return lines
+    while (
+        mixplan.release_step_db(chain, score.beat_s / lines / TPL) > mixplan.DUCK_TICK_STEP_DB
+        and 2 * lines * BEATS_A_BAR * BARS_A_PATTERN <= PATTERN_MAX_LINES
+    ):
+        lines *= 2
+    return lines
 
 
 def seconds_per_line(score: Score) -> float:

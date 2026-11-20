@@ -223,9 +223,9 @@ def test_each_key_plays_the_nearest_sample() -> None:
 
 @pytest.mark.req("REQ-REN-09")
 def test_a_glide_covers_its_interval_in_the_synths_glide_time() -> None:
-    line_s = 0.0625  # 120 BPM at 8 lines a beat: a tick is 1/12 of that
-    assert song_plan.glide_speed(12, 0.05, line_s) == 20  # 192 sixteenths over 9.6 ticks
-    assert song_plan.glide_speed(-12, 0.05, line_s) == 20  # down as fast as up
+    line_s = 0.0625  # 120 BPM at 8 lines a beat: a tick is 1/16 of that
+    assert song_plan.glide_speed(12, 0.05, line_s) == 15  # 192 sixteenths over 12.8 ticks
+    assert song_plan.glide_speed(-12, 0.05, line_s) == 15  # down as fast as up
     assert song_plan.glide_speed(2, 0.001, line_s) == 32  # under a tick: all in one
     assert song_plan.glide_speed(0, 0.05, line_s) == 1  # the same note: the slowest glide
     assert song_plan.glide_speed(48, 0.0, line_s) == 0xFF  # no glide time: at once

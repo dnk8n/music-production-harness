@@ -183,6 +183,8 @@ def test_the_check_passes_when_renoise_never_asks(
         "OversamplingFactor=2x, Model=Butterworth 4n, ShowResponseView=true, "
         "ResponseViewMaxGain=18"
     ) in out
+    # The Duck steps once a tick: its smoothing is off (REQ-REN-11).
+    assert "  Audio/Effects/Native/Gainer preset data: SmoothParameterChanges=false" in out
     assert "every planned parameter shows what was asked" in out
     # The duck, the remix's own (24 dB in 2 ms, back over 430 ms): how far
     # apart each pair of renders is, its shape on the steady tone, where the
@@ -199,6 +201,12 @@ def test_the_check_passes_when_renoise_never_asks(
     assert (
         "the bass, ducked: deepest 24.0 dB down, +2.0 ms after the kick at 0 s; "
         "biggest step on the way back 0.08 dB, +70.5 ms after the kick at 0 s"
+    ) in out
+    # The bass's first moments, where a part that starts with the song starts
+    # from silence: against its dry render, and the dry render's own level.
+    assert (
+        "the bass's first 2 ms, in 0.5 ms windows (ducked against dry, dB | dry, dBFS): "
+        "-1.5 | -9.9, -3.3 | -7.5, -8.8 | -13.0, -14.0 | -6.7"
     ) in out
     assert "  sidechain: bass dip (dB): 24, limit 24 ± 1 (8 of 8 hits measured)" in out
     assert "  sidechain: bass dip reached (ms): 2.5, limit <= 5" in out

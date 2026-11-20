@@ -16,9 +16,13 @@ becomes points in each pattern: one at each lane point, one every beat along
 a move, and one at each pattern's start and end, so a move sounds the same
 whatever scale Renoise gives the parameter. The duck is a curve of points at
 every trigger hit; dips that overlap add up, never past the depth, as
-SuperCollider's do. It is drawn about 20 ms early, in whole ticks, because
-Renoise applies automation once a tick and its Gainer then takes a while to
-settle: drawn at the hit, a dip lands late.
+SuperCollider's do. Renoise reads automation once a tick, and by default its
+Gainer then glides to each new value: a 2 ms dip took about 25 ms to fall,
+and never reached its depth. So the Duck's smoothing is off, set in its
+preset data, and it steps to each value at the tick that reads it. The curve
+is drawn one tick early, so its first step down lands on the hit's own tick,
+and the song has enough lines a beat (plan.lpb) that the release steps at
+most DUCK_TICK_STEP_DB a tick.
 
 Every device has a role, which the renders switch on and off: a stem is
 rendered with the strips, sends, effects and master devices off and the duck
@@ -63,6 +67,7 @@ PANNING = ("Panning", "Pan")
 AMOUNT = ("Amount",)
 RECEIVER = ("Receiver",)  # shows the send track's number, from 0
 MUTE_SOURCE = ("MuteSource",)  # a #Send's mode: in its preset data, not a parameter
+SMOOTHING = ("SmoothParameterChanges",)  # a Gainer's gliding: in its preset data (REQ-REN-11)
 WET_ONLY = ("Mute Dry", "Mute Src.", "Mute Source", "Mute Src", "Dry Mute")  # On: fully wet
 DURATION = ("Duration",)
 PREDELAY = ("Predelay", "Pre-Delay", "Pre Delay", "PreDelay")
@@ -72,10 +77,10 @@ DAMPING = ("High Cut", "Damping", "Damp", "HF Damp")  # mpReverb 2 has none in 3
 
 STEP = 1 / 256  # Renoise places automation points to 1/256 of a line
 SILENT_DB = mix.SILENT_DB  # silence; the tool sets the parameter's lowest value
-RELEASE_POINTS = 16  # points along the duck's release (REQ-REN-11)
+RELEASE_POINTS = 32  # points along the duck's release (REQ-REN-11)
 TAPS = 4  # a Multitap's taps; only the first plays
 JUMP = 1e-9  # a curve that changes more than this at a line jumps there
-DUCK_LEAD_S = 0.02  # the duck is drawn about this much early, in whole ticks (REQ-REN-11)
+DUCK_TICK_STEP_DB = 0.35  # the most a duck's release may move in one tick (REQ-REN-11)
 
 Param = dict[str, Data]
 Device = dict[str, Data]
@@ -159,6 +164,17 @@ def _gainer(name: str, db: float, pan: float, role: str) -> Device:
     if pan:
         params.append(param(PANNING, round((pan + 1) / 2, 4), "fraction"))
     return {"path": GAINER, "name": name, "role": role, "params": params}
+
+
+def _duck(db: float) -> Device:
+    """The Duck: a Gainer with Renoise's smoothing off, so it steps to each
+    new gain at the tick that reads it (REQ-REN-11)."""
+    return {
+        "path": GAINER,
+        "name": "Duck",
+        "role": DUCK,
+        "params": [param(SMOOTHING, "false", "preset"), param(GAIN, _decibels(db), "dB")],
+    }
 
 
 def _send(to: str, index: int, db: float) -> Device:
@@ -268,7 +284,7 @@ def duck_curve(
             return depth * dt / attack
         if dt < attack + hold:
             return depth
-        return depth * (1 + math.cos(math.pi * (dt - attack - hold) / release)) / 2
+        return _released(depth, release, dt - attack - hold)
 
     def gain_db(t: float) -> float:
         now = t * timeline.line_s + lead_s
@@ -280,6 +296,30 @@ def duck_curve(
     marks += [attack + hold + release * k / RELEASE_POINTS for k in range(1, RELEASE_POINTS + 1)]
     times = sorted({(h + m - lead_s) / timeline.line_s for h in starts for m in marks})
     return Curve(value=gain_db, before=gain_db, times=tuple(t for t in times if t >= 0))
+
+
+def _released(depth: float, release_s: float, t: float) -> float:
+    """How much of the gain (from 0 to 1) a dip still takes ``t`` into its
+    release: from ``depth`` back to none along a half cosine (REQ-BEN-12)."""
+    if release_s <= 0:
+        return 0.0
+    return depth * (1 + math.cos(math.pi * min(max(t, 0.0), release_s) / release_s)) / 2
+
+
+def release_step_db(chain: Sidechain, tick_s: float) -> float:
+    """The most a duck's release moves, in dB, from one tick to the next, where
+    the Duck steps once a tick (REQ-REN-11)."""
+    depth = 1 - 10 ** (-chain.depth_db / 20)
+    release = chain.release_ms / 1000
+    if depth <= 0 or release <= 0:
+        return 0.0
+
+    def level(t: float) -> float:
+        return 20 * math.log10(1 - _released(depth, release, t))
+
+    return max(
+        level((k + 1) * tick_s) - level(k * tick_s) for k in range(math.ceil(release / tick_s))
+    )
 
 
 def automation(
@@ -313,11 +353,11 @@ def _strip(
 def voice_track(score: Score, name: str, timeline: Timeline, duck: Curve | None) -> dict[str, Data]:
     """A voice's devices and automation: its duck, its strip, or REQ-REN-06's
     bypassed filter. The Duck starts where its curve does, so a hit on the
-    song's first line doesn't glide there."""
+    song's first line doesn't step there."""
     devices: list[Device] = []
     lanes: list[dict[str, Data]] = []
     if duck is not None:
-        devices.append(_gainer("Duck", duck.value(0.0), 0.0, DUCK))
+        devices.append(_duck(duck.value(0.0)))
         lanes.append(automation(1, GAIN, "dB", duck, timeline))
     own = score.voice(name).strip
     if own is None or not (own.uses("highpass") or own.uses("lowpass")):
@@ -396,9 +436,7 @@ def plan(
     duck, targets = None, set()
     if chain is not None:
         hits = [e.time_s for e in events if e.voice == chain.trigger]
-        tick_s = line_s / tpl
-        lead_s = math.ceil(DUCK_LEAD_S / tick_s - 1e-9) * tick_s
-        duck, targets = duck_curve(hits, chain, timeline, lead_s), set(chain.targets)
+        duck, targets = duck_curve(hits, chain, timeline, line_s / tpl), set(chain.targets)
     return {
         "tracks": [
             voice_track(score, v.name, timeline, duck if v.name in targets else None)

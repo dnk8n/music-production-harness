@@ -188,7 +188,7 @@ def lanes(built: dict[str, Any], track: int, parameter: str) -> list[dict[str, A
 def test_the_tool_builds_the_mixer(tmp_path: Path) -> None:
     built = build(tmp_path, planned(tmp_path))
     assert built.get("error") is None
-    assert (built["tpl"], built["headroom_db"]) == (12, 0.0)
+    assert (built["tpl"], built["headroom_db"]) == (16, 0.0)
     # Sequencer tracks, the master, then a send track for each send.
     kinds = [(t["name"], t["type"]) for t in built["mixer"]]
     assert kinds == [("kick", 1), ("bass", 1), ("stab", 1), ("Master", 2), ("echo", 3), ("hall", 3)]
@@ -316,16 +316,17 @@ def test_lanes_and_the_duck_are_automated(tmp_path: Path) -> None:
     ]
     assert [p["time"] for p in tail["points"]] == [1.0, 16 + 255 / 256]
     # The duck: the Gainer's Gain (0 to 4, linear) dips 12 dB at each kick,
-    # drawn about 20 ms early: four ticks, a third of a line, at 8 lines a
-    # beat. The first kick is on the first line, so the song starts dipped,
-    # and the Duck starts there too.
+    # drawn one tick early: a sixteenth of a line. Its smoothing is off, so it
+    # steps to each gain at the tick that reads it. The first kick is on the
+    # first line, so the song starts dipped, and the Duck starts there too.
     duck = lanes(built, 2, "Gain")
     assert [d["pattern"] for d in duck] == [1, 2, 3]
+    assert preset(built, 2, "Duck")["SmoothParameterChanges"] == "false"
     gains = {p["time"]: 20 * math.log10(4 * p["value"]) for p in duck[0]["points"]}
-    assert gains[1.0] == pytest.approx(-11.75, abs=0.01)  # 21 ms into the first dip
+    assert gains[1.0] == pytest.approx(-12.0, abs=0.01)  # a tick into the first dip
     assert number(shows(built, 2, "Duck")["Gain"]) == pytest.approx(gains[1.0], abs=0.01)
-    lead_s, kick = 4 * LINE_S / 12, 8 * LINE_S  # 12 ticks a line; the next kick
-    assert gains[slot(kick - lead_s)] == pytest.approx(0.0, abs=0.01)  # 0 dB 21 ms before it
+    lead_s, kick = LINE_S / 16, 8 * LINE_S  # 16 ticks a line; the next kick
+    assert gains[slot(kick - lead_s)] == pytest.approx(0.0, abs=0.01)  # 0 dB a tick before it
     assert gains[slot(kick - lead_s + 0.002)] == pytest.approx(-12.0, abs=0.01)  # 2 ms on
     # The stab's echo throw: silent, open for a quarter bar at bar 3.5, silent again.
     throw = lanes(built, 3, "Amount")

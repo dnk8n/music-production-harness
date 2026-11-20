@@ -194,6 +194,11 @@ local PRESETS = {
     { "SmoothParameterChanges", "true" },
     { "ApplyPostVolume", "true" },
   },
+  -- The Gainer glides to each new gain unless this hidden setting is off, as
+  -- a Renoise developer explained on Renoise's forum (2022).
+  ["Audio/Effects/Native/Gainer"] = {
+    { "SmoothParameterChanges", "true" },
+  },
 }
 
 -- The values a preset setting can take, where they're a fixed list (the

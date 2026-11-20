@@ -211,7 +211,8 @@ pattern, not a detector listening to the kick (like a volume-shaper plugin
 synced to the kick). The gain falls by the depth over the attack, stays
 there for the hold (none unless the score sets one), then rises back along
 a half-cosine curve over the release. Overlapping dips add up, but never
-past the depth. A declared variant can change the depth, attack, hold and
+past the depth; in Renoise the deeper of the two wins (REQ-REN-11). A
+declared variant can change the depth, attack, hold and
 release, such as `sidechain = { depth_db = 24, release_ms = 430 }`.
 A depth of 0 dB bypasses it. In SuperCollider a ducker after each target's
 synths applies the gain. In Renoise, a Gainer on each target's track is
@@ -229,7 +230,10 @@ compare against it:
   kick. It is back within 0.5 dB of full level 10 ms after
   the release ends, or as soon as it sounds after that (a bass line can
   be between notes then). On the way back, the gain never changes by more than
-  0.5 dB from one window to the next. A dip that the next hit cuts short,
+  0.5 dB from one window to the next. That check says where its biggest
+  step is: after which hit and how long after it, the level on either side,
+  and the dry target's own level there, so a step in the duck can be told
+  from a note starting. A dip that the next hit cuts short,
   like one after a kick pushed onto the last eighth of a bar, is followed
   only up to that hit, so its recovery isn't checked. A target with no
   note held under any hit in the render is skipped: an excerpt can leave

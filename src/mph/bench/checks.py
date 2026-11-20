@@ -319,7 +319,9 @@ def sidechain(
     """REQ-BEN-12 and BM-SC-01: at each trigger hit, the target dips by the
     depth (within the slack) quickly, holds, and is back to full level just
     after the release ends, along a smooth curve. Measured as the ducked
-    target against the same target rendered dry."""
+    target against the same target rendered dry. The smoothness check says
+    where its biggest step is, and how loud the dry target is there, so a
+    step in the duck can be told from a note starting."""
     after_ms = DUCK_RECOVER_AFTER_S * 1000
     dip_ms = sidechain.attack_ms + sidechain.hold_ms + sidechain.release_ms
     dips = audio.dips(
@@ -339,8 +341,14 @@ def sidechain(
     reach = max(d.reach_ms for d in dips)
     recovered = [d.recovered_db for d in dips if not math.isnan(d.recovered_db)]
     level = min(recovered, default=0.0)
-    step = max(d.step_db for d in dips)
+    worst = max(dips, key=lambda d: d.step_db)
+    step = worst.step_db
     note = f"{len(dips)} of {len(triggers_s)} hits measured"
+    where = (
+        f"{worst.step_ms:.1f} ms after the {sidechain.trigger} at {worst.at_s:.3f} s: "
+        f"{worst.step_gains[0]:.2f} then {worst.step_gains[1]:.2f} dB, with the dry {target} "
+        f"at {worst.step_dry[0]:.1f} then {worst.step_dry[1]:.1f} dBFS"
+    )
     return [
         Check(f"{name} dip (dB)", round(worst_depth, 2),
               f"{sidechain.depth_db:g} ± {DUCK_DEPTH_SLACK_DB:g}",
@@ -351,7 +359,7 @@ def sidechain(
               f">= {DUCK_RECOVERED_DB:g}", level >= DUCK_RECOVERED_DB,
               f"{len(recovered)} of {len(dips)} dips ran their course before the next hit"),
         Check(f"{name} biggest step on the way back (dB per 0.5 ms)", round(step, 3),
-              f"<= {DUCK_STEP_DB:g}", step <= DUCK_STEP_DB),
+              f"<= {DUCK_STEP_DB:g}", step <= DUCK_STEP_DB, where),
     ]  # fmt: skip
 
 

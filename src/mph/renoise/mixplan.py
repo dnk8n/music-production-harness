@@ -15,8 +15,10 @@ isn't a parameter, so it is set in the device's preset data. Automation
 becomes points in each pattern: one at each lane point, one every beat along
 a move, and one at each pattern's start and end, so a move sounds the same
 whatever scale Renoise gives the parameter. The duck is a curve of points at
-every trigger hit; dips that overlap add up, never past the depth, as
-SuperCollider's do. Renoise reads automation once a tick, and by default its
+every trigger hit. Where dips overlap the deeper one wins, as when a volume
+shaper restarts at each hit: SuperCollider adds them up to the depth, which
+after a pushed kick holds the depth and then comes back too steeply for
+Renoise's ticks. Renoise reads automation once a tick, and by default its
 Gainer then glides to each new value: a 2 ms dip took about 25 ms to fall,
 and never reached its depth. So the Duck's smoothing is off, set in its
 preset data, and it steps to each value at the tick that reads it. The curve
@@ -286,7 +288,8 @@ def duck_curve(
 ) -> Curve:
     """The Duck's gain in dB (REQ-REN-11): down to the depth over the attack at
     every hit, held, then back along a half cosine over the release, all drawn
-    ``lead_s`` early. Dips that overlap add up, never past the depth (REQ-BEN-12)."""
+    ``lead_s`` early. Where dips overlap, the deeper one wins, so each release
+    keeps its own shape."""
     depth = 1 - 10 ** (-chain.depth_db / 20)
     attack, hold, release = (ms / 1000 for ms in (chain.attack_ms, chain.hold_ms, chain.release_ms))
     span = attack + hold + release
@@ -304,7 +307,7 @@ def duck_curve(
     def gain_db(t: float) -> float:
         now = t * timeline.line_s + lead_s
         lo, hi = bisect.bisect_left(starts, now - span), bisect.bisect_right(starts, now)
-        taken = min(depth, sum(dip(now - h) for h in starts[lo:hi]))
+        taken = max((dip(now - h) for h in starts[lo:hi]), default=0.0)
         return 20 * math.log10(max(1 - taken, 1e-9))
 
     marks = [0.0, attack, attack + hold]

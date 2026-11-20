@@ -300,6 +300,10 @@ class Dip:
     recovered_db: float  # the level ``recover_s`` after the hit, or as soon as heard after it
     # (nan if silent until the next hit, or cut short by it)
     step_db: float  # the biggest change between neighbouring windows on the way back
+    at_s: float = 0.0  # the hit
+    step_ms: float = 0.0  # where that change ends, after the hit
+    step_gains: tuple[float, float] = (0.0, 0.0)  # the level either side of it (dB)
+    step_dry: tuple[float, float] = (0.0, 0.0)  # the dry target's own level there (dBFS)
 
 
 def dips(
@@ -321,6 +325,7 @@ def dips(
     no recovery to measure."""
     frames = max(1, round(window_s * rate))
     gain = gain_curve(wet, dry, frames)
+    alone = window_levels(dry, frames)[: len(gain)]
     window = frames / rate
     ordered = sorted(triggers_s)
     found = []
@@ -336,17 +341,39 @@ def dips(
         end = start + round(recover_s / window)
         following = int(ordered[n + 1] / window) if n + 1 < len(ordered) else len(gain)
         last = min(end, following - 1)
-        steps = np.abs(np.diff(gain[deepest : last + 1]))  # neighbours only: NaN across silence
-        steps = steps[~np.isnan(steps)]
+        step, where = _biggest_step(gain[deepest : last + 1])
+        before, after = deepest + max(where - 1, 0), deepest + where
         found.append(
             Dip(
                 depth_db=-float(gain[deepest]),
                 reach_ms=float(reach * window * 1000),
                 recovered_db=_first_heard(gain[end:following]) if end == last else math.nan,
-                step_db=float(steps.max()) if steps.size else 0.0,
+                step_db=step,
+                at_s=at,
+                step_ms=(after * window - at) * 1000,
+                step_gains=(float(gain[before]), float(gain[after])),
+                step_dry=(float(alone[before]), float(alone[after])),
             )
         )
     return found
+
+
+def _biggest_step(gain: np.ndarray) -> tuple[float, int]:
+    """The biggest change between neighbouring windows of a stretch of a gain
+    curve, and the window it ends on (0 if there is none). Only neighbours
+    count: a window where the target is silent splits the stretch."""
+    steps = np.abs(np.diff(gain))
+    if steps.size == 0 or np.isnan(steps).all():
+        return 0.0, 0
+    k = int(np.nanargmax(steps))
+    return float(steps[k]), k + 1
+
+
+def window_levels(signal: Audio, frames: int) -> np.ndarray:
+    """A signal's level in dBFS over windows of ``frames``."""
+    count = len(signal) // frames
+    flat = mono(signal)[: count * frames].astype(np.float64).reshape(count, frames)
+    return 10 * np.log10(np.maximum((flat**2).mean(axis=1), 1e-30))
 
 
 def _first_heard(gain: np.ndarray) -> float:

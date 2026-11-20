@@ -10,6 +10,7 @@ import itertools
 import math
 from typing import Any
 
+import numpy as np
 import pytest
 
 from mph.bench import score
@@ -169,18 +170,22 @@ def test_the_duck_dips_at_every_hit() -> None:
     assert len(release) == 1 + mixplan.RELEASE_POINTS
     assert release[-1][1] == 0.0
     assert all(b[1] >= a[1] for a, b in itertools.pairwise(release))
-    # Dips that overlap add up, but never past the depth (REQ-BEN-12).
+    # Where dips overlap, the deeper one wins (REQ-REN-11): a hit before the
+    # last dip has come back starts its own, which keeps its release's shape.
     chain = score.Sidechain("kick", ("stab",), depth_db=12, release_ms=400)
     timeline = mixplan.Timeline((64,), LINE_S, 4, 16)
     curve = mixplan.duck_curve([0.0, 0.1], chain, timeline)
 
-    def dip(dt: float) -> float:  # one hit's share taken off the level, in its release
+    def taken(dt: float) -> float:  # one hit's share taken off the level, in its release
         return (1 - 10 ** (-12 / 20)) * (1 + math.cos(math.pi * (dt - 0.002) / 0.4)) / 2
 
-    assert curve.value(0.102 / LINE_S) == pytest.approx(-12.0)  # both at once: just the depth
-    both = 20 * math.log10(1 - dip(0.3) - dip(0.2))
-    assert curve.value(0.3 / LINE_S) == pytest.approx(both)
-    assert both < 20 * math.log10(1 - dip(0.2)) - 1  # deeper than the later dip alone
+    def db(share: float) -> float:
+        return 20 * math.log10(1 - share)
+
+    assert curve.value(0.05 / LINE_S) == pytest.approx(db(taken(0.05)))  # the first dip
+    assert curve.value(0.102 / LINE_S) == pytest.approx(-12.0)  # the second's floor
+    assert curve.value(0.3 / LINE_S) == pytest.approx(db(taken(0.2)))  # then the second alone
+    assert curve.value(0.3 / LINE_S) > db(taken(0.3) + taken(0.2)) + 1  # not added up
 
 
 def test_a_score_without_a_mix_or_a_sidechain_has_no_mixer() -> None:
@@ -225,6 +230,43 @@ def test_a_song_with_a_duck_gets_lines_enough_for_its_release() -> None:
     # A duck too steep for even the finest grid gets the finest a pattern holds.
     assert song_lpb("depth_db = 48\nrelease_ms = 100") == 32
     assert mixplan.release_step_db(score.Sidechain("kick", ("bass",), depth_db=0), 0.001) == 0.0
+
+
+@pytest.mark.req("REQ-REN-11")
+def test_the_duck_comes_back_in_small_steps_after_a_pushed_kick() -> None:
+    # The remix's duck, with a kick pushed onto the last eighth of a bar, as
+    # Renoise reads it: once a tick, along straight lines between the points,
+    # a pattern a bar. Each dip comes back no faster than one release does:
+    # added up, the dips after the push rose about 0.8 dB a tick (2026-11-20).
+    loaded = score.load_text(
+        'id = "X"\nbpm = 120\nbars = 2\n'
+        '[voices.kick]\ngrid = "x . . . x . . . x . . . x . x . '
+        '| x . . . x . . . x . . . x . . ."\nsound = { role = "kick" }\n'
+        f'[voices.bass]\nnotes = "{" ".join(["C2"] * 16)}"\ngate = "{" ".join("x" * 16)}"\n'
+        'sound = { synth = "mph_bass" }\n'
+        '[sidechain]\ntrigger = "kick"\ntargets = ["bass"]\ndepth_db = 24\nrelease_ms = 430\n'
+    )
+    lpb = song_plan.lpb(loaded)
+    lengths = [4 * lpb, 4 * lpb]
+    found = mixplan.plan(
+        loaded,
+        score.events(loaded),
+        lengths,
+        line_s=loaded.beat_s / lpb,
+        lpb=lpb,
+        bar_lines=4 * lpb,
+        tpl=TPL,
+    )
+    assert found is not None and lpb == 16
+    mixer: dict[str, Any] = dict(found)
+    duck = lane(mixer["tracks"][1], 1)
+    heard: list[float] = []
+    for part, length in zip(duck["patterns"], lengths, strict=True):
+        times = [t - 1 for t, _ in part["points"]]
+        gains = [10 ** (v / 20) for _, v in part["points"]]
+        ticks = np.arange(length * TPL) / TPL
+        heard += list(20 * np.log10(np.interp(ticks, times, gains)))
+    assert np.diff(heard).max() <= mixplan.DUCK_TICK_STEP_DB  # 0.24 dB, as renoise-check measured
 
 
 @pytest.mark.req("REQ-REN-11")

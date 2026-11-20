@@ -197,6 +197,10 @@ def test_the_dip_is_measured_against_the_dry_target() -> None:
     stepped[round(0.1 * RATE) :] = 0.0  # snaps back half way: a click, not a curve
     jumpy = checks.sidechain(chain, "pad", *_gain(stepped), [0.0], rate=RATE)
     assert [c.passed for c in jumpy] == [True, True, True, False]
+    # It says where: when, the level either side, and the dry target's level there.
+    assert jumpy[3].note.startswith(
+        "100.0 ms after the kick at 0.000 s: -2.60 then 0.00 dB, with the dry pad at -18.6 then"
+    )
     wet, dry = _gain(_dip(6, 0.002, 0.2))
     silent = checks.sidechain(chain, "pad", wet * 0, dry * 0, [0.0], rate=RATE)
     assert [(c.passed, c.note) for c in silent] == [(False, "silent at every hit")]

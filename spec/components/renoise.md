@@ -225,9 +225,10 @@ A score's mix (spec/components/mix.md) is built from Renoise's own devices:
 A sidechain (REQ-BEN-12) is a Gainer named Duck, first on each target's
 track, whose gain is automated at every trigger hit: down to the depth
 over the attack, held for the hold, and back along the release's
-half-cosine curve, with a point at least every 32nd of the release. Dips
-that overlap add up but never pass the depth, as in SuperCollider
-(REQ-BEN-12). The Duck's smoothing is off (`SmoothParameterChanges` in its
+half-cosine curve, with a point at least every 32nd of the release. Where
+a hit comes before the last dip has come back, the deeper of the two dips
+wins: the new dip falls from wherever the gain is, and its release keeps
+its own shape. The Duck's smoothing is off (`SmoothParameterChanges` in its
 preset data), so it steps to each new gain at the tick that reads it. The
 whole curve is drawn one tick early, so its first step down lands on the
 hit's own tick, and the Duck's own gain starts where its automation does,
@@ -254,7 +255,16 @@ back over 430 ms) gets 16 lines a beat, where a tick is about 2 ms.
   0.46 dB at a time, next to REQ-BEN-12's limit of 0.5 dB. Twice the lines
   halves that, and Renoise users raise the lines per beat for finer
   automation. Drawn one tick early, a dip's first step down lands on the
-  kick's tick, as SuperCollider's dip starts on the kick.
+  kick's tick, as SuperCollider's dip starts on the kick. SuperCollider
+  adds overlapping dips up to the depth (REQ-BEN-12). After the remix's
+  kick pushed onto the last eighth of a bar, that holds the gain at the
+  depth for about 90 ms past the next kick, then brings it back up to five
+  times as steeply as one release does. Read once a tick, that stepped
+  0.58 dB at a time on the strings in three of the four blocks
+  (2026-11-20), past REQ-BEN-12's 0.5 dB. A Renoise user draws each kick's dip from the floor,
+  so a kick that comes early starts a dip of its own, as a volume shaper
+  restarts at each hit; drawn that way, the remix's steps stay at its
+  release's own 0.23 dB.
 - **Verify:** test; measure, with REQ-BEN-12's checks in `scripts/renoise-check`
   and on the Renoise take
 

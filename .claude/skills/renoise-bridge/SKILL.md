@@ -86,6 +86,15 @@ Renoise shows them.
   each part's first 2 ms. Read the shape before changing the curve. A note
   that starts from silence with the song can read strangely in its first
   half-millisecond: check the dry level there before blaming the duck.
+- **Overlapping dips**: where a kick comes before the last dip has come
+  back (the remix's kick pushed onto the last eighth), the deeper dip wins
+  in Renoise. Added up, as SuperCollider does, the two held the depth for
+  90 ms past the next kick and then came back about five times as steeply
+  as one release, which Renoise's ticks turned into 0.8 dB steps; the
+  remix's four blocks failed REQ-BEN-12's steps (2026-11-20). A take's
+  "biggest step on the way back" check says where its step is, the level
+  either side and the dry part's own level there: a big change in the dry
+  level means a note starting, not the duck.
 
 ## Traps in the API
 

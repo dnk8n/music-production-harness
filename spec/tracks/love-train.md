@@ -12,11 +12,38 @@ and each is finished before the next starts. Research:
 [Remix practice for Love Train](https://claude.ai/artifact/Ru96Afswp6zig5Lgd8M1zv)
 (2026-11-14).
 
-The source is Dean's copy in his full tracks folder (FLAC, 44.1 kHz, 16-bit,
-5:37.5). It sits on a fixed grid of exactly 120 BPM, and its bar 1 starts at
-its first sample, so bar *n* starts at (*n* - 1) x 2 s (REQ-CAT-10). Its
-passages, from a bar-by-bar map of the full mix (levels in four bands, stereo
-width and chords):
+## The source and its stems
+
+The source is Dean's copy in Dean's full tracks folder, named here by its
+catalogue hash (BLAKE2b-256),
+`406fc403707baff75c28c7605a3aa49fb0d6f57653a10c6ea222af76bc19a17b`: a FLAC,
+44.1 kHz, 16-bit stereo, 14,885,265 frames (5:37.53). Its tags name the
+album Love Train Remixes (Soul Clap Records SCR100, 2026), track 7 of 7, the
+2016 original. That release also has a percapella and instrumentals, which
+would be cleaner sources than separated stems. Its loudness is -11.9 LUFS
+over the whole song, peaking at -0.09 dBFS: bars 1-8 sit at -22.9 LUFS, the
+train at -19.9 and the grooves at about -12.
+
+It sits on a fixed grid of exactly 120 BPM, and its bar 1 starts at its
+first sample, so bar *n* starts at (*n* - 1) x 2 s (REQ-CAT-10). The
+catalogue's first beat (0 s) and drift (0 ms) for it are measured, not
+defaults. It runs 168 bars and a short tail.
+
+Its stems come from `mph catalogue derive SOUND stems` on Dean's Mac
+(2026-11-14): Demucs' htdemucs_ft on the CPU, about 9 minutes, giving 32-bit
+float WAVs at 44.1 kHz, 337.5 s each, kept in mph's cache. A second run
+matched byte for byte, so a stem's hash names it on any machine with the
+same source:
+
+| Stem | Hash |
+|---|---|
+| vocals | `c2b24168a2cb70f09d14efee4b06d95ec36a29b1a80b16fe8fbd775ddd34092e` |
+| other (the train's horn) | `4ed4ea4d21f7ca9718a3ee67823eb11f4d762f5023eadcd332b02eca6e44b2c7` |
+| drums | starts `3a4dae8778de` |
+| bass | starts `981ec42c3b4c` |
+
+Its passages, from a bar-by-bar map of the full mix (levels in four bands,
+stereo width and chords):
 
 | Bars | What plays |
 |---|---|

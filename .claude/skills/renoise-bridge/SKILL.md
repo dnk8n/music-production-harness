@@ -108,6 +108,13 @@ Renoise shows them.
   line starts, the tool keeps them to that line, and renoise-check says so.
 - The first render of a freshly built song starts about 30 samples late, so
   render a throwaway warm-up first and measure only the renders after it.
+- The first render after switching render modes can start quieter on a track
+  whose devices were just switched off: the bass's stem, rendered straight
+  after the mix, came out about 6 dB quieter in its first 0.6 ms
+  (2026-11-20). A take renders the mix, then the stems in the score's order
+  (the kick's first in every score so far), then the dry renders; keep
+  renoise-check in that order, and don't make a measured part the first
+  render after a switch.
 - Save each song in an idle step of its own, after the step that last
   changed it (REQ-REN-08). Otherwise Renoise asks whether to save, and a
   render waits for a click nobody makes.

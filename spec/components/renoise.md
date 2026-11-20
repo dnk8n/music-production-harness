@@ -35,6 +35,12 @@ throwaway warm-up render first and measures only the renders after it. A
 song with a mix (REQ-REN-10) renders its stems dry: each stem with the
 strip devices, the sends and the master's devices switched off and its duck
 on, and each sidechain target once more with its duck off too (REQ-REN-11).
+A take renders its mix, then every voice's stem in the score's order, then
+its dry renders, and renoise-check renders in the same order, because the
+first render after a switch from the mix can start quieter on a track whose
+devices were just switched off: in renoise-check (2026-11-20) the bass's
+stem, rendered straight after the mix, came out about 6 dB quieter in its
+first 0.6 ms, and the same stem rendered after the kick's was right.
 The song is saved with nothing muted and every device as built. If a
 device or parameter the plan names isn't there, or never shows the value
 asked for, the build fails naming all of them, with the parameters the

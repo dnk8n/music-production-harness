@@ -16,9 +16,9 @@ becomes points in each pattern: one at each lane point, one every beat along
 a move, and one at each pattern's start and end, so a move sounds the same
 whatever scale Renoise gives the parameter. The duck is a curve of points at
 every trigger hit; dips that overlap add up, never past the depth, as
-SuperCollider's do. It is drawn two ticks early, because Renoise applies
-automation once a tick and its Gainer glides to each new value: drawn at the
-hit, a dip lands about two ticks late.
+SuperCollider's do. It is drawn about 20 ms early, in whole ticks, because
+Renoise applies automation once a tick and its Gainer then takes a while to
+settle: drawn at the hit, a dip lands late.
 
 Every device has a role, which the renders switch on and off: a stem is
 rendered with the strips, sends, effects and master devices off and the duck
@@ -75,7 +75,7 @@ SILENT_DB = mix.SILENT_DB  # silence; the tool sets the parameter's lowest value
 RELEASE_POINTS = 16  # points along the duck's release (REQ-REN-11)
 TAPS = 4  # a Multitap's taps; only the first plays
 JUMP = 1e-9  # a curve that changes more than this at a line jumps there
-DUCK_LEAD_TICKS = 2  # the duck is drawn this many ticks early (REQ-REN-11)
+DUCK_LEAD_S = 0.02  # the duck is drawn about this much early, in whole ticks (REQ-REN-11)
 
 Param = dict[str, Data]
 Device = dict[str, Data]
@@ -396,7 +396,8 @@ def plan(
     duck, targets = None, set()
     if chain is not None:
         hits = [e.time_s for e in events if e.voice == chain.trigger]
-        lead_s = DUCK_LEAD_TICKS * line_s / tpl
+        tick_s = line_s / tpl
+        lead_s = math.ceil(DUCK_LEAD_S / tick_s - 1e-9) * tick_s
         duck, targets = duck_curve(hits, chain, timeline, lead_s), set(chain.targets)
     return {
         "tracks": [

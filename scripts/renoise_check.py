@@ -11,15 +11,16 @@ tool, then, in one Renoise that mph starts:
    job must keep it as a copy in mph's scratch folder before it builds C;
 3. a third job builds M, a song with a mix and sampled synths (REQ-REN-09 to
    REQ-REN-11): every planned parameter must show what the plan asks for,
-   the bass's duck must pass REQ-BEN-12's own checks at every kick (as a
-   render's report measures it), the stab must still sound on its own track
+   the duck (the remix's own: 24 dB in 2 ms, back over 430 ms) must pass
+   REQ-BEN-12's own checks at every kick on a steady tone and on the bass, as
+   a render's report measures it, the stab must still sound on its own track
    while it sends (its #Send keeps its source), and the stab's echo must come
    back a dotted eighth after the note thrown into it. It prints each kind of
    device's parameters as Renoise names and shows them, the optional settings
    Renoise doesn't have or didn't take, the other settings in those devices'
-   preset data, and how a Gainer follows its automation: a steady tone's
-   level is drawn to jump 24 dB, and the check prints when the tone starts
-   to fall and when it is 23 dB down;
+   preset data, how far apart in samples each ducked render and its dry
+   render are, the duck's real shape around a kick on the steady tone, and
+   where the bass's worst moments fall;
 4. B is opened the same way, and Renoise is asked to quit.
 
 If a step fails, the check still asks the Renoise it started to quit.
@@ -56,7 +57,8 @@ JOB_TIMEOUT_S = 300.0  # longer than the tool waits for a new song, so its own e
 LOAD_S = 5.0  # time for Renoise to open a song
 QUIT_S = 30.0  # time for Renoise to quit
 QUIT = ("osascript", "-e", 'tell application "Renoise" to quit')
-ONSET_DB = (0.5, 23.0)  # how far down the tone is when its level starts to fall, and ends
+LAG_LIMIT = 2400  # samples: how far apart two renders are looked for
+SHAPE_MS = (-30, -25, -20, -15, -10, -5, -2.5, 0, 2.5, 5, 10, 20, 50, 100, 200, 300, 400, 430, 440)
 SHOWN_SLACK = {"Hz": 0.03, "ms": 0.03}  # a share of the value asked for
 SHOWN_SLACK_DB = 0.25
 SHOWN_SLACK_PERCENT = 0.5
@@ -77,11 +79,11 @@ KEPT_DB = 10.0  # the stab with its strip and sends on, at most this much under 
 ECHO_SEARCH_S = (1.36, 1.74)  # after the thrown note has died away, before the next note
 ECHO_SLACK_S = 0.015
 ECHO_FLOOR_DB = 20.0  # the echo, at most this much under the thrown note
-# The tone in M: a steady sine whose level is drawn to jump 24 dB at bar 1.75,
-# to time how a Gainer follows its automation.
-TONE_S, TONE_HZ = 4.0, 220.0
-JUMP_S = 1.5
-JUMP_SEARCH_S = (-0.02, 0.05)  # from the jump: where its glide is looked for
+# The tone in M: one steady sine through both bars, ducked like the bass, so
+# the duck's shape can be read without notes starting under it. A little noise
+# in the sample tells one cycle of the sine from the next, so the renders'
+# offset can be measured.
+TONE_S, TONE_HZ, TONE_NOISE = 4.5, 1000.0, 0.005
 
 # Every kind of device the mixer uses, and both kinds of synth note (REQ-REN-09 to 11).
 MIXED = """
@@ -125,11 +127,8 @@ send = { echo = -8, hall = -14 }
 echo = [[1, -inf], [1.5, -inf], [1.5, 0], [1.75, 0], [1.75, -inf]]
 
 [voices.tone]
-grid = "X . . . . . . . . . . . . . . ."
+grid = "X . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . ."
 sound = { role = "pad" }
-
-[voices.tone.automate]
-level = [[1.75, 0], [1.75, -24]]
 
 [sends.echo]
 kind = "delay"
@@ -152,9 +151,10 @@ level = [[2, 0], [3, -6]]
 
 [sidechain]
 trigger = "kick"
-targets = ["bass"]
-depth_db = 12
-release_ms = 300
+targets = ["bass", "tone"]
+depth_db = 24
+attack_ms = 2
+release_ms = 430
 """
 
 
@@ -188,9 +188,10 @@ def blip(path: Path) -> Path:
 
 
 def tone(path: Path) -> Path:
-    """A steady sine, long enough to hear a level jump in."""
+    """A steady sine with a little noise, longer than song M."""
     t = np.arange(round(TONE_S * RATE)) / RATE
-    audio.write_float(path, 0.5 * np.sin(2 * np.pi * TONE_HZ * t), RATE)
+    noise = np.random.default_rng(7).standard_normal(len(t))
+    audio.write_float(path, 0.5 * np.sin(2 * np.pi * TONE_HZ * t) + TONE_NOISE * noise, RATE)
     return path
 
 
@@ -235,7 +236,7 @@ def mixed_song(folder: Path, sample: Path) -> dict[str, luadata.Data]:
     """Song M: the mixed score, its synths sampled from the blip, and a steady
     tone. Rendered as a mix after a warm-up, then the bass alone with its duck
     (a stem) and without, the stab with its sends and without, and the tone
-    with its strip and without."""
+    with its duck and without."""
     loaded = score.load_text(MIXED)
     events = score.events(loaded)
 
@@ -266,7 +267,7 @@ def mixed_song(folder: Path, sample: Path) -> dict[str, luadata.Data]:
         {"file": str(folder / "M dry.wav"), "solo": 2, "mode": "dry"},
         {"file": str(folder / "M stab.wav"), "solo": 3},  # with its strip, sends and their effects
         {"file": str(folder / "M stab dry.wav"), "solo": 3, "mode": "dry"},
-        {"file": str(folder / "M tone.wav"), "solo": 4},  # with its level's jump
+        {"file": str(folder / "M tone stem.wav"), "solo": 4, "mode": "stem"},
         {"file": str(folder / "M tone dry.wav"), "solo": 4, "mode": "dry"},
     ]
     save = str(folder / "M.xrns")
@@ -411,33 +412,108 @@ def envelope_db(data: np.ndarray, rate: int, window: tuple[float, float]) -> np.
     return np.array([10 * np.log10(np.mean(mono[k : k + frame] ** 2) + 1e-20) for k in starts])
 
 
-def jump_ms(mixed: np.ndarray, dry: np.ndarray, rate: int) -> tuple[float, float]:
-    """When the tone's level, drawn to jump 24 dB at JUMP_S, starts to fall
-    (half a dB down) and when it is 23 dB down: in ms from the jump, measured
-    in REQ-BEN-12's half-millisecond windows; nan if it never is."""
+def mono(data: np.ndarray) -> np.ndarray:
+    flat: np.ndarray = (data.mean(axis=1) if data.ndim > 1 else data).astype(np.float64)
+    return flat
+
+
+def lag_samples(late: np.ndarray, early: np.ndarray, limit: int = LAG_LIMIT) -> int:
+    """How many samples ``late`` runs behind ``early`` (negative: ahead), where
+    the two line up best, by cross-correlation."""
+    a, b = mono(late), mono(early)
+    n = min(len(a), len(b))
+    size = 1 << (2 * n - 1).bit_length()
+    corr = np.fft.irfft(np.fft.rfft(a[:n], size) * np.conj(np.fft.rfft(b[:n], size)), size)
+    near = np.concatenate([corr[-limit:], corr[: limit + 1]])  # lags -limit .. limit
+    return int(np.argmax(near)) - limit
+
+
+def envelope(data: np.ndarray) -> np.ndarray:
+    """A signal's amplitude at every sample (the analytic signal's size), so
+    a steady tone's level can be read between its zero crossings."""
+    flat = mono(data)
+    n = len(flat)
+    weights = np.zeros(n)
+    weights[0] = 1.0
+    weights[1 : (n + 1) // 2] = 2.0
+    if n % 2 == 0:
+        weights[n // 2] = 1.0
+    size: np.ndarray = np.abs(np.fft.ifft(np.fft.fft(flat) * weights))
+    return size
+
+
+def duck_shape(
+    stem: np.ndarray, dry: np.ndarray, rate: int, kicks: Sequence[float]
+) -> list[tuple[float, float]]:
+    """The duck's gain (dB) at each of SHAPE_MS around a kick, the median over
+    every kick but the first (which starts the song already dipped)."""
+    ratio = envelope(stem) / np.maximum(envelope(dry), 1e-9)
+    found = []
+    for ms in SHAPE_MS:
+        at = [round((kick + ms / 1000) * rate) for kick in kicks[1:]]
+        gains = [20 * math.log10(max(ratio[k], 1e-9)) for k in at if 0 <= k < len(ratio)]
+        found.append((ms, float(np.median(gains)) if gains else math.nan))
+    return found
+
+
+def worst_places(
+    stem: np.ndarray, dry: np.ndarray, rate: int, chain: score.Sidechain, kicks: Sequence[float]
+) -> str:
+    """Where a target's deepest moment and its biggest step on the way back
+    fall, in ms after their kick, looked for where REQ-BEN-12's checks look,
+    in the same half-millisecond windows."""
     frames = round(checks.DUCK_WINDOW_S * rate)
-    gain = audio.gain_curve(mixed, dry, frames)
+    gain = audio.gain_curve(stem, dry, frames)
     window = frames / rate
-    first = round((JUMP_S + JUMP_SEARCH_S[0]) / window)
-    near = gain[first : round((JUMP_S + JUMP_SEARCH_S[1]) / window)]
+    search = math.ceil((chain.attack_ms / 1000 + checks.DUCK_DIP_SEARCH_S) / window)
+    course = chain.attack_ms + chain.hold_ms + chain.release_ms
+    recover = round((course / 1000 + checks.DUCK_RECOVER_AFTER_S) / window)
+    deep, step = (0.0, 0.0, 0.0), (0.0, 0.0, 0.0)  # (dB, kick, ms after it)
+    for n, kick in enumerate(kicks):
+        start = int(kick / window)
+        near = gain[start : start + search]
+        if near.size == 0 or np.isnan(near).all():
+            continue
+        deepest = start + int(np.nanargmin(near))
+        following = int(kicks[n + 1] / window) - 1 if n + 1 < len(kicks) else len(gain)
+        end = min(start + recover, following)
+        back = np.abs(np.diff(gain[deepest : end + 1]))
+        if -gain[deepest] > deep[0]:
+            deep = (-float(gain[deepest]), kick, 1000 * (deepest * window - kick))
+        if back.size and not np.isnan(back).all() and np.nanmax(back) > step[0]:
+            at = deepest + 1 + int(np.nanargmax(back))
+            step = (float(np.nanmax(back)), kick, 1000 * (at * window - kick))
+    return (
+        f"deepest {deep[0]:.1f} dB down, {deep[2]:+.1f} ms after the kick at {deep[1]:g} s; "
+        f"biggest step on the way back {step[0]:.2f} dB, {step[2]:+.1f} ms after the kick "
+        f"at {step[1]:g} s"
+    )
 
-    def when(down_db: float) -> float:
-        found = np.flatnonzero(near <= -down_db)
-        return 1000 * ((first + found[0]) * window - JUMP_S) if found.size else math.nan
 
-    start, end = (when(down) for down in ONSET_DB)
-    return start, end
-
-
-def duck_checks(stem: np.ndarray, dry: np.ndarray, rate: int) -> list[checks.Check]:
-    """REQ-BEN-12's checks of the bass's duck at every kick, as a render's
-    report makes them, from the bass rendered with its duck and without."""
+def mixed_chain() -> tuple[score.Sidechain, list[float]]:
+    """M's sidechain and its kicks."""
     loaded = score.load_text(MIXED)
     chain = loaded.sidechain
     if chain is None:
         raise CheckFailed("M's score has no sidechain")
-    kicks = [e.time_s for e in score.events(loaded) if e.voice == chain.trigger]
-    return checks.sidechain(chain, "bass", stem, dry, kicks, rate=rate)
+    return chain, [e.time_s for e in score.events(loaded) if e.voice == chain.trigger]
+
+
+def duck_checks(stem: np.ndarray, dry: np.ndarray, rate: int, target: str) -> list[checks.Check]:
+    """REQ-BEN-12's checks of a target's duck at every kick, as a render's
+    report makes them, from the target rendered with its duck and without."""
+    chain, kicks = mixed_chain()
+    return checks.sidechain(chain, target, stem, dry, kicks, rate=rate)
+
+
+def report_checks(title: str, found: Sequence[checks.Check]) -> list[str]:
+    """Prints a target's checks; returns the ones that failed."""
+    print(title)
+    for check in found:
+        note = f" ({check.note})" if check.note else ""
+        verdict = "" if check.passed else "  FAILED"
+        print(f"  {check.name}: {check.value + 0.0:g}, limit {check.limit}{note}{verdict}")
+    return [f"{c.name} is {c.value + 0.0:g}, not {c.limit}" for c in found if not c.passed]
 
 
 def sends_wrong(mixed: np.ndarray, dry: np.ndarray, rate: int) -> list[str]:
@@ -463,28 +539,32 @@ def sends_wrong(mixed: np.ndarray, dry: np.ndarray, rate: int) -> list[str]:
     return wrong
 
 
+def listen_to_duck(folder: Path) -> list[str]:
+    """What the ducked renders say, printed in full before any verdict: how
+    far apart each pair of renders is, the duck's shape on the steady tone,
+    and REQ-BEN-12's checks on the tone and the bass. Returns what failed."""
+    chain, kicks = mixed_chain()
+    failed = []
+    for target, name in (("tone", "M tone"), ("bass", "M")):
+        stem, rate = audio.read(folder / f"{name} stem.wav")
+        dry, _ = audio.read(folder / f"{name} dry.wav")
+        print(f"{name} stem runs {lag_samples(stem, dry)} samples behind {name} dry")
+        if target == "tone":
+            shape = ", ".join(f"{ms:+g}: {db:.1f}" for ms, db in duck_shape(stem, dry, rate, kicks))
+            print(f"the duck on the steady tone, around a kick (ms: dB): {shape}")
+        print(f"the {target}, ducked: {worst_places(stem, dry, rate, chain, kicks)}")
+        found = duck_checks(stem, dry, rate, target)
+        failed += report_checks(f"the {target}'s duck, by REQ-BEN-12's checks:", found)
+    return failed
+
+
 def listen(folder: Path) -> None:
-    """What M's renders say: how a Gainer follows a jump in its automation,
-    whether the bass's duck passes REQ-BEN-12, and the stab's sends."""
-    jumped, rate = audio.read(folder / "M tone.wav")
-    steady, _ = audio.read(folder / "M tone dry.wav")
-    start, end = jump_ms(jumped, steady, rate)
-    print(
-        f"the tone's level, drawn to jump 24 dB at {JUMP_S:.3f} s, starts to fall at "
-        f"{start:+.1f} ms and is 23 dB down at {end:+.1f} ms"
-    )
-    stem, _ = audio.read(folder / "M stem.wav")
-    dry, _ = audio.read(folder / "M dry.wav")
-    duck = duck_checks(stem, dry, rate)
-    print("the bass's duck, by REQ-BEN-12's checks:")
-    for found in duck:
-        note = f" ({found.note})" if found.note else ""
-        verdict = "" if found.passed else "  FAILED"
-        print(f"  {found.name}: {found.value + 0.0:g}, limit {found.limit}{note}{verdict}")
-    failed = [f"{c.name} is {c.value + 0.0:g}, not {c.limit}" for c in duck if not c.passed]
+    """What M's renders say: whether the duck passes REQ-BEN-12 on a steady
+    tone and on the bass, and the stab's sends."""
+    failed = listen_to_duck(folder)
     if failed:
-        raise CheckFailed("the bass's duck fails REQ-BEN-12: " + "; ".join(failed))
-    mixed, _ = audio.read(folder / "M stab.wav")
+        raise CheckFailed("the duck fails REQ-BEN-12: " + "; ".join(failed))
+    mixed, rate = audio.read(folder / "M stab.wav")
     alone, _ = audio.read(folder / "M stab dry.wav")
     wrong = sends_wrong(mixed, alone, rate)
     if wrong:

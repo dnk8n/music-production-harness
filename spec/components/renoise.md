@@ -220,24 +220,27 @@ track, whose gain is automated at every trigger hit: down to the depth
 over the attack, held for the hold, and back along the release's
 half-cosine curve, with a point at least every sixteenth of the release.
 Dips that overlap add up but never pass the depth, as in SuperCollider
-(REQ-BEN-12). The whole curve is drawn two ticks early, and the Duck's own
-gain starts where the curve does, so a hit on the song's first line
-doesn't glide down. Each point is placed on the nearest 1/256 of a line
-with the gain the curve has at its own time, so the floor of a 2 ms attack
-isn't missed.
+(REQ-BEN-12). The whole curve is drawn about 20 ms early, in whole ticks,
+and the Duck's own gain starts where the curve does, so a hit on the song's
+first line doesn't glide down. Each point is placed on the nearest 1/256 of
+a line with the gain the curve has at its own time, so the floor of a 2 ms
+attack isn't missed.
 - **Why:** Renoise has no sidechain that follows the pattern, and an
   automated Gainer is how Renoise users draw an exact pump (#30). Dean can
   see and edit the curve in the automation editor. Points every sixteenth
   of the release keep each step well under the 0.5 dB that REQ-BEN-12
   allows. Renoise applies automation once a tick (a twelfth of a line, about
-  5 ms at 120 BPM and 8 lines a beat), and the Gainer glides to each new
-  value: drawn at the kick, a 12 dB dip with a 2 ms attack had fallen only
-  7 dB, on average, 5 to 20 ms after the kick in real Renoise (3.5.4,
-  2026-11-20), where REQ-BEN-12 wants the full depth within 5 ms. Drawn two
-  ticks early, one tick passes before Renoise reads the dip and one more
-  while the Gainer gets there, so it lands on the kick. Ducking a few
-  milliseconds before the kick can't be heard under it. `scripts/renoise-check`
-  times the Gainer's glide on a steady tone, so a change in Renoise shows.
+  5 ms at 120 BPM and 8 lines a beat), and the Gainer then takes a while to
+  reach each new value. In real Renoise (3.5.4, 2026-11-20), drawn at the
+  kick, a 12 dB dip with a 2 ms attack had fallen only 7 dB, on average, 5
+  to 20 ms after the kick, where REQ-BEN-12 wants the full depth within
+  5 ms. A steady tone's level, drawn to jump 24 dB, began to fall about
+  20 ms before the jump and was 23 dB down about 18 ms after it. Drawn
+  about 20 ms early, a dip that takes that long is at full depth by the
+  kick.
+  `scripts/renoise-check` prints the duck's real shape around the kick on a
+  steady tone, and how far apart the ducked and dry renders it compares
+  are, so the lead can be set from what Renoise does.
 - **Verify:** test; measure, with REQ-BEN-12's checks in `scripts/renoise-check`
   and on the Renoise take
 

@@ -80,11 +80,14 @@ job builds a song with a mix and sampled synths: every planned setting must
 show what was asked, the duck must pass REQ-BEN-12's own checks at every
 kick, as a render's report measures it, a part must still sound on its own
 track while it sends, and its echo must come back on time (REQ-REN-09 to
-REQ-REN-11). It prints how Renoise names and shows each kind of device, the
-optional settings Renoise doesn't have or didn't take, the other settings in
-those devices' preset data, and when a steady tone's level, drawn to jump
-24 dB, starts to fall and is 23 dB down, so a name the plan got wrong, or
-how late Renoise applies automation, is learnt from one run. If a step
+REQ-REN-11). The duck is the remix's own (24 dB in 2 ms, back over 430 ms),
+on the bass and on a steady tone. It prints how Renoise names and shows each
+kind of device, the optional settings Renoise doesn't have or didn't take,
+the other settings in those devices' preset data, how many samples apart
+each ducked render and its dry render are, the duck's shape around a kick
+on the tone, where each part's deepest moment and biggest step fall, and
+REQ-BEN-12's checks on both, so a name the plan got wrong, or how Renoise
+applies automation, is learnt from one run. If a step
 fails, it still asks the Renoise it started to quit. It puts back the bridge
 tool that was installed before. Run it before merging a change to the bridge
 tool.

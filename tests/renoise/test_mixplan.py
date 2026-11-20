@@ -19,7 +19,7 @@ from tests.bench.test_mix import mixed
 
 LINE_S = 0.125  # 120 BPM, 4 lines a beat
 TPL = 12  # ticks a line
-LEAD_S = 2 * LINE_S / TPL  # the duck is drawn two ticks early
+LEAD_S = 2 * LINE_S / TPL  # the duck is drawn about 20 ms early: two ticks, at this tempo
 
 
 def slot(seconds: float) -> float:
@@ -153,11 +153,11 @@ def test_the_duck_dips_at_every_hit() -> None:
     duck = lane(mixer["tracks"][1], 1)
     assert duck["names"] == ["Gain"] and duck["unit"] == "dB"
     points = duck["patterns"][0]["points"]
-    # Drawn two ticks early (REQ-REN-11). The first kick is on the first line,
+    # Drawn about 20 ms early (REQ-REN-11). The first kick is on the first line,
     # so the song starts in its dip, and the Duck's own gain starts there too.
     assert points[0][0] == 1.0 and -12 < points[0][1] < -11.5
     assert mixer["tracks"][1]["devices"][0]["params"][0]["value"] == points[0][1]
-    # The second kick, a beat in: 0 dB two ticks before it, the full 12 dB 2 ms
+    # The second kick, a beat in: 0 dB 20 ms before it, the full 12 dB 2 ms
     # later, then a half-cosine back over 400 ms, with a point every 1/16 of it.
     start = slot(0.5 - LEAD_S)
     assert [start, 0.0] in points

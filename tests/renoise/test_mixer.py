@@ -316,15 +316,16 @@ def test_lanes_and_the_duck_are_automated(tmp_path: Path) -> None:
     ]
     assert [p["time"] for p in tail["points"]] == [1.0, 16 + 255 / 256]
     # The duck: the Gainer's Gain (0 to 4, linear) dips 12 dB at each kick,
-    # drawn two ticks (a sixth of a line) early. The first kick is on the first
-    # line, so the song starts dipped, and the Duck starts there too.
+    # drawn about 20 ms early: four ticks, a third of a line, at 8 lines a
+    # beat. The first kick is on the first line, so the song starts dipped,
+    # and the Duck starts there too.
     duck = lanes(built, 2, "Gain")
     assert [d["pattern"] for d in duck] == [1, 2, 3]
     gains = {p["time"]: 20 * math.log10(4 * p["value"]) for p in duck[0]["points"]}
-    assert gains[1.0] == pytest.approx(-11.95, abs=0.01)  # 10 ms into the first dip
+    assert gains[1.0] == pytest.approx(-11.75, abs=0.01)  # 21 ms into the first dip
     assert number(shows(built, 2, "Duck")["Gain"]) == pytest.approx(gains[1.0], abs=0.01)
-    lead_s, kick = 2 * LINE_S / 12, 8 * LINE_S  # 12 ticks a line; the next kick
-    assert gains[slot(kick - lead_s)] == pytest.approx(0.0, abs=0.01)  # 0 dB two ticks before it
+    lead_s, kick = 4 * LINE_S / 12, 8 * LINE_S  # 12 ticks a line; the next kick
+    assert gains[slot(kick - lead_s)] == pytest.approx(0.0, abs=0.01)  # 0 dB 21 ms before it
     assert gains[slot(kick - lead_s + 0.002)] == pytest.approx(-12.0, abs=0.01)  # 2 ms on
     # The stab's echo throw: silent, open for a quarter bar at bar 3.5, silent again.
     throw = lanes(built, 3, "Amount")

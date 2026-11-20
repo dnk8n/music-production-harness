@@ -33,18 +33,17 @@ def renoise_check() -> ModuleType:
 
 KICKS = [0.5 * beat for beat in range(8)]  # the mixed song's kicks: every beat for 2 bars
 LONG = np.arange(4 * 48000) / 48000  # the mixed song's 2 bars, in seconds
-GLIDE_S = 0.005  # how long the fake's Gainers take to reach a new value
 
 
 def ducked(dry: np.ndarray, depth_db: float, late_s: float) -> np.ndarray:
     """``dry`` ducked at every kick as the check's score asks (down over 2 ms,
-    back along a half cosine over 300 ms), ``late_s`` late."""
+    back along a half cosine over 430 ms), ``late_s`` late."""
     depth = 1 - 10 ** (-depth_db / 20)
     taken = np.zeros_like(LONG)
     for kick in KICKS:
         after = LONG - kick - late_s
         down = np.clip(after / 0.002, 0, 1)
-        back = (1 + np.cos(np.pi * np.clip((after - 0.002) / 0.3, 0, 1))) / 2
+        back = (1 + np.cos(np.pi * np.clip((after - 0.002) / 0.43, 0, 1))) / 2
         taken += depth * np.where(after < 0.002, down, back)
     found: np.ndarray = dry * (1 - np.minimum(taken, depth))[:, None]
     return found
@@ -54,10 +53,10 @@ class Renoise:
     """Renoise and the bridge tool as the check sees them: a process that
     starts and quits, and jobs answered as soon as mph waits for them. The
     mixed song is built by the tool in the fake Renoise (tests/renoise). Its
-    bass stem is the dry render ducked ``duck_db`` at every kick,
-    ``duck_late_s`` late; its stab, rendered with its sends, is the dry stab
-    (unless ``muted``) plus the thrown note's echo, ``echo_s`` later; and its
-    tone falls 24 dB at the jump over GLIDE_S."""
+    bass and tone stems are their dry renders ducked ``duck_db`` at every
+    kick, ``duck_late_s`` late (the tone's ``lag`` samples later still); and
+    its stab, rendered with its sends, is the dry stab (unless ``muted``)
+    plus the thrown note's echo, ``echo_s`` later."""
 
     def __init__(
         self,
@@ -65,13 +64,14 @@ class Renoise:
         *,
         keeps: bool = True,
         quits: bool = True,
-        duck_db: float = 12.0,
+        duck_db: float = 24.0,
         duck_late_s: float = 0.0,
+        lag: int = 0,
         echo_s: float = 0.375,
         muted: bool = False,
     ) -> None:
         self.cfg, self.keeps, self.quits = cfg, keeps, quits
-        self.duck_db, self.duck_late_s = duck_db, duck_late_s
+        self.duck_db, self.duck_late_s, self.lag = duck_db, duck_late_s, lag
         self.echo_s, self.muted = echo_s, muted
         self.open = False
         self.opened: list[str] = []
@@ -125,10 +125,11 @@ class Renoise:
         dry = (0.5 * np.sin(2 * np.pi * 440 * LONG))[:, None]
         audio.write_float(renders["M dry.wav"], dry, 48000)
         audio.write_float(renders["M stem.wav"], ducked(dry, self.duck_db, self.duck_late_s), 48000)
-        steady = (0.5 * np.sin(2 * np.pi * 220 * LONG))[:, None]
-        jump = 1 - (1 - 10 ** (-24 / 20)) * np.clip((LONG - 1.5) / GLIDE_S, 0, 1)
+        noise = np.random.default_rng(7).standard_normal(len(LONG))
+        steady = (0.5 * np.sin(2 * np.pi * 1000 * LONG) + 0.005 * noise)[:, None]
+        tone = np.roll(ducked(steady, self.duck_db, self.duck_late_s), self.lag, axis=0)
         audio.write_float(renders["M tone dry.wav"], steady, 48000)
-        audio.write_float(renders["M tone.wav"], steady * jump[:, None], 48000)
+        audio.write_float(renders["M tone stem.wav"], tone, 48000)
         t = np.arange(4800) / 48000
         stab = np.zeros((5 * 48000, 2), dtype=np.float32)  # two bars and the tail
         blip = 0.5 * np.sin(2 * np.pi * 440 * t) * np.exp(-30 * t)
@@ -183,12 +184,23 @@ def test_the_check_passes_when_renoise_never_asks(
         "ResponseViewMaxGain=18"
     ) in out
     assert "every planned parameter shows what was asked" in out
+    # The duck, the remix's own (24 dB in 2 ms, back over 430 ms): how far
+    # apart each pair of renders is, its shape on the steady tone, where the
+    # worst moments fall, and REQ-BEN-12's checks on the tone and the bass.
+    assert "M tone stem runs 0 samples behind M tone dry" in out
     assert (
-        "the tone's level, drawn to jump 24 dB at 1.500 s, starts to fall at +0.0 ms "
-        "and is 23 dB down at +5.0 ms"
+        "the duck on the steady tone, around a kick (ms: dB): -30: -0.0, -25: -0.0, "
+        "-20: -0.0, -15: -0.0, -10: -0.0, -5: -0.0, -2.5: 0.0, +0: -0.2, +2.5: -24.4, "
+        "+5: -24.0, +10: -23.9, +20: -23.5, +50: -20.8"
     ) in out
-    assert "the bass's duck, by REQ-BEN-12's checks:" in out
-    assert "  sidechain: bass dip (dB): 12, limit 12 ± 1 (8 of 8 hits measured)" in out
+    assert "the tone, ducked: deepest 24.0 dB down, +2.0 ms after the kick" in out
+    assert "  sidechain: tone dip reached (ms): 2.5, limit <= 5" in out
+    assert "M stem runs 0 samples behind M dry" in out
+    assert (
+        "the bass, ducked: deepest 24.0 dB down, +2.0 ms after the kick at 0 s; "
+        "biggest step on the way back 0.08 dB, +70.5 ms after the kick at 0 s"
+    ) in out
+    assert "  sidechain: bass dip (dB): 24, limit 24 ± 1 (8 of 8 hits measured)" in out
     assert "  sidechain: bass dip reached (ms): 2.5, limit <= 5" in out
     assert "FAILED" not in out
     assert "the stab keeps sounding while it sends, and its echo comes back on time" in out
@@ -279,18 +291,21 @@ def test_the_check_fails_when_the_mixer_isnt_as_planned(
     flat = Renoise(cfg, duck_db=0.0)
     assert renoise_check.check(cfg, flat.runner(), home, flat.clock()) == 1
     out = capsys.readouterr().out
-    assert (
-        "FAIL: the bass's duck fails REQ-BEN-12: sidechain: bass dip (dB) is 0, not 12 ± 1" in out
-    )
-    # A duck that lands two ticks late, as one drawn at the kick did in Renoise
+    assert "FAIL: the duck fails REQ-BEN-12: sidechain: tone dip (dB) is 0, not 24 ± 1" in out
+    # A duck that lands late, as one drawn at the kick did in Renoise
     # (2026-11-20), dips too slowly. The check still quits the Renoise it started.
     late = Renoise(cfg, duck_late_s=0.0104)
     assert renoise_check.check(cfg, late.runner(), home, late.clock()) == 1
     out = capsys.readouterr().out
+    assert "  sidechain: tone dip reached (ms): 13, limit <= 5  FAILED" in out
     assert "  sidechain: bass dip reached (ms): 13, limit <= 5  FAILED" in out
-    assert "FAIL: the bass's duck fails REQ-BEN-12: sidechain: bass dip reached (ms) is 13" in out
+    assert "FAIL: the duck fails REQ-BEN-12: sidechain: tone dip reached (ms) is 13" in out
     assert out.strip().endswith("asked Renoise to quit: it quit without asking to save")
     assert not late.open
+    # Renders that don't line up are named, in samples.
+    apart = Renoise(cfg, lag=30)
+    assert renoise_check.check(cfg, apart.runner(), home, apart.clock()) == 0
+    assert "M tone stem runs 30 samples behind M tone dry" in capsys.readouterr().out
     # A #Send that mutes its source, and an echo at a sixteenth's delay with
     # its first repeat at 1.625 s: both are caught.
     wrong = Renoise(cfg, echo_s=0.125, muted=True)

@@ -149,6 +149,13 @@ def number(shown: str) -> float:
 
 
 KHZ_STEP = 10  # Hz: Renoise shows a filter's frequency in kHz, to two places
+LINE_S = 0.0625  # 120 BPM, 8 lines a beat
+
+
+def slot(seconds: float) -> float:
+    """Where an automation point at a time lands in the first pattern: the
+    nearest 1/256 of a line, counted from 1."""
+    return 1 + round(seconds / LINE_S * 256) / 256
 
 
 def devices(built: dict[str, Any], track: int) -> list[tuple[str, str, bool]]:
@@ -265,11 +272,17 @@ def test_the_result_says_what_renoise_has(tmp_path: Path) -> None:
         "active": True,
         "shows": {
             "Type": "LowPass",
+            "Model": "Butterworth 4n",  # set in its preset data
             "Cutoff": lowpass["Cutoff"],
             "Resonance": lowpass["Resonance"],
         },
-        "missing": ["Model"],
-        "preset": [],
+        "preset": [
+            "IsMaximized=true",
+            "OversamplingFactor=2x",
+            "Model=Butterworth 4n",
+            "ShowResponseView=true",
+            "ResponseViewMaxGain=18",
+        ],
     }
     assert shown["kick"][0] == {"name": "Filter", "path": FILTER, "active": False, "shows": []}
     sent = shown["stab"][2]
@@ -301,14 +314,17 @@ def test_lanes_and_the_duck_are_automated(tmp_path: Path) -> None:
         (64 + 255 / 256, pytest.approx(2000, rel=0.01)),
     ]
     assert [p["time"] for p in tail["points"]] == [1.0, 16 + 255 / 256]
-    # The duck: the Gainer's Gain (0 to 4, linear) dips 12 dB at each kick.
+    # The duck: the Gainer's Gain (0 to 4, linear) dips 12 dB at each kick,
+    # drawn two ticks (a sixth of a line) early. The first kick is on the first
+    # line, so the song starts dipped, and the Duck starts there too.
     duck = lanes(built, 2, "Gain")
     assert [d["pattern"] for d in duck] == [1, 2, 3]
-    gains = [(p["time"], 20 * math.log10(4 * p["value"])) for p in duck[0]["points"]]
-    assert gains[0][0] == 1.0 and gains[0][1] == pytest.approx(0.0, abs=0.01)
-    assert gains[1][0] == 1 + 8 / 256  # 2 ms on
-    assert gains[1][1] == pytest.approx(-12.0, abs=0.01)
-    assert [db for time, db in gains if time == 9.0] == [pytest.approx(0.0, abs=0.01)]  # next kick
+    gains = {p["time"]: 20 * math.log10(4 * p["value"]) for p in duck[0]["points"]}
+    assert gains[1.0] == pytest.approx(-11.95, abs=0.01)  # 10 ms into the first dip
+    assert number(shows(built, 2, "Duck")["Gain"]) == pytest.approx(gains[1.0], abs=0.01)
+    lead_s, kick = 2 * LINE_S / 12, 8 * LINE_S  # 12 ticks a line; the next kick
+    assert gains[slot(kick - lead_s)] == pytest.approx(0.0, abs=0.01)  # 0 dB two ticks before it
+    assert gains[slot(kick - lead_s + 0.002)] == pytest.approx(-12.0, abs=0.01)  # 2 ms on
     # The stab's echo throw: silent, open for a quarter bar at bar 3.5, silent again.
     throw = lanes(built, 3, "Amount")
     drop = next(t for t in throw if t["pattern"] == 2)
@@ -403,6 +419,12 @@ def test_a_build_names_everything_renoise_lacks(tmp_path: Path) -> None:
     level = song["mix"]["tracks"][0]["devices"][1]
     level["params"].append({"names": ["Shimmer", "Sparkle"], "value": 1, "unit": "number"})
     level["params"].append({"names": ["Width"], "value": 1, "unit": "number", "optional": True})
+    highpass, lowpass = song["mix"]["tracks"][1]["devices"][1:3]
+    assert highpass["params"][1] == {"names": ["Model"], "value": "Butterworth 4n",
+                                     "unit": "preset", "optional": True}  # fmt: skip
+    del highpass["params"][1]["optional"]
+    highpass["params"][1]["value"] = "Moog"  # Renoise won't load it
+    lowpass["params"][1]["value"] = "Moog"  # optional: it keeps Biquad
     sent = song["mix"]["tracks"][2]["devices"][2]
     sent["params"].append({"names": ["Glow"], "value": "true", "unit": "preset"})
     reverb = song["mix"]["sends"][1]["devices"][0]
@@ -413,6 +435,7 @@ def test_a_build_names_everything_renoise_lacks(tmp_path: Path) -> None:
     built = build(tmp_path, song)
     assert built["error"].splitlines() == [
         "kick, Level: no parameter called Shimmer or Sparkle (it has Gain, Panning)",
+        "bass, Highpass: Model stayed Biquad, not Moog",
         "stab, Send to echo: no setting called Glow in its preset data",
         "master, Highpass: Type never shows Wobble",
         "send echo: Renoise has no device Audio/Effects/Native/Multitap Delay"

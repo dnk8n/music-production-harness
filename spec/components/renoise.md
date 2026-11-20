@@ -166,9 +166,11 @@ sampled from its SuperCollider synth, the way a sampler holds a synth patch:
 A score's mix (spec/components/mix.md) is built from Renoise's own devices:
 - On each voice's track, after its duck (REQ-REN-11): a Digital Filter for
   each strip filter it uses (high-pass, then low-pass, with the low-pass's
-  resonance turning Renoise's resonance knob that share of the way), a
-  Gainer for the strip's level and pan, then a #Send for each send, routed
-  to that send's track and keeping the source.
+  resonance turning Renoise's resonance knob that share of the way, and the
+  Butterworth 4n model, 24 dB an octave like the SuperCollider strip's
+  filters, if Renoise takes it), a Gainer for the strip's level and pan,
+  then a #Send for each send, routed to that send's track and keeping the
+  source.
 - Each send is a send track after the master, holding its effect, fully
   wet, then its return strip: the same filters, Gainer and #Sends, to sends
   after it. A delay is a Multitap's first tap with its dry signal muted,
@@ -187,7 +189,10 @@ A score's mix (spec/components/mix.md) is built from Renoise's own devices:
   parameter shows across its range, so Renoise's own scales needn't be
   known. A number is read only in its own unit, so a level is never taken
   from a percentage. A setting that isn't a parameter, such as a #Send's
-  mode, is set in the device's preset data, by its XML tag.
+  mode or a filter's model, is set in the device's preset data, by its XML
+  tag. An optional setting may be missing, and an optional preset setting
+  may keep Renoise's own value if Renoise won't take the one asked for; the
+  result file shows what it kept.
 - **Why:** Dean's rule (2026-11-11). Renoise users mix with send tracks,
   native devices and automation drawn in the patterns, where Dean can see
   and change it. The Multitap is Renoise's echo with ping-pong and a filter
@@ -199,9 +204,10 @@ A score's mix (spec/components/mix.md) is built from Renoise's own devices:
   in lines is its "Sync Time", while its "Sync DelayTime" is a pattern
   command's target that always reads -1; feedback, resonance and the
   reverb's wet and dry mix are shown in %; the #Send's "keep source" mode
-  isn't a parameter; and neither the filter's model nor the reverb's
-  damping is a parameter at all, so those keep Renoise's own. Read as dB,
-  the reverb's "0.000 %" would have silenced the hall without an error.
+  isn't a parameter, and nor is the filter's model, which is in its preset
+  data (Biquad, 12 dB an octave, unless set); and the reverb has no damping,
+  so it keeps Renoise's own. Read as dB, the reverb's "0.000 %" would have
+  silenced the hall without an error.
 - **Verify:** test, with the fake Renoise; inspect on the Mac with
   `scripts/renoise-check`; listen
 
@@ -211,15 +217,26 @@ track, whose gain is automated at every trigger hit: down to the depth
 over the attack, held for the hold, and back along the release's
 half-cosine curve, with a point at least every sixteenth of the release.
 Dips that overlap add up but never pass the depth, as in SuperCollider
-(REQ-BEN-12). Each point is placed on the nearest 1/256 of a line with the
-gain the curve has at its own time, so the floor of a 2 ms attack isn't
-missed.
+(REQ-BEN-12). The whole curve is drawn two ticks early, and the Duck's own
+gain starts where the curve does, so a hit on the song's first line
+doesn't glide down. Each point is placed on the nearest 1/256 of a line
+with the gain the curve has at its own time, so the floor of a 2 ms attack
+isn't missed.
 - **Why:** Renoise has no sidechain that follows the pattern, and an
   automated Gainer is how Renoise users draw an exact pump (#30). Dean can
   see and edit the curve in the automation editor. Points every sixteenth
   of the release keep each step well under the 0.5 dB that REQ-BEN-12
-  allows.
-- **Verify:** test; measure, with REQ-BEN-12's checks on the Renoise take
+  allows. Renoise applies automation once a tick (a twelfth of a line, about
+  5 ms at 120 BPM and 8 lines a beat), and the Gainer glides to each new
+  value: drawn at the kick, a 12 dB dip with a 2 ms attack had fallen only
+  7 dB, on average, 5 to 20 ms after the kick in real Renoise (3.5.4,
+  2026-11-20), where REQ-BEN-12 wants the full depth within 5 ms. Drawn two
+  ticks early, one tick passes before Renoise reads the dip and one more
+  while the Gainer gets there, so it lands on the kick. Ducking a few
+  milliseconds before the kick can't be heard under it. `scripts/renoise-check`
+  times the Gainer's glide on a steady tone, so a change in Renoise shows.
+- **Verify:** test; measure, with REQ-BEN-12's checks in `scripts/renoise-check`
+  and on the Renoise take
 
 ### REQ-REN-12: Track headroom at 0 dB
 Every song the bridge builds sets Renoise's global track headroom to 0 dB,

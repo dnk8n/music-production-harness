@@ -122,8 +122,8 @@ local function reads(text) -- a parameter that always shows the same
 end
 
 -- Each native device's parameters, as Renoise 3.5.4 names them (only those the
--- tool might touch). The filter has no model and the reverb no damping, so a
--- plan's optional parameters are missing, as they are in Renoise.
+-- tool might touch). The filter's model is in its preset data, and the reverb
+-- has no damping, so a plan's optional damping is missing, as it is in Renoise.
 local DEVICES = {
   ["Audio/Effects/Native/Digital Filter"] = function()
     return {
@@ -182,10 +182,29 @@ local DEVICES = {
 -- Settings a device keeps in its preset data rather than in a parameter, in
 -- the order the data lists them.
 local PRESETS = {
+  ["Audio/Effects/Native/Digital Filter"] = {
+    { "IsMaximized", "true" },
+    { "OversamplingFactor", "2x" },
+    { "Model", "Biquad" },
+    { "ShowResponseView", "true" },
+    { "ResponseViewMaxGain", "18" },
+  },
   ["Audio/Effects/Native/#Send"] = {
     { "MuteSource", "true" },
     { "SmoothParameterChanges", "true" },
     { "ApplyPostVolume", "true" },
+  },
+}
+
+-- The values a preset setting can take, where they're a fixed list (the
+-- filter's models, from Renoise's manual): data with any other isn't loaded.
+local PRESET_CHOICES = {
+  Model = {
+    Biquad = true,
+    ["Butterworth 4n"] = true,
+    ["Butterworth 8n"] = true,
+    ["Chebyshev 4n"] = true,
+    ["Chebyshev 8n"] = true,
   },
 }
 
@@ -241,10 +260,16 @@ local function new_device(path, song)
     end,
     __newindex = function(_, key, value)
       if key == "active_preset_data" then -- Renoise loads it: each setting from its tag
-        for _, setting in ipairs(settings) do
+        local loaded = {}
+        for k, setting in ipairs(settings) do
           local found = value:match("<" .. setting[1] .. ">([^<]*)</" .. setting[1] .. ">")
           assert(found, "preset data without " .. setting[1])
-          setting[2] = found
+          local choices = PRESET_CHOICES[setting[1]]
+          assert(choices == nil or choices[found], "no " .. setting[1] .. " called " .. found)
+          loaded[k] = found
+        end
+        for k, setting in ipairs(settings) do
+          setting[2] = loaded[k]
         end
       else
         object[key] = value

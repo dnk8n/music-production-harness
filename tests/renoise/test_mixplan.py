@@ -18,13 +18,23 @@ from mph.renoise import plan as song_plan
 from tests.bench.test_mix import mixed
 
 LINE_S = 0.125  # 120 BPM, 4 lines a beat
+TPL = 12  # ticks a line
+LEAD_S = 2 * LINE_S / TPL  # the duck is drawn two ticks early
+
+
+def slot(seconds: float) -> float:
+    """Where an automation point at a time lands in the first pattern: the
+    nearest 1/256 of a line, counted from 1."""
+    return 1 + round(seconds / LINE_S * 256) / 256
 
 
 def mixer_of(loaded: score.Score) -> dict[str, Any]:
     """The mixer at 4 lines a beat, in 4-bar patterns."""
     lines = song_plan.lines_for(loaded.length_s, LINE_S)
     lengths = [min(64, lines - start) for start in range(0, lines, 64)]
-    found = mixplan.plan(loaded, score.events(loaded), lengths, line_s=LINE_S, lpb=4, bar_lines=16)
+    found = mixplan.plan(
+        loaded, score.events(loaded), lengths, line_s=LINE_S, lpb=4, bar_lines=16, tpl=TPL
+    )
     assert found is not None
     return found
 
@@ -68,7 +78,8 @@ def test_a_mix_becomes_devices_send_tracks_and_a_master() -> None:
     assert params(echo)["Receiver"] == ({"name": "echo", "index": 0}, "send")
     assert params(echo)["MuteSource"] == ("false", "preset")  # keep the source
     assert params(hall)["Receiver"] == ({"name": "hall", "index": 1}, "send")
-    assert params(duck) == {"Gain": (0.0, "dB")}
+    assert list(params(duck)) == ["Gain"]  # where its curve starts: see the next test
+    assert params(highpass)["Model"] == ("Butterworth 4n", "preset")  # 24 dB an octave
     # Sends are send tracks: the effect, fully wet, then the return strip.
     delay, reverb = mixer["sends"]
     assert delay["name"] == "echo" and [d["name"] for d in delay["devices"]] == [
@@ -138,11 +149,16 @@ def test_the_duck_dips_at_every_hit() -> None:
     duck = lane(mixer["tracks"][1], 1)
     assert duck["names"] == ["Gain"] and duck["unit"] == "dB"
     points = duck["patterns"][0]["points"]
-    # The first kick: 0 dB at the hit, the full 12 dB 2 ms later, then a
-    # half-cosine back over 400 ms, with a point every 1/16 of it.
-    assert points[0] == [1.0, 0.0]
-    assert points[1] == [1 + 4 / 256, -12.0]  # 2 ms is 4/256 of a 125 ms line
-    release = [p for p in points if 1 < p[0] <= 1 + 0.402 / LINE_S]
+    # Drawn two ticks early (REQ-REN-11). The first kick is on the first line,
+    # so the song starts in its dip, and the Duck's own gain starts there too.
+    assert points[0][0] == 1.0 and -12 < points[0][1] < -11.5
+    assert mixer["tracks"][1]["devices"][0]["params"][0]["value"] == points[0][1]
+    # The second kick, a beat in: 0 dB two ticks before it, the full 12 dB 2 ms
+    # later, then a half-cosine back over 400 ms, with a point every 1/16 of it.
+    start = slot(0.5 - LEAD_S)
+    assert [start, 0.0] in points
+    assert [slot(0.502 - LEAD_S), pytest.approx(-12.0)] in points
+    release = [p for p in points if start < p[0] <= slot(0.902 - LEAD_S)]
     assert len(release) == 1 + mixplan.RELEASE_POINTS
     assert release[-1][1] == 0.0
     assert all(b[1] >= a[1] for a, b in itertools.pairwise(release))
@@ -166,7 +182,8 @@ def test_a_score_without_a_mix_or_a_sidechain_has_no_mixer() -> None:
         '[voices.kick]\ngrid = "x . . . x . . . x . . . x . . ."\nsound = { role = "kick" }\n'
     )
     assert (
-        mixplan.plan(plain, score.events(plain), [16], line_s=LINE_S, lpb=4, bar_lines=16) is None
+        mixplan.plan(plain, score.events(plain), [16], line_s=LINE_S, lpb=4, bar_lines=16, tpl=TPL)
+        is None
     )
     song = song_plan.song(plain, score.events(plain), [], rate=48000, save="x", renders=[])
     assert "mix" not in song and "modes" not in song

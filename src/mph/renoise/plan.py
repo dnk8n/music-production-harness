@@ -349,7 +349,9 @@ def song(
         "renders": list(renders),
     }
     bar_lines = BEATS_A_BAR * lpb(score)
-    mixer = mixplan.plan(score, events, lengths, line_s=line_s, lpb=lpb(score), bar_lines=bar_lines)
+    mixer = mixplan.plan(
+        score, events, lengths, line_s=line_s, lpb=lpb(score), bar_lines=bar_lines, tpl=TPL
+    )
     if mixer is not None:
         found["mix"] = mixer
         found["modes"] = {mode: list(roles) for mode, roles in mixplan.MODES.items()}

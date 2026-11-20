@@ -31,13 +31,33 @@ def renoise_check() -> ModuleType:
     return module
 
 
+KICKS = [0.5 * beat for beat in range(8)]  # the mixed song's kicks: every beat for 2 bars
+LONG = np.arange(4 * 48000) / 48000  # the mixed song's 2 bars, in seconds
+GLIDE_S = 0.005  # how long the fake's Gainers take to reach a new value
+
+
+def ducked(dry: np.ndarray, depth_db: float, late_s: float) -> np.ndarray:
+    """``dry`` ducked at every kick as the check's score asks (down over 2 ms,
+    back along a half cosine over 300 ms), ``late_s`` late."""
+    depth = 1 - 10 ** (-depth_db / 20)
+    taken = np.zeros_like(LONG)
+    for kick in KICKS:
+        after = LONG - kick - late_s
+        down = np.clip(after / 0.002, 0, 1)
+        back = (1 + np.cos(np.pi * np.clip((after - 0.002) / 0.3, 0, 1))) / 2
+        taken += depth * np.where(after < 0.002, down, back)
+    found: np.ndarray = dry * (1 - np.minimum(taken, depth))[:, None]
+    return found
+
+
 class Renoise:
     """Renoise and the bridge tool as the check sees them: a process that
     starts and quits, and jobs answered as soon as mph waits for them. The
     mixed song is built by the tool in the fake Renoise (tests/renoise). Its
-    bass stem is the dry render times ``duck``, and its stab, rendered with
-    its sends, is the dry stab (unless ``muted``) plus the thrown note's echo,
-    ``echo_s`` later."""
+    bass stem is the dry render ducked ``duck_db`` at every kick,
+    ``duck_late_s`` late; its stab, rendered with its sends, is the dry stab
+    (unless ``muted``) plus the thrown note's echo, ``echo_s`` later; and its
+    tone falls 24 dB at the jump over GLIDE_S."""
 
     def __init__(
         self,
@@ -45,11 +65,13 @@ class Renoise:
         *,
         keeps: bool = True,
         quits: bool = True,
-        duck: float = 0.25,
+        duck_db: float = 12.0,
+        duck_late_s: float = 0.0,
         echo_s: float = 0.375,
         muted: bool = False,
     ) -> None:
-        self.cfg, self.keeps, self.quits, self.duck = cfg, keeps, quits, duck
+        self.cfg, self.keeps, self.quits = cfg, keeps, quits
+        self.duck_db, self.duck_late_s = duck_db, duck_late_s
         self.echo_s, self.muted = echo_s, muted
         self.open = False
         self.opened: list[str] = []
@@ -100,10 +122,14 @@ class Renoise:
         plan.unlink()
         assert built.get("error") is None, built["error"]
         renders = {Path(r["file"]).name: Path(r["file"]) for r in song["renders"]}
-        t = np.arange(4800) / 48000
-        dry = (0.5 * np.sin(2 * np.pi * 440 * t)).astype(np.float32)[:, None]
+        dry = (0.5 * np.sin(2 * np.pi * 440 * LONG))[:, None]
         audio.write_float(renders["M dry.wav"], dry, 48000)
-        audio.write_float(renders["M stem.wav"], dry * self.duck, 48000)
+        audio.write_float(renders["M stem.wav"], ducked(dry, self.duck_db, self.duck_late_s), 48000)
+        steady = (0.5 * np.sin(2 * np.pi * 220 * LONG))[:, None]
+        jump = 1 - (1 - 10 ** (-24 / 20)) * np.clip((LONG - 1.5) / GLIDE_S, 0, 1)
+        audio.write_float(renders["M tone dry.wav"], steady, 48000)
+        audio.write_float(renders["M tone.wav"], steady * jump[:, None], 48000)
+        t = np.arange(4800) / 48000
         stab = np.zeros((5 * 48000, 2), dtype=np.float32)  # two bars and the tail
         blip = 0.5 * np.sin(2 * np.pi * 440 * t) * np.exp(-30 * t)
         for start in (0.25, 0.75, 1.25, 1.75, 2.25, 2.75, 3.25, 3.75):  # the stab's notes
@@ -146,13 +172,25 @@ def test_the_check_passes_when_renoise_never_asks(
     out = capsys.readouterr().out
     assert "job 2: kept A as 20261113-081500 A.xrns" in out
     assert "    Cutoff: 0.02 kHz | 20.00 kHz | 20.00 kHz (quantum 0)" in out  # the filter's
-    assert "  Audio/Effects/Native/Digital Filter has no Model (optional: it keeps its own)" in out
+    assert "  Audio/Effects/Native/mpReverb 2 has no High Cut (optional: it keeps its own)" in out
     assert (
         "  Audio/Effects/Native/#Send preset data: MuteSource=false, "
         "SmoothParameterChanges=true, ApplyPostVolume=true"
     ) in out
+    assert (
+        "  Audio/Effects/Native/Digital Filter preset data: IsMaximized=true, "
+        "OversamplingFactor=2x, Model=Butterworth 4n, ShowResponseView=true, "
+        "ResponseViewMaxGain=18"
+    ) in out
     assert "every planned parameter shows what was asked" in out
-    assert "the duck dipped the bass 12.0 dB at the first kick" in out
+    assert (
+        "the tone's level, drawn to jump 24 dB at 1.500 s, starts to fall at +0.0 ms "
+        "and is 23 dB down at +5.0 ms"
+    ) in out
+    assert "the bass's duck, by REQ-BEN-12's checks:" in out
+    assert "  sidechain: bass dip (dB): 12, limit 12 ± 1 (8 of 8 hits measured)" in out
+    assert "  sidechain: bass dip reached (ms): 2.5, limit <= 5" in out
+    assert "FAILED" not in out
     assert "the stab keeps sounding while it sends, and its echo comes back on time" in out
     assert out.strip().endswith("PASS: Renoise never asked to save")
     assert renoise.opened == ["A.xrns", "B.xrns"] and not renoise.open
@@ -238,9 +276,21 @@ def test_the_check_fails_when_the_mixer_isnt_as_planned(
     renoise_check: ModuleType, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     cfg, home, _ = setup(tmp_path)
-    flat = Renoise(cfg, duck=1.0)
+    flat = Renoise(cfg, duck_db=0.0)
     assert renoise_check.check(cfg, flat.runner(), home, flat.clock()) == 1
-    assert "FAIL: the duck dipped the bass 0.0 dB at the first kick" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert (
+        "FAIL: the bass's duck fails REQ-BEN-12: sidechain: bass dip (dB) is 0, not 12 ± 1" in out
+    )
+    # A duck that lands two ticks late, as one drawn at the kick did in Renoise
+    # (2026-11-20), dips too slowly. The check still quits the Renoise it started.
+    late = Renoise(cfg, duck_late_s=0.0104)
+    assert renoise_check.check(cfg, late.runner(), home, late.clock()) == 1
+    out = capsys.readouterr().out
+    assert "  sidechain: bass dip reached (ms): 13, limit <= 5  FAILED" in out
+    assert "FAIL: the bass's duck fails REQ-BEN-12: sidechain: bass dip reached (ms) is 13" in out
+    assert out.strip().endswith("asked Renoise to quit: it quit without asking to save")
+    assert not late.open
     # A #Send that mutes its source, and an echo at a sixteenth's delay with
     # its first repeat at 1.625 s: both are caught.
     wrong = Renoise(cfg, echo_s=0.125, muted=True)
@@ -249,6 +299,10 @@ def test_the_check_fails_when_the_mixer_isnt_as_planned(
     assert "FAIL: the stab is " in out and "while it sends: its #Send mutes it" in out
     assert "the stab's echo should come back at 1.625 s" in out
     assert "the loudest sound then is at 1.375 s" in out
+
+
+@pytest.mark.req("REQ-REN-10")
+def test_the_check_reads_what_renoise_shows_as_the_tool_does(renoise_check: ModuleType) -> None:
     # What a device shows is read the way the tool reads it, in its own unit only.
     shown, mismatch = renoise_check.shown_number, renoise_check.mismatch
     assert (shown("2.50 kHz", "Hz"), shown("1.5 s", "ms"), shown("-INF dB", "dB")) == (
@@ -271,9 +325,26 @@ def test_the_check_fails_when_the_mixer_isnt_as_planned(
     lines = {"names": ["T1 L Sync Time"], "value": 6, "unit": "number"}
     assert mismatch(lines, {"T1 L Sync Time": "6"}) == ""
     assert mismatch(lines, {"T1 L Sync Time": "-1"}) == "T1 L Sync Time shows '-1', not 6"
-    keep = {"names": ["MuteSource"], "value": "false", "unit": "preset", "optional": True}
-    assert mismatch(keep, {"MuteSource": "false"}) == mismatch(keep, {}) == ""
-    assert mismatch(keep, {"MuteSource": "true"}) == "MuteSource shows 'true', not false"
+    model = {"names": ["Model"], "value": "Butterworth 4n", "unit": "preset", "optional": True}
+    assert mismatch(model, {"Model": "Butterworth 4n"}) == mismatch(model, {}) == ""
+    assert mismatch(model, {"Model": "Biquad"}) == "Model shows 'Biquad', not Butterworth 4n"
+    # An optional preset setting Renoise didn't take keeps its own, as the
+    # tool lets it: a note once for each kind of device, not a failure.
+    keep = {"names": ["MuteSource"], "value": "false", "unit": "preset"}
+    filtered = {"params": [model]}
+    planned_mix = {"tracks": [{"devices": [filtered, filtered, {"params": [keep]}]}]}
+    shown_devices = [
+        {"name": "Highpass", "path": "Filter", "shows": {"Model": "Biquad"}},
+        {"name": "Lowpass", "path": "Filter", "shows": {"Model": "Biquad"}},
+        {"name": "Send to echo", "path": "#Send", "shows": {"MuteSource": "true"}},
+    ]
+    assert renoise_check.devices_wrong(
+        {"mix": {**planned_mix, "master": {"devices": []}, "sends": []}},
+        {"shown": [{"tracks": [{"track": "bass", "devices": shown_devices}]}]},
+    ) == (
+        ["bass, Send to echo: MuteSource shows 'true', not false"],
+        ["Filter: Model shows 'Biquad', not Butterworth 4n"],
+    )
     cutoff = {"names": ["Cutoff", "Frequency"], "value": 400.0, "unit": "Hz"}
     assert mismatch(cutoff, {"Frequency": "405.0 Hz"}) == ""
     assert mismatch(cutoff, {"Cutoff": "1.20 kHz"}) == "Cutoff shows '1.20 kHz', not 400.0"
@@ -308,5 +379,13 @@ def test_the_checks_mixed_song_builds_with_the_tool(
     plan.write_text(luadata.document(renoise_check.mixed_song(tmp_path, sample)), "utf-8")
     built = lua.run("build", str(plan))
     assert built.get("error") is None
-    assert [t["name"] for t in built["mixer"]] == ["kick", "bass", "stab", "Master", "echo", "hall"]
-    assert built["instruments"] == 4  # the bass's accents get their own
+    assert [t["name"] for t in built["mixer"]] == [
+        "kick",
+        "bass",
+        "stab",
+        "tone",
+        "Master",
+        "echo",
+        "hall",
+    ]
+    assert built["instruments"] == 5  # the bass's accents get their own

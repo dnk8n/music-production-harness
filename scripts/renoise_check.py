@@ -11,13 +11,18 @@ tool, then, in one Renoise that mph starts:
    job must keep it as a copy in mph's scratch folder before it builds C;
 3. a third job builds M, a song with a mix and sampled synths (REQ-REN-09 to
    REQ-REN-11): every planned parameter must show what the plan asks for,
-   the bass's duck must dip it about 12 dB at the first kick, the stab must
-   still sound on its own track while it sends (its #Send keeps its source),
-   and the stab's echo must come back a dotted eighth after the note thrown
-   into it. It prints each kind of device's parameters as Renoise names and
-   shows them, the optional settings Renoise doesn't have, and the other
-   settings in those devices' preset data;
+   the bass's duck must pass REQ-BEN-12's own checks at every kick (as a
+   render's report measures it), the stab must still sound on its own track
+   while it sends (its #Send keeps its source), and the stab's echo must come
+   back a dotted eighth after the note thrown into it. It prints each kind of
+   device's parameters as Renoise names and shows them, the optional settings
+   Renoise doesn't have or didn't take, the other settings in those devices'
+   preset data, and how a Gainer follows its automation: a steady tone's
+   level is drawn to jump 24 dB, and the check prints when the tone starts
+   to fall and when it is 23 dB down;
 4. B is opened the same way, and Renoise is asked to quit.
+
+If a step fails, the check still asks the Renoise it started to quit.
 
 Renoise has to do all of that without asking to save anything: a question
 would hold up a job, or keep Renoise open after it was asked to quit. The
@@ -28,6 +33,7 @@ back. Sources, renders and the catalogue aren't touched.
 
 from __future__ import annotations
 
+import math
 import shutil
 import sys
 import tempfile
@@ -39,7 +45,7 @@ from typing import Any
 import numpy as np
 
 from mph import config, proc
-from mph.bench import audio, sampling, score
+from mph.bench import audio, checks, sampling, score
 from mph.config import Config
 from mph.proc import Runner
 from mph.renoise import bridge, luadata
@@ -50,8 +56,7 @@ JOB_TIMEOUT_S = 300.0  # longer than the tool waits for a new song, so its own e
 LOAD_S = 5.0  # time for Renoise to open a song
 QUIT_S = 30.0  # time for Renoise to quit
 QUIT = ("osascript", "-e", 'tell application "Renoise" to quit')
-DUCK_DB = (9.0, 14.0)  # the dip at the first kick, 5 to 20 ms in: about 11.9 dB planned
-DUCK_WINDOW_S = (0.005, 0.02)
+ONSET_DB = (0.5, 23.0)  # how far down the tone is when its level starts to fall, and ends
 SHOWN_SLACK = {"Hz": 0.03, "ms": 0.03}  # a share of the value asked for
 SHOWN_SLACK_DB = 0.25
 SHOWN_SLACK_PERCENT = 0.5
@@ -72,6 +77,11 @@ KEPT_DB = 10.0  # the stab with its strip and sends on, at most this much under 
 ECHO_SEARCH_S = (1.36, 1.74)  # after the thrown note has died away, before the next note
 ECHO_SLACK_S = 0.015
 ECHO_FLOOR_DB = 20.0  # the echo, at most this much under the thrown note
+# The tone in M: a steady sine whose level is drawn to jump 24 dB at bar 1.75,
+# to time how a Gainer follows its automation.
+TONE_S, TONE_HZ = 4.0, 220.0
+JUMP_S = 1.5
+JUMP_SEARCH_S = (-0.02, 0.05)  # from the jump: where its glide is looked for
 
 # Every kind of device the mixer uses, and both kinds of synth note (REQ-REN-09 to 11).
 MIXED = """
@@ -113,6 +123,13 @@ send = { echo = -8, hall = -14 }
 
 [voices.stab.automate]
 echo = [[1, -inf], [1.5, -inf], [1.5, 0], [1.75, 0], [1.75, -inf]]
+
+[voices.tone]
+grid = "X . . . . . . . . . . . . . . ."
+sound = { role = "pad" }
+
+[voices.tone.automate]
+level = [[1.75, 0], [1.75, -24]]
 
 [sends.echo]
 kind = "delay"
@@ -170,6 +187,13 @@ def blip(path: Path) -> Path:
     return path
 
 
+def tone(path: Path) -> Path:
+    """A steady sine, long enough to hear a level jump in."""
+    t = np.arange(round(TONE_S * RATE)) / RATE
+    audio.write_float(path, 0.5 * np.sin(2 * np.pi * TONE_HZ * t), RATE)
+    return path
+
+
 def song(folder: Path, sample: Path, name: str) -> dict[str, luadata.Data]:
     """One bar at 120 BPM, a section named after the song: a blip on each beat,
     and the blip as a clip on the first. Rendered as a mix and then solo."""
@@ -208,8 +232,10 @@ def song(folder: Path, sample: Path, name: str) -> dict[str, luadata.Data]:
 
 
 def mixed_song(folder: Path, sample: Path) -> dict[str, luadata.Data]:
-    """Song M: the mixed score, its synths sampled from the blip. Rendered as a
-    mix after a warm-up, then the bass alone with its duck (a stem) and without."""
+    """Song M: the mixed score, its synths sampled from the blip, and a steady
+    tone. Rendered as a mix after a warm-up, then the bass alone with its duck
+    (a stem) and without, the stab with its sends and without, and the tone
+    with its strip and without."""
     loaded = score.load_text(MIXED)
     events = score.events(loaded)
 
@@ -231,6 +257,7 @@ def mixed_song(folder: Path, sample: Path) -> dict[str, luadata.Data]:
         song_plan.Track("kick", str(sample), 1.0),
         song_plan.Track("bass", "", 1.0, synth=synth("bass")),
         song_plan.Track("stab", "", 1.0, synth=synth("stab")),
+        song_plan.Track("tone", str(tone(folder / "tone.wav")), 1.0),
     ]
     renders: list[luadata.Data] = [
         {"file": str(folder / "M warm-up.wav")},
@@ -239,6 +266,8 @@ def mixed_song(folder: Path, sample: Path) -> dict[str, luadata.Data]:
         {"file": str(folder / "M dry.wav"), "solo": 2, "mode": "dry"},
         {"file": str(folder / "M stab.wav"), "solo": 3},  # with its strip, sends and their effects
         {"file": str(folder / "M stab dry.wav"), "solo": 3, "mode": "dry"},
+        {"file": str(folder / "M tone.wav"), "solo": 4},  # with its level's jump
+        {"file": str(folder / "M tone dry.wav"), "solo": 4, "mode": "dry"},
     ]
     save = str(folder / "M.xrns")
     return song_plan.song(loaded, events, tracks, rate=RATE, save=save, renders=renders)
@@ -306,19 +335,23 @@ def mismatch(setting: dict[str, Any], shows: dict[str, str]) -> str:
     return "" if ok else f"{names[0]} shows {text!r}, not {wanted}"
 
 
-def devices_wrong(planned: dict[str, Any], outcome: dict[str, Any]) -> list[str]:
-    """Each planned parameter that doesn't show what the plan asks for."""
+def devices_wrong(planned: dict[str, Any], outcome: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Each planned parameter that doesn't show what the plan asks for; and,
+    once for each kind of device, each optional preset setting that Renoise
+    didn't take, which keeps Renoise's own value (the tool lets it)."""
     mix = planned["mix"]
     built = {t["track"]: t["devices"] for s in outcome.get("shown", []) for t in s["tracks"]}
     tracks = [*mix["tracks"], mix["master"], *mix["sends"]]  # in the order the tool lists them
-    wrong = []
+    wrong, kept = [], set()
     for label, entry in zip(built, tracks, strict=False):
         for device, plan in zip(built[label], entry["devices"], strict=False):
             for setting in plan["params"]:
                 problem = mismatch(setting, device["shows"] or {})
-                if problem:
+                if problem and setting.get("optional") and setting["unit"] == "preset":
+                    kept.add(f"{device.get('path', device['name'])}: {problem}")
+                elif problem:
                     wrong.append(f"{label}, {device['name']}: {problem}")
-    return wrong
+    return wrong, sorted(kept)
 
 
 def released_wrong(planned: dict[str, Any], outcome: dict[str, Any]) -> list[str]:
@@ -363,7 +396,7 @@ def report_settings(outcome: dict[str, Any]) -> None:
         print(f"  {kind} preset data: {', '.join(tags)}")
 
 
-def level_db(data: np.ndarray, rate: int, window: tuple[float, float] = DUCK_WINDOW_S) -> float:
+def level_db(data: np.ndarray, rate: int, window: tuple[float, float]) -> float:
     first, last = (round(s * rate) for s in window)
     part = data[first:last]
     return float(10 * np.log10(np.mean(part**2) + 1e-20))
@@ -376,6 +409,35 @@ def envelope_db(data: np.ndarray, rate: int, window: tuple[float, float]) -> np.
     first, last = (round(s * rate) for s in window)
     starts = range(first, last - frame, hop)
     return np.array([10 * np.log10(np.mean(mono[k : k + frame] ** 2) + 1e-20) for k in starts])
+
+
+def jump_ms(mixed: np.ndarray, dry: np.ndarray, rate: int) -> tuple[float, float]:
+    """When the tone's level, drawn to jump 24 dB at JUMP_S, starts to fall
+    (half a dB down) and when it is 23 dB down: in ms from the jump, measured
+    in REQ-BEN-12's half-millisecond windows; nan if it never is."""
+    frames = round(checks.DUCK_WINDOW_S * rate)
+    gain = audio.gain_curve(mixed, dry, frames)
+    window = frames / rate
+    first = round((JUMP_S + JUMP_SEARCH_S[0]) / window)
+    near = gain[first : round((JUMP_S + JUMP_SEARCH_S[1]) / window)]
+
+    def when(down_db: float) -> float:
+        found = np.flatnonzero(near <= -down_db)
+        return 1000 * ((first + found[0]) * window - JUMP_S) if found.size else math.nan
+
+    start, end = (when(down) for down in ONSET_DB)
+    return start, end
+
+
+def duck_checks(stem: np.ndarray, dry: np.ndarray, rate: int) -> list[checks.Check]:
+    """REQ-BEN-12's checks of the bass's duck at every kick, as a render's
+    report makes them, from the bass rendered with its duck and without."""
+    loaded = score.load_text(MIXED)
+    chain = loaded.sidechain
+    if chain is None:
+        raise CheckFailed("M's score has no sidechain")
+    kicks = [e.time_s for e in score.events(loaded) if e.voice == chain.trigger]
+    return checks.sidechain(chain, "bass", stem, dry, kicks, rate=rate)
 
 
 def sends_wrong(mixed: np.ndarray, dry: np.ndarray, rate: int) -> list[str]:
@@ -401,10 +463,40 @@ def sends_wrong(mixed: np.ndarray, dry: np.ndarray, rate: int) -> list[str]:
     return wrong
 
 
+def listen(folder: Path) -> None:
+    """What M's renders say: how a Gainer follows a jump in its automation,
+    whether the bass's duck passes REQ-BEN-12, and the stab's sends."""
+    jumped, rate = audio.read(folder / "M tone.wav")
+    steady, _ = audio.read(folder / "M tone dry.wav")
+    start, end = jump_ms(jumped, steady, rate)
+    print(
+        f"the tone's level, drawn to jump 24 dB at {JUMP_S:.3f} s, starts to fall at "
+        f"{start:+.1f} ms and is 23 dB down at {end:+.1f} ms"
+    )
+    stem, _ = audio.read(folder / "M stem.wav")
+    dry, _ = audio.read(folder / "M dry.wav")
+    duck = duck_checks(stem, dry, rate)
+    print("the bass's duck, by REQ-BEN-12's checks:")
+    for found in duck:
+        note = f" ({found.note})" if found.note else ""
+        verdict = "" if found.passed else "  FAILED"
+        print(f"  {found.name}: {found.value + 0.0:g}, limit {found.limit}{note}{verdict}")
+    failed = [f"{c.name} is {c.value + 0.0:g}, not {c.limit}" for c in duck if not c.passed]
+    if failed:
+        raise CheckFailed("the bass's duck fails REQ-BEN-12: " + "; ".join(failed))
+    mixed, _ = audio.read(folder / "M stab.wav")
+    alone, _ = audio.read(folder / "M stab dry.wav")
+    wrong = sends_wrong(mixed, alone, rate)
+    if wrong:
+        raise CheckFailed("; ".join(wrong))
+    print("the stab keeps sounding while it sends, and its echo comes back on time")
+
+
 class Check:
     def __init__(self, cfg: Config, runner: Runner, home: Path, clock: bridge.Clock) -> None:
         self.cfg, self.runner, self.home, self.clock = cfg, runner, home, clock
         self.session = bridge.Session()
+        self.asked_to_quit = False
 
     def job(self, name: str, songs: Sequence[luadata.Data]) -> dict[str, Any]:
         return bridge.run_job(
@@ -459,26 +551,17 @@ class Check:
                 f"Renoise refused points after the start of a pattern's last line in {refused} "
                 "automations: they were kept to that line"
             )
-        wrong = devices_wrong(planned, outcome) + released_wrong(planned, outcome)
+        wrong, kept = devices_wrong(planned, outcome)
+        for line in kept:
+            print(f"  {line} (optional: it keeps its own)")
+        wrong += released_wrong(planned, outcome)
         if wrong:
             raise CheckFailed("M's devices don't show what was planned:\n  " + "\n  ".join(wrong))
         print("every planned parameter shows what was asked")
-        stem, rate = audio.read(folder / "M stem.wav")
-        dry, _ = audio.read(folder / "M dry.wav")
-        dip = level_db(dry, rate) - level_db(stem, rate)
-        if not DUCK_DB[0] <= dip <= DUCK_DB[1]:
-            raise CheckFailed(
-                f"the duck dipped the bass {dip:.1f} dB at the first kick, not about 12"
-            )
-        print(f"the duck dipped the bass {dip:.1f} dB at the first kick")
-        mixed, _ = audio.read(folder / "M stab.wav")
-        alone, _ = audio.read(folder / "M stab dry.wav")
-        wrong = sends_wrong(mixed, alone, rate)
-        if wrong:
-            raise CheckFailed("; ".join(wrong))
-        print("the stab keeps sounding while it sends, and its echo comes back on time")
+        listen(folder)
 
     def quit(self) -> None:
+        self.asked_to_quit = True
         asked = self.runner.run(QUIT)
         if not asked.ok:
             raise CheckFailed(
@@ -494,6 +577,17 @@ class Check:
                 )
             self.clock.sleep(1.0)
         print("asked Renoise to quit: it quit without asking to save")
+
+    def close(self) -> None:
+        """After a failure, asks the Renoise the check started to quit, so the
+        next check or render finds it closed. Renoise was closed when the
+        check began, so this is never someone's own session."""
+        if self.asked_to_quit or not bridge.running(self.runner):
+            return
+        try:
+            self.quit()
+        except CheckFailed as exc:
+            print(f"also: {exc}")
 
 
 def check(cfg: Config, runner: Runner, home: Path, clock: bridge.Clock) -> int:
@@ -512,6 +606,7 @@ def check(cfg: Config, runner: Runner, home: Path, clock: bridge.Clock) -> int:
             run.run(Path(folder))
         except (bridge.BridgeError, CheckFailed) as exc:
             print(f"FAIL: {exc}")
+            run.close()
             return 1
         finally:
             for kept in run.session.kept:

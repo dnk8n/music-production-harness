@@ -8,8 +8,11 @@
 -- found from a table of what the parameter shows across its range, so
 -- Renoise's own scales needn't be known; a number is only read in its own
 -- unit, so a level is never taken from a percentage. A setting that isn't a
--- parameter (a #Send's mode) is a "preset" setting: an XML tag in the device's
--- preset data. Automation is written the same way, pattern by pattern.
+-- parameter (a #Send's mode, a filter's model) is a "preset" setting: an XML
+-- tag in the device's preset data. An optional setting may be missing, and an
+-- optional preset setting may also keep Renoise's own value if Renoise won't
+-- take the one asked for; the result file shows what it kept. Automation is
+-- written the same way, pattern by pattern.
 --
 --   mix = { tracks = { { devices, automation }, ... }, -- one per sequencer track
 --           sends = { { name, devices, automation }, ... }, -- send tracks
@@ -335,7 +338,8 @@ local function wanted_text(setting)
   return tostring(setting.value)
 end
 
--- Sets a preset setting by rewriting its tag in the device's preset data.
+-- Sets a preset setting by rewriting its tag in the device's preset data. An
+-- optional one that doesn't take keeps Renoise's own value.
 local function settle_preset(device, setting, problems, label)
   local tag, now, data = M.preset_setting(device, setting.names)
   if tag == nil then
@@ -358,7 +362,7 @@ local function settle_preset(device, setting, problems, label)
     device.active_preset_data = changed
   end)
   local _, after = M.preset_setting(device, { tag })
-  if not ok or after == nil or after:lower() ~= wanted:lower() then
+  if (not ok or after == nil or after:lower() ~= wanted:lower()) and not setting.optional then
     problems[#problems + 1] =
       string.format("%s: %s stayed %s, not %s", label, tag, tostring(after or now), wanted)
   end

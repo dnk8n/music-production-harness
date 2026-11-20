@@ -16,7 +16,9 @@ becomes points in each pattern: one at each lane point, one every beat along
 a move, and one at each pattern's start and end, so a move sounds the same
 whatever scale Renoise gives the parameter. The duck is a curve of points at
 every trigger hit; dips that overlap add up, never past the depth, as
-SuperCollider's do.
+SuperCollider's do. It is drawn two ticks early, because Renoise applies
+automation once a tick and its Gainer glides to each new value: drawn at the
+hit, a dip lands about two ticks late.
 
 Every device has a role, which the renders switch on and off: a stem is
 rendered with the strips, sends, effects and master devices off and the duck
@@ -53,7 +55,7 @@ MODES = {  # the roles left on in each kind of render
 # Parameter names as Renoise shows them; the first one a device has is used.
 # Renoise 3.5.4's, as scripts/renoise-check listed them on Dean's Mac (2026-11-20).
 TYPE = ("Type", "Filter Type")
-MODEL = ("Model", "Filter Model")  # not a parameter in 3.5.4: the filter keeps its own
+MODEL = ("Model",)  # the filter's model: in its preset data, not a parameter
 CUTOFF = ("Cutoff", "Frequency", "Freq.", "Freq")
 RESONANCE = ("Resonance", "Reso")  # a share of the knob, shown in %, not a Q
 GAIN = ("Gain",)
@@ -73,6 +75,7 @@ SILENT_DB = mix.SILENT_DB  # silence; the tool sets the parameter's lowest value
 RELEASE_POINTS = 16  # points along the duck's release (REQ-REN-11)
 TAPS = 4  # a Multitap's taps; only the first plays
 JUMP = 1e-9  # a curve that changes more than this at a line jumps there
+DUCK_LEAD_TICKS = 2  # the duck is drawn this many ticks early (REQ-REN-11)
 
 Param = dict[str, Data]
 Device = dict[str, Data]
@@ -126,10 +129,12 @@ def _decibels(value: float) -> float:
 def _filter(name: str, kind: str, hz: float, role: str, resonance: float = 0.0) -> Device:
     """A Digital Filter. The strip's resonance (0 to 1) turns Renoise's own
     resonance knob that share of the way, as a Renoise user would set it by
-    ear: Renoise shows resonance in %, not as a Q."""
+    ear: Renoise shows resonance in %, not as a Q. Its model is Butterworth
+    4n, 24 dB an octave like the SuperCollider strip's filters, if Renoise
+    takes that in the preset data; otherwise it keeps its own."""
     params = [
         param(TYPE, kind, "choice"),
-        param(MODEL, "Butterworth 4n", "choice", optional=True),  # 24 dB an octave
+        param(MODEL, "Butterworth 4n", "preset", optional=True),
         param(CUTOFF, round(hz, 3), "Hz"),
         param(RESONANCE, round(resonance * 100, 3), "%"),
     ]
@@ -151,7 +156,7 @@ def _send(to: str, index: int, db: float) -> Device:
         "params": [
             param(AMOUNT, _decibels(db), "dB"),
             param(RECEIVER, {"name": to, "index": index}, "send"),
-            param(MUTE_SOURCE, "false", "preset", optional=True),  # the voice carries on
+            param(MUTE_SOURCE, "false", "preset"),  # the voice carries on
         ],
     }
 
@@ -232,10 +237,12 @@ def lane_curve(lane: Lane, timeline: Timeline) -> Curve:
     )
 
 
-def duck_curve(hits: Sequence[float], chain: Sidechain, timeline: Timeline) -> Curve:
+def duck_curve(
+    hits: Sequence[float], chain: Sidechain, timeline: Timeline, lead_s: float = 0.0
+) -> Curve:
     """The Duck's gain in dB (REQ-REN-11): down to the depth over the attack at
-    every hit, held, then back along a half cosine over the release. Dips that
-    overlap add up, never past the depth (REQ-BEN-12)."""
+    every hit, held, then back along a half cosine over the release, all drawn
+    ``lead_s`` early. Dips that overlap add up, never past the depth (REQ-BEN-12)."""
     depth = 1 - 10 ** (-chain.depth_db / 20)
     attack, hold, release = (ms / 1000 for ms in (chain.attack_ms, chain.hold_ms, chain.release_ms))
     span = attack + hold + release
@@ -251,15 +258,15 @@ def duck_curve(hits: Sequence[float], chain: Sidechain, timeline: Timeline) -> C
         return depth * (1 + math.cos(math.pi * (dt - attack - hold) / release)) / 2
 
     def gain_db(t: float) -> float:
-        now = t * timeline.line_s
+        now = t * timeline.line_s + lead_s
         lo, hi = bisect.bisect_left(starts, now - span), bisect.bisect_right(starts, now)
         taken = min(depth, sum(dip(now - h) for h in starts[lo:hi]))
         return 20 * math.log10(max(1 - taken, 1e-9))
 
     marks = [0.0, attack, attack + hold]
     marks += [attack + hold + release * k / RELEASE_POINTS for k in range(1, RELEASE_POINTS + 1)]
-    times = sorted({(h + m) / timeline.line_s for h in starts for m in marks})
-    return Curve(value=gain_db, before=gain_db, times=tuple(times))
+    times = sorted({(h + m - lead_s) / timeline.line_s for h in starts for m in marks})
+    return Curve(value=gain_db, before=gain_db, times=tuple(t for t in times if t >= 0))
 
 
 def automation(
@@ -292,11 +299,12 @@ def _strip(
 
 def voice_track(score: Score, name: str, timeline: Timeline, duck: Curve | None) -> dict[str, Data]:
     """A voice's devices and automation: its duck, its strip, or REQ-REN-06's
-    bypassed filter."""
+    bypassed filter. The Duck starts where its curve does, so a hit on the
+    song's first line doesn't glide there."""
     devices: list[Device] = []
     lanes: list[dict[str, Data]] = []
     if duck is not None:
-        devices.append(_gainer("Duck", 0.0, 0.0, DUCK))
+        devices.append(_gainer("Duck", duck.value(0.0), 0.0, DUCK))
         lanes.append(automation(1, GAIN, "dB", duck, timeline))
     own = score.voice(name).strip
     if own is None or not (own.uses("highpass") or own.uses("lowpass")):
@@ -364,9 +372,10 @@ def plan(
     line_s: float,
     lpb: int,
     bar_lines: int,
+    tpl: int,
 ) -> dict[str, Data] | None:
     """The song's mixer, or None for a score with no mix and no sidechain.
-    ``lengths`` are the song's patterns, in lines."""
+    ``lengths`` are the song's patterns, in lines, of ``tpl`` ticks each."""
     chain = score.sidechain if score.sidechain is not None and score.sidechain.active else None
     if not score.mixed and chain is None:
         return None
@@ -374,7 +383,8 @@ def plan(
     duck, targets = None, set()
     if chain is not None:
         hits = [e.time_s for e in events if e.voice == chain.trigger]
-        duck, targets = duck_curve(hits, chain, timeline), set(chain.targets)
+        lead_s = DUCK_LEAD_TICKS * line_s / tpl
+        duck, targets = duck_curve(hits, chain, timeline, lead_s), set(chain.targets)
     return {
         "tracks": [
             voice_track(score, v.name, timeline, duck if v.name in targets else None)

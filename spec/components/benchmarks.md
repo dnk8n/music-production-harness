@@ -176,11 +176,15 @@ templates get the same gain.
 | hat | -22 |
 | shaker | -24 |
 
-Roles not in the table aim for -18 dB.
+Roles not in the table aim for -18 dB. A synth of mph's own sounds loud
+enough that its gain stays inside that range.
 - **Why:** catalogue sounds arrive at whatever level their pack chose, so a
   hat can jump out of the kit (Dean, on BHG2_Analogue_Hat_17 in
   BM-DRUM-01). Matching by role gives a balanced starting mix, and the
-  table is the one place to change it.
+  table is the one place to change it. A synth that needs more than +12 dB
+  is held there and sits under its target in every mix: on 2026-11-21 the
+  first singing synths needed 24 to 29 dB, and their lines sat 12 to 17 dB
+  too quiet in the free remix's first block.
 - **Verify:** test
 
 ### REQ-BEN-10: Renoise is the render engine

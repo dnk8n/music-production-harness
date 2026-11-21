@@ -473,7 +473,10 @@ write.(SynthDef(\mph_strings, { |out = 0, amp = 1, gate = 1, freq = 261.63, acc 
 // One voice: the buzz and breath through the formants, with the consonant at
 // the start (a burst of noise, a murmur through the nose, or formants on the
 // move), rolled off above 6.5 kHz. bright lifts the upper three formants (dB),
-// and waver 0 holds the formants still.
+// and waver 0 holds the formants still. The buzz spreads its power over up to
+// 200 harmonics and the formants pass only a few of them, so the voice is
+// made up by 32 dB: a note then sounds about as loud as the other synths' do,
+// well inside the gain that level matching gives (REQ-BEN-09).
 ~voice = { |pitch, vowel, onset, breath, bright, waver|
     var formants = ~formants.(vowel, onset);
     var top = ~top.value;
@@ -497,7 +500,7 @@ write.(SynthDef(\mph_strings, { |out = 0, amp = 1, gate = 1, freq = 261.63, acc 
     var nosed = EnvGen.ar(Env([1, 1, 0], [murmur, 0.03])) * (murmur > 0);
     var burst = BPF.ar(WhiteNoise.ar, noise[0].max(100), 0.5) * noise[1] * (noise[0] > 0)
         * EnvGen.ar(Env([0, 0, 1, 0], [wait - noise[2], 0.001, noise[2]].max(0.0005), [0, 0, -4]));
-    (BLowPass4.ar((shaped * (1 - nosed)) + (nasal * nosed), 6500, 1) * opening) + burst
+    ((BLowPass4.ar((shaped * (1 - nosed)) + (nasal * nosed), 6500, 1) * opening) + burst) * 40
 };
 
 // A soulful lead or a backing voice: the voice above at the note's pitch,
@@ -563,7 +566,7 @@ write.(SynthDef(\mph_vocoder, { |out = 0, amp = 1, gate = 1, freq = 220, acc = 0
     mid = ((sides[0] + sides[1]) * 0.5) + sibilance;
     side = (sides[0] - sides[1]) * 0.5 * width;
     level = EnvGen.ar(Env.asr(attack, 1, release, [2, -3]), gate, doneAction: 2)
-        * (0.75 + (accented * 0.8)) * amp * 6;
+        * (0.75 + (accented * 0.8)) * amp * 3;
     OffsetOut.ar(out, [mid + side, mid - side] * level);
 }));
 

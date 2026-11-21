@@ -1,0 +1,571 @@
+# spec/tracks/love-train.md#bm-ltfs-05: the free version of remix 1, the whole track.
+# Remix 1's form, parts and mix (BM-LTDJ-05), with everything that was a
+# recording or a sample made anew: a synthesised 909 kit, new wordless vocal
+# lines for a soul singer, a machine (a vocoder) and a group, and a
+# synthesised train horn. It needs no samples, no recordings and no keys, so
+# it renders the same from a fresh clone (issue #68).
+id = "BM-LTFS-05"
+title = "Remix 1 for everyone, the whole track"
+hear = "a Detroit techno track sung by a soul singer, a machine and a group, with nothing recorded. A dry 909 groove builds with a rolling bass, and the machine teases the hook through the echo. Everything drops away for the train's horn, whose bend lands the groove. The singer's verse comes in line by line, each last word echoing into the gap, with the stabs answering in between. In the hooks the group answers every line, and the organ bass, the shaker and the swelling strings lift it into Jersey. The machine takes the bridge in the dub and sings the second verse, and at the peak it sings the hook with the singer, a third below. The horn drops the peak and, at the end, the outro."
+project = "Love Train remix 1, free: synthesised"
+bpm = 120
+bars = 240
+swing = 0.55
+rate = 48000
+
+sections = [
+  { name = "Intro", bars = [1, 8], play = ["kick", "chh", "rim"] },
+  { name = "Intro", bars = [9, 16], play = ["kick", "chh", "rim", "ride", "robot"] },
+  { name = "Build", bars = [17, 24], play = ["kick", "chh", "rim", "ride", "ohh", "bass"] },
+  { name = "Build", bars = [25, 32], play = ["kick", "chh", "rim", "ride", "ohh", "bass", "clap", "stabs", "robot"] },
+  { name = "Departure", bars = [33, 36], play = ["strings_a", "strings_b", "shaker", "horn"] },
+  { name = "Groove A", bars = [37, 52], play = ["kick", "clap", "chh", "ohh", "ride", "rim", "bass", "stabs", "lead", "horn"] },
+  { name = "Pre-chorus", bars = [53, 60], play = ["kick", "clap", "chh", "ohh", "ride", "bass", "stabs", "strings_a", "strings_b", "lead"] },
+  { name = "Hook", bars = [61, 76], play = ["kick", "clap", "chh", "ohh", "shaker", "organ", "stabs", "strings_a", "strings_b", "lead", "choir"] },
+  { name = "Dub", bars = [77, 83], play = ["kick", "rim", "ride", "chh", "bass", "stabs", "lead", "choir"] },
+  { name = "Dub", bars = [84, 92], play = ["kick", "rim", "ride", "chh", "bass", "stabs", "robot"] },
+  { name = "Break", bars = [93, 96], play = ["stabs", "ride", "lead"] },
+  { name = "Breakdown", bars = [97, 108], play = ["strings_a", "strings_b", "stabs", "shaker", "lead", "choir"] },
+  { name = "Departure II", bars = [109, 112], play = ["strings_a", "strings_b", "chh", "horn"] },
+  { name = "Peak", bars = [113, 128], play = ["kick", "clap", "chh", "ohh", "ride", "rim", "shaker", "bass", "stabs", "strings_a", "strings_b", "lead", "choir", "robot", "horn"] },
+  { name = "Groove B", bars = [129, 144], play = ["kick", "clap", "chh", "ohh", "ride", "rim", "bass", "stabs", "robot", "lead"] },
+  { name = "Pre-chorus 2", bars = [145, 152], play = ["kick", "clap", "chh", "ohh", "ride", "bass", "stabs", "strings_a", "strings_b", "lead"] },
+  { name = "Hook 2", bars = [153, 168], play = ["kick", "clap", "chh", "ohh", "shaker", "organ", "stabs", "strings_a", "strings_b", "lead", "choir"] },
+  { name = "Ad-libs", bars = [169, 176], play = ["kick", "clap", "chh", "ohh", "shaker", "organ", "stabs", "lead", "choir"] },
+  { name = "Dub-out", bars = [177, 192], play = ["kick", "rim", "ride", "bass", "stabs", "strings_a", "strings_b", "robot"] },
+  { name = "Last train", bars = [193, 196], play = ["strings_a", "strings_b", "shaker", "horn"] },
+  { name = "Outro", bars = [197, 208], play = ["kick", "clap", "chh", "ohh", "ride", "rim", "bass", "stabs", "lead", "choir", "horn"] },
+  { name = "Outro", bars = [209, 224], play = ["kick", "chh", "ohh", "ride", "rim", "bass"] },
+  { name = "DJ outro", bars = [225, 240], play = ["kick", "chh", "rim"] },
+]
+
+# --- drums: a 909-style kit, synthesised (synthdefs.scd) ---
+
+# Four to the floor, with a push on the last eighth of every fourth bar.
+[voices.kick]
+grid = "X . . . X . . . X . . . X . . . | X . . . X . . . X . . . X . . . | X . . . X . . . X . . . X . . . | X . . . X . . . X . . . X . x ."
+sound = { role = "kick", synth = "mph_kick909", why = "A 909-style kick: a sine that drops fast from five times its 50 Hz tune, with a click on top. Its body is down 18 dB 150 ms after it hits, so the duck is heard after every hit." }
+
+[voices.kick.mix]
+highpass = 28
+
+[voices.clap]
+grid = ". . . . x . . . . . . . x . . ."
+sound = { role = "clap", synth = "mph_clap909", why = "A 909-style clap: band-passed noise struck four times, about 9 ms apart." }
+
+[voices.clap.mix]
+highpass = 180
+level = -1
+send = { hall = -16 }
+
+# Closed hats on the sixteenths around the open hats, which they choke.
+[voices.chh]
+grid = "x x . x x x . x x x . x x x . x"
+sound = { role = "hat", synth = "mph_hat909", why = "A 909-style hat: mostly hiss with a little metal, so it hisses rather than rings." }
+chokes = ["ohh"]
+
+[voices.chh.mix]
+highpass = 350
+pan = 0.15
+level = -2
+
+# Rising under the second horn.
+[voices.chh.automate]
+level = [[1, -2], [109, -2], [109, -20], [113, -2]]
+
+[voices.ohh]
+grid = ". . o . . . o . . . o . . . o ."
+sound = { role = "hat_open", synth = "mph_hat909", why = "The same hat left to ring, until the next closed hat chokes it." }
+params = { decay = 0.35 }
+
+[voices.ohh.mix]
+highpass = 400
+pan = -0.15
+level = -2
+send = { hall = -22 }
+
+# The ride on the eighths, each hit fading before the next, like a 909's.
+[voices.ride]
+grid = "x . X . x . X . x . X . x . X ."
+sound = { role = "ride", synth = "mph_ride909", why = "A 909-style ride: a wash of noise and metal with a faint bell on top." }
+params = { decay = 0.4 }
+gain_db = -4
+
+[voices.ride.mix]
+highpass = 500
+pan = 0.3
+level = -3
+send = { hall = -18 }
+
+# A syncopated two-bar figure, echoing deeper in the dubs.
+[voices.rim]
+grid = ". . . x . . x . . . . x . . x . | . x . . . . x . . . x . . . . ."
+sound = { role = "rim", synth = "mph_rim909", why = "A 909-style rim shot: resonators near 480 Hz and 1.45 kHz, struck once." }
+
+[voices.rim.mix]
+highpass = 300
+pan = -0.3
+level = -3
+send = { echo = -14 }
+
+[voices.rim.automate]
+echo = [[1, -14], [77, -14], [77, -6], [93, -6], [93, -14], [177, -14], [177, -6], [193, -6], [193, -14]]
+
+# The Jersey part: a garage shaker on the sixteenths, leaning on the off-beats.
+[voices.shaker]
+grid = "x x X x x x X x x x X x x x X x"
+sound = { role = "shaker", synth = "mph_beads", why = "A garage shaker: seeded beads that swell and thin out through a high resonance." }
+
+[voices.shaker.mix]
+highpass = 600
+pan = 0.35
+level = -3
+send = { hall = -20 }
+
+# --- the synths ---
+
+# Rolling on every sixteenth, C in odd bars and F in even bars, with octave
+# jumps and a glide down to G. The kick ducks it.
+[voices.bass]
+notes  = "C2 C2 C2 C2 C2 C2 C3 C2 C2 C2 C2 C2 C2 C2 C3 C2 | F1 F1 F1 F1 F1 F1 F2 F1 F1 F1 F1 F1 F2 F2 G1 G1"
+gate   = "x  x  x  x  x  x  x  x  x  x  x  x  x  x  x  x  | x  x  x  x  x  x  x  x  x  x  x  x  x  x  x  x"
+accent = ".  .  X  .  .  .  X  .  .  .  X  .  .  .  X  .  | .  .  X  .  .  .  X  .  .  .  X  .  .  .  X  ."
+slide  = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  S  .  ."
+sound = { synth = "mph_bass" }
+params = { cutoff = 380.0, resonance = 0.3, envmod = 0.5, decay = 0.14, sub = 0.9, glide = 0.06 }
+
+[voices.bass.mix]
+highpass = 30
+lowpass = 250
+resonance = 0.35
+
+# Opening through the builds, closing down through the dubs.
+[voices.bass.automate]
+lowpass = [[1, 250], [17, 250], [25, 1400], [33, 2000], [53, 2000], [61, 3000], [77, 3000], [77, 500], [93, 900], [113, 900], [113, 3500], [129, 3500], [129, 2200], [145, 2200], [153, 3200], [177, 3200], [177, 2000], [193, 220], [197, 220], [197, 1200], [209, 1200], [225, 600]]
+
+# The Jersey organ bass (after a Korg M1 "Organ 2"): a syncopated garage line
+# with octave jumps, in place of the Detroit bass in the hooks.
+[voices.organ]
+notes  = "C2 -  -  C3 -  -  C2 -  C2 -  -  C3 -  -  G2 -  | F2 -  -  F3 -  -  F2 -  F2 -  -  F3 -  F2 G2 -"
+gate   = "x  -  .  x  .  .  x  .  x  -  .  x  .  .  x  .  | x  -  .  x  .  .  x  .  x  -  .  x  .  x  x  ."
+accent = ".  .  .  X  .  .  .  .  .  .  .  X  .  .  .  .  | .  .  .  X  .  .  .  .  .  .  .  X  .  .  .  ."
+sound = { synth = "mph_organ" }
+params = { cutoff = 1200.0, envmod = 2.0, decay = 0.12, chorus = 0.3, fifth = 0.25 }
+gain_db = -1
+
+[voices.organ.mix]
+highpass = 40
+lowpass = 5000
+send = { hall = -20 }
+
+# One minor seventh shape moved in parallel (chord memory): E minor 7 over the
+# C bars and A minor 7 over the F bars, which make Cmaj9 and Fmaj9 with the
+# song's roots. Off-beat sixteenths, into the dub echo.
+[voices.stabs]
+notes = "-  -  -  E4 -  -  -  -  -  -  E4 -  -  -  -  -  | -  -  -  A3 -  -  A3 -  -  -  -  -  -  A3 -  -"
+gate  = ".  .  .  x  .  .  .  .  .  .  x  -  .  .  .  .  | .  .  .  x  .  .  x  .  .  .  .  .  .  x  .  ."
+chord = [0, 3, 7, 10]
+sound = { synth = "mph_stab" }
+params = { cutoff = 700.0, resonance = 0.35, envmod = 3.5, decay = 0.2, release = 0.15 }
+gain_db = -4
+
+[voices.stabs.mix]
+highpass = 250
+lowpass = 600
+resonance = 0.25
+pan = 0.2
+send = { echo = -8, hall = -14 }
+
+# Dark in the builds, opening up through the grooves, wide open at the peak,
+# and deeper into the echo in the dubs.
+[voices.stabs.automate]
+lowpass = [[1, 600], [37, 600], [53, 3200], [61, 4000], [77, 4000], [77, 1400], [93, 1400], [97, 2500], [113, 2500], [113, 8000], [129, 8000], [129, 3000], [153, 3000], [153, 4000], [177, 4000], [177, 1800], [197, 1800], [197, 2400]]
+echo = [[1, -8], [77, -8], [77, -2], [93, -2], [93, -8], [177, -8], [177, -3], [197, -3], [197, -6]]
+
+# Strings in two parts, so each chord rings out while the next swells in:
+# Cmaj9 (E G B D above the bass's C) on odd bars, Fmaj9 (E G A C above F) on
+# even bars, voiced above the voice.
+[voices.strings_a]
+notes = "E4 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+gate  = "x  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+chord = [0, 3, 7, 10]
+sound = { synth = "mph_strings" }
+params = { attack = 0.6, release = 1.4, cutoff = 4500.0, vibrato = 0.1 }
+gain_db = -3
+
+[voices.strings_b]
+notes = "-  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | E4 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+gate  = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | x  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+chord = [0, 3, 5, 8]
+sound = { synth = "mph_strings" }
+params = { attack = 0.6, release = 1.4, cutoff = 4500.0, vibrato = 0.1 }
+gain_db = -3
+
+[voices.strings_a.mix]
+highpass = 200
+lowpass = 7000
+pan = -0.2
+send = { hall = -8 }
+
+[voices.strings_b.mix]
+highpass = 200
+lowpass = 7000
+pan = 0.2
+send = { hall = -8 }
+
+# Swelling in under each horn.
+[voices.strings_a.automate]
+level = [[1, -14], [37, 0], [109, 0], [109, -10], [113, 0], [193, 0], [193, -10], [197, 0]]
+
+[voices.strings_b.automate]
+level = [[1, -14], [37, 0], [109, 0], [109, -10], [113, 0], [193, 0], [193, -10], [197, 0]]
+
+# --- the new vocals and the train's horn (REQ-TRK-08, REQ-BEN-19) ---
+
+# Wordless soul lines (oh, yeah, la, ooh, a hum) in C major and A minor over
+# the parts' Cmaj9 and Fmaj9. Each line is cued on an even bar and sung from
+# its second beat, as the song's lines are, so it stays on its chords.
+
+# The lead: a soul singer, a formant voice. It sings verse 1, the
+# pre-choruses, the hooks, the vamp and the ad-libs.
+[voices.lead]
+sound = { synth = "mph_singer", why = "A soulful lead: a buzz through five formants that move from each consonant to its vowel, scooping up into every note, with a vibrato that fades in and a little breath." }
+gain_db = -5
+cues = [
+  [40, "verse-a"], [44, "verse-b"], [48, "verse-c"], [52, "pre-a"], [56, "pre-b"],
+  [60, "hook"], [64, "hook-b"], [68, "hook"], [72, "vamp"], [76, "vamp"],
+  [80, "vamp-end"], [96, "pre-a"], [100, "pre-b"], [104, "hook"], [116, "hook"],
+  [120, "hook-b"], [124, "hook"], [144, "pre-a"], [148, "pre-b"], [152, "hook"],
+  [156, "hook-b"], [160, "hook"], [164, "adlib-a"], [168, "adlib-b"], [172, "adlib-c"],
+  [200, "hook"],
+]
+
+[voices.lead.mix]
+highpass = 120
+send = { echo = -inf, hall = -18 }
+
+# The last word of every line thrown into the echo, and the outro's hook line
+# filtered thin, riding the echo all through.
+[voices.lead.automate]
+highpass = [[1, 120], [200, 120], [200, 500], [204, 500], [204, 120]]
+hall = [[1, -18], [200, -18], [200, -8]]
+echo = [
+  [1, -inf], [43, -inf], [43, 0], [43.25, 0],
+  [43.25, -inf], [47, -inf], [47, 0], [47.25, 0],
+  [47.25, -inf], [51, -inf], [51, 0], [51.25, 0],
+  [51.25, -inf], [55.5, -inf], [55.5, 0], [55.75, 0],
+  [55.75, -inf], [59, -inf], [59, 0], [59.25, 0],
+  [59.25, -inf], [62.25, -inf], [62.25, 0], [62.5, 0],
+  [62.5, -inf], [66.5, -inf], [66.5, 0], [66.75, 0],
+  [66.75, -inf], [70.25, -inf], [70.25, 0], [70.5, 0],
+  [70.5, -inf], [74.5, -inf], [74.5, 0], [74.75, 0],
+  [74.75, -inf], [78.5, -inf], [78.5, 0], [78.75, 0],
+  [78.75, -inf], [81, -inf], [81, 0], [81.25, 0],
+  [81.25, -inf], [99.5, -inf], [99.5, 0], [99.75, 0],
+  [99.75, -inf], [103, -inf], [103, 0], [103.25, 0],
+  [103.25, -inf], [106.25, -inf], [106.25, 0], [106.5, 0],
+  [106.5, -inf], [118.25, -inf], [118.25, 0], [118.5, 0],
+  [118.5, -inf], [122.5, -inf], [122.5, 0], [122.75, 0],
+  [122.75, -inf], [126.25, -inf], [126.25, 0], [126.5, 0],
+  [126.5, -inf], [147.5, -inf], [147.5, 0], [147.75, 0],
+  [147.75, -inf], [151, -inf], [151, 0], [151.25, 0],
+  [151.25, -inf], [154.25, -inf], [154.25, 0], [154.5, 0],
+  [154.5, -inf], [158.5, -inf], [158.5, 0], [158.75, 0],
+  [158.75, -inf], [162.25, -inf], [162.25, 0], [162.5, 0],
+  [162.5, -inf], [165.375, -inf], [165.375, 0], [165.625, 0],
+  [165.625, -inf], [169.5, -inf], [169.5, 0], [169.75, 0],
+  [169.75, -inf], [173.375, -inf], [173.375, 0], [173.625, 0],
+  [173.625, -inf], [200, -inf], [200, -9], [202.25, -9],
+  [202.25, 0], [202.5, 0], [202.5, -inf],
+]
+
+# The returning hook: the lead calls in its first two bars and a half, and the
+# group answers (choir.answer, cued two bars later).
+[voices.lead.phrases.hook]
+gate      = ".  .  .  .  x  -  x  -  x  -  -  -  x  x  -  -  | .  .  x  -  x  -  x  -  x  -  -  -  -  -  .  .  | x  -  x  -  x  -  -  -  -  -  -  -  .  .  .  ."
+notes     = "-  -  -  -  G3 -  A3 -  C4 -  -  -  D4 C4 -  -  | -  -  E4 -  D4 -  C4 -  G3 -  -  -  -  -  -  -  | G3 -  A3 -  C4 -  -  -  -  -  -  -  -  -  -  -"
+accent    = ".  .  .  .  .  .  .  .  X  .  .  .  .  .  .  .  | .  .  X  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+slide     = ".  .  .  .  .  .  .  .  .  .  .  .  S  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+syllables = "-  -  -  -  o  -  wo -  ye -  -  -  e  -  -  -  | -  -  o  -  la -  la -  ye -  -  -  -  -  -  -  | o  -  wo -  ye -  -  -  -  -  -  -  -  -  -  -"
+
+# The hook again, reaching up to E at its end.
+[voices.lead.phrases.hook-b]
+gate      = ".  .  .  .  x  -  x  -  x  -  -  -  x  x  -  -  | .  .  x  -  x  -  x  -  x  -  -  -  -  -  .  .  | x  -  x  -  x  -  -  -  x  -  -  -  .  .  .  ."
+notes     = "-  -  -  -  G3 -  A3 -  C4 -  -  -  D4 C4 -  -  | -  -  E4 -  D4 -  C4 -  G3 -  -  -  -  -  -  -  | G3 -  A3 -  C4 -  -  -  E4 -  -  -  -  -  -  -"
+accent    = ".  .  .  .  .  .  .  .  X  .  .  .  .  .  .  .  | .  .  X  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  X  .  .  .  .  .  .  ."
+slide     = ".  .  .  .  .  .  .  .  .  .  .  .  S  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+syllables = "-  -  -  -  o  -  wo -  ye -  -  -  e  -  -  -  | -  -  o  -  la -  la -  ye -  -  -  -  -  -  -  | o  -  wo -  ye -  -  -  o  -  -  -  -  -  -  -"
+
+# Verse 1, three lines, sung low and close, each from the second beat of an
+# even bar for about thirteen beats, as the song's lines are.
+[voices.lead.phrases.verse-a]
+gate      = ".  .  .  .  x  -  x  -  -  -  x  -  x  -  x  -  | x  -  -  -  x  x  -  -  x  -  x  -  -  -  -  -  | .  .  x  -  x  -  x  -  -  -  -  -  x  -  x  -  | x  -  -  -  -  -  .  .  .  .  .  .  .  .  .  ."
+notes     = "-  -  -  -  A3 -  C4 -  -  -  A3 -  G3 -  A3 -  | C4 -  -  -  D4 C4 -  -  A3 -  G3 -  -  -  -  -  | -  -  F3 -  A3 -  C4 -  -  -  -  -  A3 -  G3 -  | E3 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+accent    = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | X  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+slide     = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  S  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+syllables = "-  -  -  -  m  -  o  -  -  -  la -  da -  da -  | o  -  -  -  ye -  -  -  e  -  o  -  -  -  -  -  | -  -  la -  la -  ye -  -  -  -  -  o  -  wo -  | o  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+
+[voices.lead.phrases.verse-b]
+gate      = ".  .  .  .  x  -  x  -  x  -  -  -  x  -  x  -  | x  -  -  -  x  -  x  -  x  x  x  -  -  -  -  -  | .  .  x  -  x  -  x  -  -  -  x  -  x  -  -  -  | x  -  -  -  -  -  .  .  .  .  .  .  .  .  .  ."
+notes     = "-  -  -  -  C4 -  A3 -  C4 -  -  -  D4 -  C4 -  | E4 -  -  -  D4 -  C4 -  D4 C4 A3 -  -  -  -  -  | -  -  A3 -  C4 -  A3 -  -  -  G3 -  F3 -  -  -  | G3 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+accent    = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | X  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+slide     = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  S  S  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+syllables = "-  -  -  -  o  -  wo -  ye -  -  -  la -  la -  | o  -  -  -  e  -  la -  ye -  -  -  -  -  -  -  | -  -  la -  la -  ye -  -  -  e  -  o  -  -  -  | o  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+
+[voices.lead.phrases.verse-c]
+gate      = ".  .  .  .  x  -  x  -  x  -  -  -  -  -  x  -  | x  -  x  -  x  -  -  -  x  x  -  -  x  -  -  -  | .  .  x  -  x  -  x  -  x  -  x  -  x  -  -  -  | x  -  -  -  -  -  -  -  .  .  .  .  .  .  .  ."
+notes     = "-  -  -  -  C4 -  D4 -  E4 -  -  -  -  -  D4 -  | C4 -  D4 -  E4 -  -  -  D4 C4 -  -  A3 -  -  -  | -  -  G3 -  A3 -  C4 -  D4 -  C4 -  A3 -  -  -  | C4 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+accent    = ".  .  .  .  .  .  .  .  X  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+slide     = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  S  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+syllables = "-  -  -  -  ye -  ye -  o  -  -  -  -  -  la -  | o  -  la -  ye -  -  -  e  -  -  -  o  -  -  -  | -  -  la -  la -  ye -  o  -  e  -  wo -  -  -  | u  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+
+# The pre-chorus, eight bars in two lines: long notes climbing from A to D,
+# then up to E, holding D (the ninth) into the hook.
+[voices.lead.phrases.pre-a]
+gate      = ".  .  .  .  x  -  -  -  -  -  x  -  x  -  -  -  | x  -  -  -  -  -  -  -  x  x  -  -  .  .  .  .  | .  .  .  .  x  -  -  -  -  -  x  -  x  -  -  -  | x  -  -  -  -  -  -  -  x  x  -  -  .  .  .  ."
+notes     = "-  -  -  -  A3 -  -  -  -  -  G3 -  A3 -  -  -  | C4 -  -  -  -  -  -  -  D4 C4 -  -  -  -  -  -  | -  -  -  -  C4 -  -  -  -  -  A3 -  C4 -  -  -  | D4 -  -  -  -  -  -  -  E4 D4 -  -  -  -  -  -"
+accent    = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | X  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | X  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+slide     = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  S  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  S  .  .  .  .  .  .  ."
+syllables = "-  -  -  -  o  -  -  -  -  -  wo -  ye -  -  -  | ye -  -  -  -  -  -  -  e  -  -  -  -  -  -  -  | -  -  -  -  o  -  -  -  -  -  wo -  ye -  -  -  | ye -  -  -  -  -  -  -  e  -  -  -  -  -  -  -"
+
+[voices.lead.phrases.pre-b]
+gate      = ".  .  .  .  x  -  x  -  x  -  x  -  x  -  -  -  | x  -  -  -  -  -  x  -  x  -  -  -  x  -  -  -  | x  -  -  -  -  -  -  -  x  x  -  -  x  -  x  -  | x  -  -  -  -  -  -  -  -  -  -  -  .  .  .  ."
+notes     = "-  -  -  -  C4 -  D4 -  E4 -  D4 -  C4 -  -  -  | E4 -  -  -  -  -  D4 -  C4 -  -  -  D4 -  -  -  | E4 -  -  -  -  -  -  -  F4 E4 -  -  C4 -  D4 -  | D4 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+accent    = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | X  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | X  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | X  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+slide     = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  S  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+syllables = "-  -  -  -  la -  la -  la -  la -  o  -  -  -  | o  -  -  -  -  -  e  -  ye -  -  -  o  -  -  -  | ye -  -  -  -  -  -  -  e  -  -  -  o  -  wo -  | ye -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+
+# The vamp: the lead calls and the group answers, out of the hook into the dub.
+[voices.lead.phrases.vamp]
+gate      = ".  .  .  .  x  -  -  -  x  -  x  -  -  -  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  x  -  x  -  | x  -  -  -  -  -  x  -  x  -  -  -  -  -  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+notes     = "-  -  -  -  C4 -  -  -  A3 -  C4 -  -  -  -  -  | -  -  -  -  -  -  -  -  -  -  -  -  D4 -  E4 -  | C4 -  -  -  -  -  A3 -  G3 -  -  -  -  -  -  -  | -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+accent    = ".  .  .  .  X  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | X  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+syllables = "-  -  -  -  ye -  -  -  e  -  ye -  -  -  -  -  | -  -  -  -  -  -  -  -  -  -  -  -  o  -  wo -  | ye -  -  -  -  -  e  -  o  -  -  -  -  -  -  -  | -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+
+[voices.lead.phrases.vamp-end]
+gate      = ".  .  .  .  x  -  -  -  x  x  -  -  x  -  -  -  | x  -  -  -  -  -  -  -  .  .  .  .  .  .  .  ."
+notes     = "-  -  -  -  C4 -  -  -  D4 C4 -  -  A3 -  -  -  | G3 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+accent    = ".  .  .  .  X  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+slide     = ".  .  .  .  .  .  .  .  S  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+syllables = "-  -  -  -  ye -  -  -  e  -  -  -  o  -  -  -  | o  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+
+# Ad-libs over the group's held chords: high, free and with runs.
+[voices.lead.phrases.adlib-a]
+gate      = ".  .  .  .  x  -  -  -  x  x  x  -  -  -  .  .  | .  .  x  -  x  -  x  -  -  -  -  -  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+notes     = "-  -  -  -  E4 -  -  -  D4 C4 A3 -  -  -  -  -  | -  -  C4 -  D4 -  E4 -  -  -  -  -  -  -  -  -  | -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+accent    = ".  .  .  .  X  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  X  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+slide     = ".  .  .  .  .  .  .  .  S  S  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+syllables = "-  -  -  -  he -  -  -  ye -  -  -  -  -  -  -  | -  -  o  -  o  -  ye -  -  -  -  -  -  -  -  -  | -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+
+[voices.lead.phrases.adlib-b]
+gate      = ".  .  .  .  x  -  -  -  -  -  x  -  x  -  -  -  | x  x  x  -  -  -  -  -  x  -  -  -  -  -  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+notes     = "-  -  -  -  G4 -  -  -  -  -  E4 -  D4 -  -  -  | C4 D4 C4 -  -  -  -  -  A3 -  -  -  -  -  -  -  | -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+accent    = ".  .  .  .  X  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+slide     = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | S  S  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+syllables = "-  -  -  -  o  -  -  -  -  -  wo -  ye -  -  -  | e  -  -  -  -  -  -  -  o  -  -  -  -  -  -  -  | -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+
+[voices.lead.phrases.adlib-c]
+gate      = ".  .  .  .  x  -  x  -  -  -  -  -  x  -  -  -  | x  -  -  -  x  -  x  -  -  -  -  -  -  -  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+notes     = "-  -  -  -  C4 -  E4 -  -  -  -  -  D4 -  -  -  | C4 -  -  -  A3 -  G3 -  -  -  -  -  -  -  -  -  | -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+accent    = ".  .  .  .  .  .  X  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+syllables = "-  -  -  -  he -  ye -  -  -  -  -  ye -  -  -  | o  -  -  -  wo -  o  -  -  -  -  -  -  -  -  -  | -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+
+# The machine: a vocoder lead, the same formant voice opening 24 bands of a
+# detuned saw and square. It teases the hook in the intro and the build,
+# sings the bridge in the dub and verse 2, joins the lead's hook at the peak,
+# and sings the tag in the dub-out.
+[voices.robot]
+sound = { synth = "mph_vocoder", why = "A vocoder lead, as Detroit techno uses one: 24 bands from 100 Hz to 8 kHz follow a formant voice and open the same bands of two detuned saws and a square." }
+gain_db = -5
+cues = [
+  [14, "teaser"], [28, "teaser"], [84, "bridge-a"], [88, "bridge-b"], [116, "hook-low"],
+  [120, "hook-low"], [124, "hook-low"], [130, "verse-a"], [134, "verse-b"], [138, "verse-c"],
+  [180, "tag-a"], [184, "tag-b"],
+]
+
+[voices.robot.mix]
+highpass = 150
+level = -1
+send = { echo = -inf, hall = -16 }
+
+# The teasers filtered thin; the last word of every line thrown into the echo.
+[voices.robot.automate]
+highpass = [[1, 150], [14, 150], [14, 1200], [16, 1200], [16, 150], [28, 150], [28, 1200], [30, 1200], [30, 150]]
+echo = [
+  [1, -inf], [15.5, -inf], [15.5, 0], [15.75, 0],
+  [15.75, -inf], [29.5, -inf], [29.5, 0], [29.75, 0],
+  [29.75, -inf], [87, -inf], [87, 0], [87.25, 0],
+  [87.25, -inf], [91.25, -inf], [91.25, 0], [91.5, 0],
+  [91.5, -inf], [117.5, -inf], [117.5, 0], [117.75, 0],
+  [117.75, -inf], [121.5, -inf], [121.5, 0], [121.75, 0],
+  [121.75, -inf], [125.5, -inf], [125.5, 0], [125.75, 0],
+  [125.75, -inf], [133, -inf], [133, 0], [133.25, 0],
+  [133.25, -inf], [137, -inf], [137, 0], [137.25, 0],
+  [137.25, -inf], [141, -inf], [141, 0], [141.25, 0],
+  [141.25, -inf], [183.75, -inf], [183.75, 0], [184, 0],
+  [184, -inf], [185.5, -inf], [185.5, 0], [185.75, 0],
+  [185.75, -inf],
+]
+
+# The first two bars of the hook, a teaser in the intro and the build.
+[voices.robot.phrases.teaser]
+gate      = ".  .  .  .  x  -  x  -  x  -  -  -  x  x  -  -  | .  .  x  -  x  -  x  -  x  -  -  -  -  -  .  ."
+notes     = "-  -  -  -  G3 -  A3 -  C4 -  -  -  D4 C4 -  -  | -  -  E4 -  D4 -  C4 -  G3 -  -  -  -  -  -  -"
+accent    = ".  .  .  .  .  .  .  .  X  .  .  .  .  .  .  .  | .  .  X  .  .  .  .  .  .  .  .  .  .  .  .  ."
+slide     = ".  .  .  .  .  .  .  .  .  .  .  .  S  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+syllables = "-  -  -  -  o  -  wo -  ye -  -  -  e  -  -  -  | -  -  o  -  la -  la -  ye -  -  -  -  -  -  -"
+
+# The bridge, in the dub: straight eighths, a machine's line.
+[voices.robot.phrases.bridge-a]
+gate      = ".  .  .  .  x  -  x  -  x  -  -  -  x  -  x  -  | x  -  -  -  -  -  .  .  x  -  x  -  x  -  -  -  | .  .  .  .  x  -  x  -  x  -  -  -  x  -  x  -  | x  -  -  -  -  -  -  -  .  .  .  .  .  .  .  ."
+notes     = "-  -  -  -  A3 -  A3 -  C4 -  -  -  A3 -  G3 -  | G3 -  -  -  -  -  -  -  E3 -  G3 -  A3 -  -  -  | -  -  -  -  C4 -  C4 -  E4 -  -  -  D4 -  C4 -  | D4 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+accent    = ".  .  .  .  .  .  .  .  X  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  X  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+syllables = "-  -  -  -  da -  da -  o  -  -  -  da -  da -  | o  -  -  -  -  -  -  -  da -  da -  o  -  -  -  | -  -  -  -  da -  da -  o  -  -  -  da -  da -  | o  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+
+[voices.robot.phrases.bridge-b]
+gate      = ".  .  .  .  x  -  x  -  x  -  -  -  x  -  x  -  | x  -  -  -  -  -  .  .  x  -  x  -  x  -  -  -  | .  .  .  .  x  -  -  -  x  -  -  -  x  -  -  -  | .  .  .  .  x  -  -  -  -  -  -  -  .  .  .  ."
+notes     = "-  -  -  -  E4 -  E4 -  D4 -  -  -  C4 -  A3 -  | C4 -  -  -  -  -  -  -  G3 -  A3 -  C4 -  -  -  | -  -  -  -  A3 -  -  -  G3 -  -  -  A3 -  -  -  | -  -  -  -  G3 -  -  -  -  -  -  -  -  -  -  -"
+accent    = ".  .  .  .  .  .  .  .  X  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+syllables = "-  -  -  -  da -  da -  o  -  -  -  da -  da -  | o  -  -  -  -  -  -  -  da -  da -  o  -  -  -  | -  -  -  -  la -  -  -  la -  -  -  ye -  -  -  | -  -  -  -  o  -  -  -  -  -  -  -  -  -  -  -"
+
+# Verse 2: verse 1's lines, sung by the machine.
+[voices.robot.phrases.verse-a]
+gate      = ".  .  .  .  x  -  x  -  -  -  x  -  x  -  x  -  | x  -  -  -  x  x  -  -  x  -  x  -  -  -  -  -  | .  .  x  -  x  -  x  -  -  -  -  -  x  -  x  -  | x  -  -  -  -  -  .  .  .  .  .  .  .  .  .  ."
+notes     = "-  -  -  -  A3 -  C4 -  -  -  A3 -  G3 -  A3 -  | C4 -  -  -  D4 C4 -  -  A3 -  G3 -  -  -  -  -  | -  -  F3 -  A3 -  C4 -  -  -  -  -  A3 -  G3 -  | E3 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+accent    = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | X  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+slide     = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  S  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+syllables = "-  -  -  -  m  -  o  -  -  -  la -  da -  da -  | o  -  -  -  ye -  -  -  e  -  o  -  -  -  -  -  | -  -  la -  la -  ye -  -  -  -  -  o  -  wo -  | o  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+
+[voices.robot.phrases.verse-b]
+gate      = ".  .  .  .  x  -  x  -  x  -  -  -  x  -  x  -  | x  -  -  -  x  -  x  -  x  x  x  -  -  -  -  -  | .  .  x  -  x  -  x  -  -  -  x  -  x  -  -  -  | x  -  -  -  -  -  .  .  .  .  .  .  .  .  .  ."
+notes     = "-  -  -  -  C4 -  A3 -  C4 -  -  -  D4 -  C4 -  | E4 -  -  -  D4 -  C4 -  D4 C4 A3 -  -  -  -  -  | -  -  A3 -  C4 -  A3 -  -  -  G3 -  F3 -  -  -  | G3 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+accent    = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | X  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+slide     = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  S  S  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+syllables = "-  -  -  -  o  -  wo -  ye -  -  -  la -  la -  | o  -  -  -  e  -  la -  ye -  -  -  -  -  -  -  | -  -  la -  la -  ye -  -  -  e  -  o  -  -  -  | o  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+
+[voices.robot.phrases.verse-c]
+gate      = ".  .  .  .  x  -  x  -  x  -  -  -  -  -  x  -  | x  -  x  -  x  -  -  -  x  x  -  -  x  -  -  -  | .  .  x  -  x  -  x  -  x  -  x  -  x  -  -  -  | x  -  -  -  -  -  -  -  .  .  .  .  .  .  .  ."
+notes     = "-  -  -  -  C4 -  D4 -  E4 -  -  -  -  -  D4 -  | C4 -  D4 -  E4 -  -  -  D4 C4 -  -  A3 -  -  -  | -  -  G3 -  A3 -  C4 -  D4 -  C4 -  A3 -  -  -  | C4 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+accent    = ".  .  .  .  .  .  .  .  X  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+slide     = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  S  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+syllables = "-  -  -  -  ye -  ye -  o  -  -  -  -  -  la -  | o  -  la -  ye -  -  -  e  -  -  -  o  -  -  -  | -  -  la -  la -  ye -  o  -  e  -  wo -  -  -  | u  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+
+# At the peak, the machine sings the hook's first two bars a third below the
+# lead.
+[voices.robot.phrases.hook-low]
+gate      = ".  .  .  .  x  -  x  -  x  -  -  -  x  x  -  -  | .  .  x  -  x  -  x  -  x  -  -  -  -  -  .  ."
+notes     = "-  -  -  -  E3 -  F3 -  A3 -  -  -  B3 A3 -  -  | -  -  C4 -  B3 -  A3 -  E3 -  -  -  -  -  -  -"
+accent    = ".  .  .  .  .  .  .  .  X  .  .  .  .  .  .  .  | .  .  X  .  .  .  .  .  .  .  .  .  .  .  .  ."
+slide     = ".  .  .  .  .  .  .  .  .  .  .  .  S  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+syllables = "-  -  -  -  o  -  wo -  ye -  -  -  e  -  -  -  | -  -  o  -  la -  la -  ye -  -  -  -  -  -  -"
+
+# The tag, in the dub-out, deep in the echo.
+[voices.robot.phrases.tag-a]
+gate      = ".  .  .  .  x  -  -  -  -  -  x  -  x  -  -  -  | x  -  -  -  -  -  -  -  .  .  .  .  x  -  x  -  | x  -  -  -  -  -  x  -  x  -  -  -  -  -  -  -  | .  .  .  .  .  .  .  .  x  -  x  -  x  -  -  -"
+notes     = "-  -  -  -  C4 -  -  -  -  -  A3 -  G3 -  -  -  | E3 -  -  -  -  -  -  -  -  -  -  -  G3 -  A3 -  | C4 -  -  -  -  -  D4 -  C4 -  -  -  -  -  -  -  | -  -  -  -  -  -  -  -  G3 -  A3 -  C4 -  -  -"
+accent    = ".  .  .  .  X  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+syllables = "-  -  -  -  o  -  -  -  -  -  ye -  ye -  -  -  | o  -  -  -  -  -  -  -  -  -  -  -  la -  la -  | o  -  -  -  -  -  ye -  e  -  -  -  -  -  -  -  | -  -  -  -  -  -  -  -  o  -  wo -  ye -  -  -"
+
+[voices.robot.phrases.tag-b]
+gate      = "x  -  -  -  -  -  -  -  x  -  -  -  x  -  -  -  | .  .  .  .  .  .  .  .  x  -  -  -  -  -  -  -"
+notes     = "A3 -  -  -  -  -  -  -  G3 -  -  -  E3 -  -  -  | -  -  -  -  -  -  -  -  G3 -  -  -  -  -  -  -"
+accent    = "X  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+syllables = "e  -  -  -  -  -  -  -  o  -  -  -  o  -  -  -  | -  -  -  -  -  -  -  -  o  -  -  -  -  -  -  -"
+
+# The group: three voices in parallel major triads (F, G and C), answering
+# the lead and holding chords under its ad-libs.
+[voices.choir]
+sound = { synth = "mph_singer", why = "The lead's formant voice three times over, softer and breathier, each part with its own vibrato and waver." }
+chord = [0, 4, 7]
+params = { attack = 0.12, release = 0.35, vibrato = 0.25, breath = 0.08, scoop = 0.3 }
+gain_db = -3
+cues = [
+  [62, "answer"], [66, "answer"], [70, "answer"], [72, "vamp"], [76, "vamp"],
+  [106, "answer"], [118, "answer"], [122, "answer"], [126, "answer"], [154, "answer"],
+  [158, "answer"], [162, "answer"], [164, "pad"], [168, "pad"], [172, "pad"],
+  [202, "answer"],
+]
+
+[voices.choir.mix]
+highpass = 150
+level = -5
+send = { hall = -10 }
+
+# The outro's answer filtered thin, as the lead's hook line is.
+[voices.choir.automate]
+highpass = [[1, 150], [202, 150], [202, 500], [204, 500], [204, 150]]
+
+# The group's answer to each hook line: F major, then G and C major.
+[voices.choir.phrases.answer]
+gate      = ".  .  .  .  .  .  .  .  .  .  .  .  x  -  -  -  | x  -  -  -  -  -  x  -  -  -  -  -  -  -  .  ."
+notes     = "-  -  -  -  -  -  -  -  -  -  -  -  F3 -  -  -  | G3 -  -  -  -  -  C4 -  -  -  -  -  -  -  -  -"
+accent    = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | X  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+syllables = "-  -  -  -  -  -  -  -  -  -  -  -  o  -  -  -  | ye -  -  -  -  -  e  -  -  -  -  -  -  -  -  -"
+
+[voices.choir.phrases.vamp]
+gate      = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  x  -  x  -  -  -  x  -  -  -  -  -  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  x  -  x  -  -  -  x  -  -  -  -  -  .  ."
+notes     = "-  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | -  -  G3 -  G3 -  -  -  C4 -  -  -  -  -  -  -  | -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | -  -  G3 -  G3 -  -  -  C4 -  -  -  -  -  -  -"
+accent    = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  X  .  .  .  .  .  .  ."
+syllables = "-  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | -  -  o  -  wo -  -  -  ye -  -  -  -  -  -  -  | -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | -  -  o  -  wo -  -  -  ye -  -  -  -  -  -  -"
+
+# Held chords under the ad-libs: ooh, F, G, F and C major.
+[voices.choir.phrases.pad]
+gate      = "x  -  -  -  -  -  -  -  -  -  -  -  -  -  .  .  | x  -  -  -  -  -  -  -  -  -  -  -  -  -  .  .  | x  -  -  -  -  -  -  -  -  -  -  -  -  -  .  .  | x  -  -  -  -  -  -  -  -  -  -  -  -  -  .  ."
+notes     = "F3 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | G3 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | F3 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | C4 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+syllables = "u  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | u  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | u  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | u  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+
+# The train's horn, synthesised (the source's horn sounds like an E major
+# chord set against the song's harmony): E3, G#3 and B3, from the second beat
+# of an even bar. It swells for two bars and a beat, peaks on the third beat
+# of its third bar, then bends down three semitones across the bar where the
+# section drops.
+[voices.horn]
+sound = { synth = "mph_horn", why = "A passing train horn: two detuned reeds a note through a brassy resonance, swelling as it nears, then bending down and darker as it passes." }
+chord = [0, 4, 7]
+cues = [[34, "horn"], [110, "horn"], [194, "horn"]]
+
+[voices.horn.mix]
+highpass = 90
+send = { echo = -inf, hall = -10 }
+
+# Each horn's peak thrown into the echo as it lands the drop.
+[voices.horn.automate]
+echo = [[1, -inf], [36.5, -inf], [36.5, -4], [37.25, -4], [37.25, -inf], [112.5, -inf], [112.5, -4], [113.25, -4], [113.25, -inf], [196.5, -inf], [196.5, -4], [197.25, -4], [197.25, -inf]]
+
+[voices.horn.phrases.horn]
+gate  = ".  .  .  .  x  -  -  -  -  -  -  -  -  -  -  -  | -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+notes = "-  -  -  -  E3 -  -  -  -  -  -  -  -  -  -  -  | -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+
+# --- the mix (spec/components/mix.md) ---
+
+# A dub echo on a dotted eighth, alternating left and right, fading into the hall.
+[sends.echo]
+kind = "delay"
+beats = 0.75
+feedback = 0.45
+lowpass = 2800
+pingpong = true
+highpass = 300
+level = -2
+send = { hall = -10 }
+
+[sends.hall]
+kind = "reverb"
+decay_s = 3.2
+damping = 6000
+predelay_ms = 25
+highpass = 250
+level = -4
+
+[master]
+highpass = 25
+
+# The kick ducks the parts that hold under it: the bass, the organ bass and
+# the strings. The stabs sit on the off-beats and need none. Dean's
+# production duck: BM-SC-01's exaggerated take, 24 dB released over 430 ms.
+[sidechain]
+trigger = "kick"
+targets = ["bass", "organ", "strings_a", "strings_b"]
+depth_db = 24.0
+attack_ms = 2.0
+release_ms = 430.0

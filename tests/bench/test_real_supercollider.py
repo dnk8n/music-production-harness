@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from mph.bench import audio, kit, render, sc, score
+from mph.bench import audio, kit, levels, render, sc, score
 from mph.catalogue import db
 from mph.proc import SubprocessRunner
 from tests.bench import test_phrases as phrases
@@ -393,6 +393,7 @@ def test_the_909_kit_hisses_and_its_kick_gets_out_of_the_way(
 
 @pytest.mark.req("REQ-BEN-19")
 @pytest.mark.req("REQ-TRK-08")
+@pytest.mark.req("REQ-BEN-09")
 @pytest.mark.parametrize("synth", ["mph_singer", "mph_vocoder", "mph_horn"])
 def test_phrases_sing_and_pass_with_real_supercollider(
     real: SubprocessRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, synth: str
@@ -405,3 +406,9 @@ def test_phrases_sing_and_pass_with_real_supercollider(
     outcome = render.run("BM-PH", cfg_for(tmp_path), real, None, engine="supercollider")
     failures = [m for m in outcome.report["measurements"] if not m["passed"]]  # type: ignore[attr-defined]
     assert failures == []
+    # Each singing synth is loud enough to reach its level without the gain's
+    # limit. The horn swells for seconds, so these short notes never get loud.
+    low, high = levels.GAIN_RANGE_DB
+    gains = {k["voice"]: k["gain_db"] for k in outcome.report["kit"]}  # type: ignore[attr-defined]
+    if synth != "mph_horn":
+        assert all(low < gain < high for gain in gains.values()), gains

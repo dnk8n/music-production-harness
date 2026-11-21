@@ -38,7 +38,9 @@ no placeholder can stand in for.
   before starting the next.
 - Remixes are for Dean's own listening: every render carries
   `licence:private` (REQ-MST-04). Never quote the lyrics, in the repo or in
-  messages. Name a line by where it sits and how long it lasts.
+  messages. Name a line by where it sits and how long it lasts. A free
+  version that uses nothing of the source is the exception: it is
+  `licence:clear` (below).
 
 ## Steps
 
@@ -85,6 +87,39 @@ no placeholder can stand in for.
 - Dean's production duck is BM-SC-01's exaggerated take: 24 dB in 2 ms,
   released over 430 ms. The parts that hold under the kick take it (bass,
   organ bass, strings); off-beat stabs need none.
-- A free version of a remix, for someone without Dean's samples, is issue
-  #68: fully synthesised parts and cleared vocals with the same character
-  and key.
+
+## A free version: lines written as phrases
+
+A free version is for anyone without Dean's library (issue #68). The first
+is `examples/projects/love-train-remix-1-free-synthesised/` (BM-LTFS-01 to
+05, spec/tracks/love-train.md): remix 1's form, parts and mix, with a 909
+kit, a soul singer (`mph_singer`), a machine (`mph_vocoder`), a group
+(`mph_singer` with a chord) and the horn (`mph_horn`), all synths, so it
+renders the same from any fresh clone. Its vocal lines are phrases
+(REQ-TRK-08): notes with a syllable each (REQ-BEN-19), accents and slides,
+one table per line, cued like clips. What it taught:
+
+- Write the lines the source's way: from beat 2 of an even bar, 2 to 4
+  bars long, in the key over the parts' chords, with a hook that returns
+  and a group that answers it. A group in parallel triads stays in the key
+  only on some roots (F, G and C major over C major's two chords): check
+  every chord tone.
+- Write the rows in aligned columns, a bar between each `|`. Only a
+  one-step note slides, into a note on the very next step, and that note
+  sings `-` (it keeps the syllable it glides from).
+- A voice's level is measured on the first note of its first phrase, so
+  put a line that represents the voice first.
+- A section that lists a phrase voice needs one of its phrases playing in
+  it, in every block too: a block cuts a section at its own bars, so a cue
+  just past the block leaves the voice with nothing to carry on. Split the
+  section where the voice comes in (the free version's dub is two
+  sections).
+- Lines that aren't ducked thin the duck in the whole mix. The free
+  version's sit 5 dB under their matched level (`gain_db = -5`), which keeps
+  the whole-mix pump below -2 dB in every block.
+- Check a render's balance bar by bar (each stem's K-weighted loudness
+  against the mix) and each voice's gain in the report: a synth held at
+  +12 dB is too quiet at its source (REQ-BEN-09). The first singing synths
+  were 17 dB under their target until their output was raised.
+- A free version with cleared vocal samples (Freesound and other free
+  sources) is the next variant of issue #68.

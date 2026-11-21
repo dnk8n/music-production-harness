@@ -134,6 +134,19 @@ sounds from free sources, and all the context that had lived only in the
 agents' memory and chats. That is this page, the rest of `docs/`, and
 `examples/` (spec/components/projects.md).
 
+## 2026-11-21: remix 1 for everyone
+
+The first variant of issue #68: remix 1 with nothing from the song and no
+samples, so a fresh clone renders it the same anywhere and every render is
+`licence:clear`. Version 2's form, parts and mix stay; a 909 kit, a soul
+singer (formant), a machine (vocoder), a group and the train's horn are new
+synths, singing wordless lines written as phrases (REQ-TRK-08) with a
+syllable per note (REQ-BEN-19). Two things learned on the way, now in the
+spec: a legato note can't be timed against its template, because the note
+before still sounds over its start (REQ-BEN-01); and the first singing
+synths were so quiet that level matching held them at +12 dB, 17 dB under
+their target, until they were made louder at the source (REQ-BEN-09).
+
 ## Outside the repo
 
 Some things are kept on Dean's Mac, on purpose:

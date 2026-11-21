@@ -35,9 +35,17 @@ unless Dean reorders.
 4. **#50** Effects benchmarks: delay throw, filter build, reverb wash, beat
    repeat. Then **#30**: Renoise takes for the acid line and the sidechain.
 5. **#68** Remix 1 for everyone: a free version with no private sounds, so a
-   fresh install can render the remix. `mph projects fill` covers the drums
-   already; the vocals and horn need a free recording in the same key and
-   tempo. Waits on Dean's decision.
+   fresh install can render the remix. Dean's answers (2026-11-15): CC-BY is
+   fine, and two variants. Three PRs, in order:
+   1. the fully synthesised variant: a 909 kit, a formant lead, a vocoder
+      lead, a group and the horn, all synths, as written phrases
+      (`love-train-remix-1-free-synthesised`, BM-LTFS-01 to 05; PR open
+      2026-11-21, waiting for Dean's ears and the Renoise takes on the
+      Mac);
+   2. the cleared-samples variant: vocal samples from Freesound and other
+      free sources, with a command that fetches them and a track-analysis
+      command;
+   3. SunVox takes of both.
 
 ## Later
 

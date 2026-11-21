@@ -1,0 +1,7 @@
+# spec/tracks/love-train.md#bm-ltfs-03: bars 97-128 of the free remix 1 (BM-LTFS-05):
+# the breakdown, the second horn and the peak.
+id = "BM-LTFS-03"
+title = "Remix 1 for everyone, bars 97-128: breakdown, the horn again and the peak"
+hear = "the second pre-chorus over floating strings and stabs, with no kick, then a hook line and the group's answer. The second horn rises over rising hats and bends into the peak on bar 17 of the block, where everything plays at once and the machine sings each hook line with the singer, a third below."
+project = "Love Train remix 1, free: synthesised"
+excerpt = { of = "BM-LTFS-05", bars = [97, 128] }

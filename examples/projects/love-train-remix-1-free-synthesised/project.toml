@@ -1,0 +1,11 @@
+# One of Dean's example projects (spec/components/projects.md).
+name = "Love Train remix 1, free: synthesised"
+about = """Remix 1 of "Love Train" (Detroit techno with a splash of Jersey garage), made \
+for everyone: the same 8-minute form, parts and mix, with nothing from the song and no \
+samples. A synthesised 909 kit, new wordless vocal lines for a soul singer (a formant \
+synth), a machine (a vocoder) and a group, and a synthesised train horn. Every render is \
+licence:clear. Four short blocks and the whole track, each as a SuperCollider render and a \
+Renoise song."""
+spec = "spec/tracks/love-train.md"
+needs = """Nothing the repo can't hold: SuperCollider for the supercollider takes and Renoise \
+for the renoise takes. No samples, recordings or keys."""

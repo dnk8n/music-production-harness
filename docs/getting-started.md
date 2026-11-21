@@ -119,11 +119,17 @@ uv run mph projects show north-star
   on     drum-patterns                        10 benchmarks  Drum patterns  (example)
   on     effects                               0 benchmarks  Effects  (example)
   on     love-train-remix-1-detroit-x-jersey   5 benchmarks  Love Train remix 1: Detroit x Jersey  (example)
+  on     love-train-remix-1-free-synthesised   5 benchmarks  Love Train remix 1, free: synthesised  (example)
   on     north-star                            2 benchmarks  North star  (example)
   on     sidechain                             1 benchmark  Sidechain  (example)
   on     vocals                                0 benchmarks  Vocals  (example)
-19 benchmarks on.
+24 benchmarks on.
 ```
+
+To hear a whole track with no samples at all, start with
+`love-train-remix-1-free-synthesised`: synths play every sound in it,
+singing included, so it renders the same from any fresh clone, and every
+render of it is `licence:clear`.
 
 A project with no benchmarks yet holds a plan: `mph projects show` lists the
 benchmarks its spec section describes that have no score yet.
@@ -148,7 +154,8 @@ and CC-BY sounds of the right length, labels each with the role it was found
 for, and analyses it so the next render finds it. CC-BY sounds need their
 credit if you ever publish a render. Recordings can't be replaced by a
 placeholder: the Love Train remix plays stems of a commercial song, and its
-README says how to make them from your own copy.
+README says how to make them from your own copy. Its free version needs
+neither.
 
 ## 7. Render and listen
 

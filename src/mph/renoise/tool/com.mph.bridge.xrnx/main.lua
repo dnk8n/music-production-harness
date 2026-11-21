@@ -16,9 +16,16 @@
 -- Nothing is left unsaved (REQ-REN-08). Renoise can count a step's changes as
 -- unsaved even when the step saved the song, so a save that must leave the
 -- song with nothing to ask about runs in an idle step with no changes in it.
+--
+-- A big song takes longer to build than Renoise lets one call run before it
+-- asks whether to stop the script, so the build runs in a coroutine that
+-- yields every fraction of a second (slice.lua) and goes on in the next idle
+-- step ("building"). The save after the build stays in the step that makes
+-- the build's last change.
 
 local build = require("build")
 local json = require("json")
+local slice = require("slice")
 
 local NEW_SONG_TIMEOUT_S = 120
 local POLL_EVERY_S = 1
@@ -174,10 +181,10 @@ local function save_song()
   next_song()
 end
 
-local function build_song()
+-- Once the build is done: what it shows, the first save, the first render.
+local function after_build()
   local plan = current_song()
   local song = renoise.song()
-  build.build(song, plan, job.devices)
   local shown = build.shown(song, plan)
   if shown then
     shown.song = stem(plan.save)
@@ -186,6 +193,31 @@ local function build_song()
   renoise.app():save_song_as(plan.save)
   job.render = 0
   next_render()
+end
+
+-- Runs the build for one slice. An error in it fails the job with that error.
+local function continue_build()
+  slice.begin()
+  local ok, problem = coroutine.resume(job.builder)
+  if not ok then
+    job.builder = nil
+    error(problem, 0)
+  end
+  if coroutine.status(job.builder) ~= "dead" then
+    job.phase = "building" -- more on the next idle step
+    return
+  end
+  job.builder = nil
+  after_build()
+end
+
+local function build_song()
+  local plan = current_song()
+  local song = renoise.song()
+  job.builder = coroutine.create(function()
+    build.build(song, plan, job.devices)
+  end)
+  continue_build()
 end
 
 local function start(folder, name)
@@ -208,6 +240,7 @@ end
 local STEPS = {
   open = save_open_song,
   build = build_song,
+  building = continue_build,
   rendered = next_render,
   save = save_song,
 }

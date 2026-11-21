@@ -27,6 +27,7 @@
 -- doesn't have and its other preset settings, so one run on the Mac shows how
 -- Renoise names and shows them.
 
+local slice = require("slice")
 local M = {}
 
 M.SAMPLES = 1024 -- values tried across a parameter's range, to see what it shows
@@ -107,6 +108,7 @@ local function shows(kind, parameter)
   end
   local was, rows = parameter.value, {}
   for k = 0, count do
+    slice.pause()
     parameter.value = low + (high - low) * k / count
     rows[#rows + 1] = { value = parameter.value, text = parameter.value_string }
   end
@@ -313,6 +315,7 @@ end
 function M.describe(device)
   local found = {}
   for _, parameter in ipairs(device.parameters) do
+    slice.pause()
     local was, shown = parameter.value, {}
     for _, at in ipairs({ parameter.value_min, parameter.value_default, parameter.value_max }) do
       parameter.value = at
@@ -399,6 +402,7 @@ local function add_devices(track, devices, described, problems, label)
     track:delete_device_at(#track.devices)
   end
   for _, entry in ipairs(devices) do
+    slice.pause()
     local ok, device = pcall(track.insert_device_at, track, entry.path, #track.devices + 1)
     if not ok or device == nil then
       problems[#problems + 1] = string.format(
@@ -420,6 +424,7 @@ local function add_devices(track, devices, described, problems, label)
       device.display_name = entry.name
       for _, setting in ipairs(entry.params) do
         if setting.unit ~= "preset" then
+          slice.pause()
           settle(device, entry.path, setting, problems, where)
         end
       end
@@ -460,12 +465,14 @@ local function automate(song, index, devices, lane, problems, label)
   end
   local low, span = parameter.value_min, parameter.value_max - parameter.value_min
   for _, part in ipairs(lane.patterns) do
+    slice.pause()
     local pattern = song:pattern(song.sequencer.pattern_sequence[part.pattern])
     local track = pattern:track(index)
     local automation = track:find_automation(parameter) or track:create_automation(parameter)
     automation.playmode = renoise.PatternTrackAutomation.PLAYMODE_LINES
     local points = {}
     for _, point in ipairs(part.points) do
+      slice.pause()
       local value = M.value_for(entry.path, parameter, lane.unit, point[2])
       if value == nil then
         problems[#problems + 1] =

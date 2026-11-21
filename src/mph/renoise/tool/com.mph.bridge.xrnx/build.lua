@@ -15,6 +15,7 @@
 -- Lines are 0-based across the whole song; Renoise's own indices are 1-based.
 
 local mixer = require("mixer")
+local slice = require("slice")
 
 local M = {}
 
@@ -62,6 +63,7 @@ local function ensure_patterns(song, plan)
   end
   local starts, line = {}, 0
   for position, wanted in ipairs(plan.patterns) do
+    slice.pause()
     local pattern = song:pattern(sequencer.pattern_sequence[position])
     pattern:clear()
     pattern.number_of_lines = wanted.lines
@@ -139,6 +141,7 @@ local function setup_clips(instrument, plan)
     instrument:insert_sample_at(#instrument.samples + 1)
   end
   for k, clip in ipairs(plan.clips) do
+    slice.pause()
     local sample = instrument.samples[k]
     if not sample.sample_buffer:load_from(clip.file) then
       error("Renoise could not load " .. clip.file)
@@ -201,6 +204,7 @@ local function setup_synth(instrument, plan, zones, name, described)
   end
   release_envelope(instrument, plan.release or 0, described)
   for k, zone in ipairs(zones) do
+    slice.pause()
     local sample = instrument.samples[k]
     if not sample.sample_buffer:load_from(zone.file) then
       error("Renoise could not load " .. zone.file)
@@ -275,9 +279,11 @@ function M.build(song, plan, described)
   ensure_instruments(song, plan.instruments or #plan.tracks)
   local starts = ensure_patterns(song, plan)
   for index, track_plan in ipairs(plan.tracks) do
+    slice.pause()
     setup_track(song:track(index), track_plan, plan.mix == nil)
     local pitch_of = setup_sound(song, track_plan, index, described)
     for _, note in ipairs(track_plan.notes) do
+      slice.pause()
       write_note(song, starts, index, track_plan, note, (not note.off) and pitch_of(note) or nil)
     end
   end

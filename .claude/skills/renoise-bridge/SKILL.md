@@ -40,6 +40,11 @@ REQ-REN-03 and REQ-REN-08 to REQ-REN-12):
 5. A render needs the installed tool to match the code that renders. Close
    Renoise, run `uv run mph renoise install` from that worktree, render, then
    put back the tool Dean's checkout uses.
+6. A new file in the tool's folder goes on `bridge.TOOL_FILES`, the list
+   `mph renoise install` copies, and a new Lua file also goes on
+   `rerender.CODE`, so it counts as a change to the renders (REQ-BEN-14).
+   `test_bridge.py` checks both. A file left off the first list stopped
+   Renoise loading the tool at all (2026-11-21).
 
 ## What Renoise 3.5.4 calls and shows
 

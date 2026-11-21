@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import shutil
+from importlib import resources
 from pathlib import Path
 
 import pytest
 
 from mph import config
+from mph.bench import rerender
 from mph.proc import Result
 from mph.renoise import bridge, luadata
 from tests.fakes import FakeRunner
@@ -74,6 +76,17 @@ def test_install_copies_the_tool_and_names_the_job_folder(tmp_path: Path) -> Non
     assert bridge.status(home) == "outdated"
     (target / "main.lua").unlink()
     assert bridge.status(home) == "missing"
+
+
+@pytest.mark.req("REQ-REN-03")
+@pytest.mark.req("REQ-BEN-14")
+def test_every_file_of_the_tool_is_installed_and_shapes_the_render() -> None:
+    # A file left off the installer's list stopped Renoise loading the tool (2026-11-21).
+    folder = resources.files("mph.renoise").joinpath("tool", bridge.TOOL_FOLDER)
+    shipped = sorted(p.name for p in folder.iterdir() if not p.name.startswith("."))
+    assert sorted(bridge.TOOL_FILES) == shipped
+    lua = {f"renoise/tool/{bridge.TOOL_FOLDER}/{name}" for name in shipped if name.endswith(".lua")}
+    assert lua <= set(rerender.CODE)
 
 
 def test_install_needs_renoise_to_have_run_once(tmp_path: Path) -> None:

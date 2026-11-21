@@ -256,7 +256,9 @@ compare against it:
   pattern says, every time, and stay deterministic (REQ-AUD-05). Measuring
   against the same target without the ducking shows the envelope itself,
   whatever the pad or bass is playing. The envelope can pass while nothing
-  is heard, so the mix is measured too. Dean couldn't hear a 6 dB dip
+  is heard, so the mix is measured too, and as loudness: unweighted, the
+  level under the kick even rose a little when the targets ducked, from
+  low-end cancellation. Dean couldn't hear a 6 dB dip
   released over 200 ms (2026-11-11). It changed the mix by about 0.5 dB:
   the kick masks the first 100 ms after each hit, and by then the dip was
   nearly over. A hold keeps the dip at full depth before it swells back:
@@ -699,7 +701,9 @@ beat. In bypass, the pad and bass hold steady under the kick.
   asked for "one more extreme level, over the top just to give the
   listener a real idea about what side chain compression really is, for
   contrast". Depth and release alone barely go past `exaggerated` within
-  one beat, so `over-the-top` holds the dip as well.
+  one beat, so `over-the-top` holds the dip as well. It stops at 36 dB
+  because at 48 dB the swell stepped more than 0.5 dB between windows;
+  36 dB stays within that, at 0.30 dB.
 - **Verify:** measure, listen
 
 ## Vocals

@@ -143,4 +143,5 @@ Some things are kept on Dean's Mac, on purpose:
 - Three throwaway Renoise songs from 2026-11-09, made before mph could build
   songs, as a progress check: a 13-minute sketch, a second version with
   vocal chops and sound design, and a 3:27 radio cut. They were written
-  straight as Renoise XML and are binary, so they stay on the Mac.
+  straight as Renoise XML and are binary, so they stay on the Mac, in
+  `/Users/dean/dj/mph-snapshots/`.

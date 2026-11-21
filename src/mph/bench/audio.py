@@ -247,7 +247,8 @@ def feel_of(matches: Sequence[Match], beat_s: float) -> dict[int, float]:
 def residue_after(stem: Audio, start_s: float, end_s: float, rate: int) -> float:
     """Peak level between two times, e.g. what's left of an open hat after its choke."""
     lo, hi = round(start_s * rate), round(end_s * rate)
-    piece = np.abs(mono(stem)[lo:hi])
+    # Cut before mixing to mono: a whole track's hats are checked 2,400 times.
+    piece = np.abs(mono(stem[lo:hi]))
     return float(piece.max()) if piece.size else 0.0
 
 

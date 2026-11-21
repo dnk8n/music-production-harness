@@ -57,6 +57,26 @@ def test_dangling_reference(tmp_path: Path) -> None:
 
 
 @pytest.mark.req("REQ-PRC-01")
+@pytest.mark.parametrize(
+    "where",
+    [
+        "docs/a.md",
+        "examples/projects/p/README.md",
+        "examples/projects/p/project.toml",
+        ".claude/skills/s/SKILL.md",
+        "scripts/check",
+    ],
+)
+def test_references_checked_beyond_code(tmp_path: Path, where: str) -> None:
+    # Docs, example projects, skills and scripts name IDs too, and a reader
+    # following one there must find it in the spec.
+    repo = make_repo(tmp_path, GOOD_ITEM, MARK)
+    (repo / where).parent.mkdir(parents=True, exist_ok=True)
+    (repo / where).write_text(f"See {R2}.\n")
+    assert speccheck.check(repo).errors == [f"{where}:1 unknown ref {R2}"]
+
+
+@pytest.mark.req("REQ-PRC-01")
 def test_placeholder_refs_allowed(tmp_path: Path) -> None:
     report = speccheck.check(make_repo(tmp_path, GOOD_ITEM + "Format: REQ-XXX-00\n", MARK))
     assert report.ok, report.errors

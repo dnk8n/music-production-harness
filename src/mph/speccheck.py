@@ -5,7 +5,8 @@ LLM review or a human. It checks structure, not taste:
 
 * every requirement/benchmark ID is defined exactly once,
 * every one states a **Why** and a **Verify** method,
-* every ID referenced anywhere (spec, code, tests) is defined,
+* every ID referenced anywhere (spec, code, tests, docs, example projects,
+  skills, scripts) is defined,
 * every ADR declares a valid status,
 * every ``Verify: test`` requirement in a ``built`` spec file is linked from a
   test (elsewhere it is reported as a warning, or an error with ``--strict``).
@@ -27,6 +28,18 @@ ADR_FILE = re.compile(r"^(ADR-\d{4})-[a-z0-9-]+\.md$")
 STATUS = re.compile(r"^\*\*Status:\*\*\s*(\w+)", re.MULTILINE)
 VALID_STATUS = frozenset({"proposed", "accepted", "superseded", "rejected"})
 VERIFY_METHODS = frozenset({"test", "listen", "measure", "inspect"})
+# Everything else that names IDs: code, tests, docs, example projects, skills.
+TEXT_FILES = (
+    "src/**/*.py",
+    "tests/**/*.py",
+    "scripts/*",
+    "*.md",
+    ".github/**/*.md",
+    ".claude/**/*.md",
+    "docs/**/*.md",
+    "examples/**/*.md",
+    "examples/**/*.toml",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,7 +132,7 @@ def _check_adrs(repo: Path, report: SpecReport) -> None:
 
 
 def _check_references(repo: Path, spec_files: list[Path], report: SpecReport) -> None:
-    code_files = _files(repo, ["src/**/*.py", "tests/**/*.py", "*.md", ".github/**/*.md"])
+    code_files = _files(repo, TEXT_FILES)
     known = report.items.keys() | report.adrs
     for path in [*spec_files, *code_files]:
         for line_no, line in enumerate(path.read_text("utf-8").splitlines(), start=1):

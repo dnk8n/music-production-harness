@@ -331,6 +331,20 @@ def _recording(
     )
 
 
+def covered(conn: sqlite3.Connection, data_dir: Path, voice: Voice) -> bool:
+    """Whether the catalogue has a sound this voice would play: the one it pins,
+    or one its search finds (spec/components/projects.md, REQ-PRJ-05). A tonal
+    hat counts, because the kit takes one when nothing else fits."""
+    if voice.sound.hash and not isinstance(_exact(conn, data_dir, voice, voice.sound.hash), str):
+        return True
+    if voice.clips:  # a clip plays the recording it pins and nothing else
+        return False
+    attempts = [voice.sound.words, ()] if voice.sound.words else [()]
+    return any(
+        len(_candidates(conn, data_dir, voice, words)) >= voice.sound.pick for words in attempts
+    )
+
+
 def _fallback(score: Score, voice: Voice, conn: sqlite3.Connection | None) -> Choice:
     """A synth voice, when the catalogue has nothing for this voice."""
     if voice.slices:

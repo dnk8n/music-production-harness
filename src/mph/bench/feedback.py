@@ -20,7 +20,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from mph.bench import ideas, ratings, score
+from mph.bench import ideas, projects, ratings, score
 from mph.bench.ratings import Rating
 from mph.catalogue.scanner import utc_now
 
@@ -108,10 +108,11 @@ def listing(
     (for the query channel, REQ-QRY-09) it also has what was rendered from other
     branches: takes this checkout's scores don't declare, and benchmarks it has
     no score for, read from their reports and listed last."""
-    here = score.available()
+    chosen = projects.current()
+    here = chosen.available()
     out = [_listed(renders, conn, b, score.load(b), elsewhere=elsewhere) for b in here]
-    if elsewhere:
-        others = [b for b in rendered(renders) if b not in here]
+    if elsewhere:  # a project turned off isn't another branch's (REQ-PRJ-03)
+        others = [b for b in rendered(renders) if b not in here and not chosen.hidden(b)]
         out += [_listed(renders, conn, b, None, elsewhere=True) for b in others]
     return sorted(out, key=lambda b: (not b["in_checkout"], b["project"], b["id"]))
 
@@ -288,7 +289,7 @@ def drop_idea(conn: sqlite3.Connection, payload: dict[str, Any]) -> dict[str, An
 
 
 def _known(renders: Path, conn: sqlite3.Connection | None) -> ideas.Known:
-    return ideas.known(listing(renders, conn, elsewhere=True), ideas.specced())
+    return ideas.known(listing(renders, conn, elsewhere=True), projects.current().specced())
 
 
 def _has_own(conn: sqlite3.Connection, asked: ratings.Asked) -> bool:

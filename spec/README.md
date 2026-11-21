@@ -16,6 +16,11 @@ disagree, fix the spec first.
 | [process/](process/) | How we work: agent workflow, labels, engineering standards |
 | [decisions/](decisions/) | ADRs: why we chose what we chose |
 
+Outside this folder, `examples/projects/` holds Dean's projects as text (the
+scores that realise the benchmarks and tracks described here,
+[components/projects.md](components/projects.md)), and `docs/` holds the guide
+for new users, the reference Mac, the story so far and the plan ahead.
+
 ## Requirement format
 
 Every requirement or benchmark is a heading with a stable ID, a statement,

@@ -9,8 +9,8 @@ styles, in order: Detroit techno with Jersey garage, Afro with acid techno,
 jungle with djembe, clean Detroit, dub techno and acid tech. Each remix is
 about 8 minutes, one Renoise song with short blocks rated first (REQ-TRK-03),
 and each is finished before the next starts. Research:
-[Remix practice for Love Train](https://claude.ai/artifact/Ru96Afswp6zig5Lgd8M1zv)
-(2026-11-14).
+[Remix practice for Love Train](../../docs/research/love-train-remix-practice.md)
+(2026-11-14; this spec wins where they differ).
 
 ## The source and its stems
 

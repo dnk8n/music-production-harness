@@ -52,9 +52,10 @@ checkout: the commit, the branch, and whether it had uncommitted changes.
 - **Verify:** test
 
 ### REQ-BEN-04: Scores are data checked against this file
-Each benchmark's score is a TOML file in `src/mph/bench/scores/`: tempo,
-swing and feel (REQ-BEN-13), bars, voices with their grids, velocity rules
-and a humanisation seed.
+Each benchmark's score is a TOML file in its project's folder, named by
+its id (spec/components/projects.md; the benchmarks in this file are in
+`examples/projects/`): tempo, swing and feel (REQ-BEN-13), bars, voices with
+their grids, velocity rules and a humanisation seed.
 A test checks every score's tempo, swing and bar-1 grid against the grid
 written here, so the score can't drift from the description.
 - **Why:** this file stays the source of truth (ADR-0001), and the renderer
@@ -193,10 +194,11 @@ The report names the engine and its version.
 - **Verify:** test
 
 ### REQ-BEN-11: Benchmarks belong to a project
-Every score names its `project`: the group it belongs to. For the benchmarks
-in this file, the project is the section heading it is written under (such
-as "Drum patterns" or "Bass"), and a test checks that the two agree. A later
-piece of work (a track, a set of experiments) can be its own project. The
+Every score belongs to a `project`: the group it is judged with, named in
+its folder's `project.toml` (REQ-PRJ-01). For the benchmarks in this file,
+the project is the section heading it is written under (such as "Drum
+patterns" or "Bass"), and a test checks that the two agree. A later piece
+of work (a track, a set of experiments) can be its own project. The
 listening page groups benchmarks by project (REQ-FBK-01).
 - **Why:** the list keeps growing (Dean, 2026-11-10), and a project groups
   what is judged together, so the rest can be folded away.

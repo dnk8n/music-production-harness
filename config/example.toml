@@ -1,11 +1,22 @@
 # Copy to ~/.config/mph/config.toml and adjust. Spec: spec/components/config.md
 # Secrets never go here: use `mph secrets set <name>`.
+# docs/getting-started.md explains each part. Dean's own config, the one the
+# example projects were made with, is examples/config/dean.toml.
 
 [paths]
 data_dir = "~/Library/Application Support/mph"
 
+# Your sample folder. Read-only: mph never writes inside it (REQ-CAT-01).
+# Add a [[sources]] table for each folder.
 [[sources]]
 id = "dj-samples"
 kind = "local"
-path = "/Users/dean/dj/samples"   # read-only, never written to (REQ-CAT-01)
+path = "~/Music/samples"
 license = "commercial-pack"
+
+[projects]
+# Dean's example projects (examples/projects/): true for all of them, false for
+# a clean slate, or a list such as ["drum-patterns", "sidechain"].
+examples = true
+# Folders of your own projects, e.g. ["~/Music/mph-projects"].
+folders = []

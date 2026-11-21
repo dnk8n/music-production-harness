@@ -17,7 +17,10 @@ MCP tools are loaded, or run `uv run mph mcp call TOOL '{...}'` there
 All read-only: `overview`, `search_sounds`, `sound`, `labels`, `benchmarks`,
 `benchmark`, `report`, `ratings`, `feedback`, `ideas`, `schema`, `sql` (a
 guarded SELECT) and `doctor`. `feedback` lists Dean's unresolved ratings and
-open ideas: the agents' work queue (REQ-QRY-12). From a shell,
+open ideas: the agents' work queue (REQ-QRY-12). Answers stop at 40,000
+characters: `benchmarks` for every project passed that on 2026-11-21
+(41,117), so ask one project at a time, `{"project": "Drum patterns"}`, as
+`overview` names them. From a shell,
 `uv run mph catalogue sound REF` (a hash, a prefix of 6 or more characters,
 or a path) answers as `sound` does: every label with its origin and
 confidence, the files, the analysis, any download and the renders that used

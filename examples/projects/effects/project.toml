@@ -1,0 +1,5 @@
+# One of Dean's example projects (spec/components/projects.md). Planned: no scores yet.
+name = "Effects"
+about = "Delay throws, a filter build, a reverb wash and a beat repeat. Planned in issue #50."
+spec = "spec/components/benchmarks.md (section Effects)"
+needs = "No scores yet."

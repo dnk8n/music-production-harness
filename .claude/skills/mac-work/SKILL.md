@@ -15,8 +15,11 @@ Mac, started from the thread".
 
 - **Dean's checkout**, `/Users/dean/src/music-production-harness`, is Dean's. Don't
   change its branch, pull into it or run `mph renoise install` from it without
-  Dean's go-ahead in the thread, naming the action. Read-only commands from it are
-  fine. Its own `mph` serves the listening page and the MCP tools.
+  Dean's go-ahead in the thread, naming the action. Ask for it in words from the
+  start ("switch my checkout to main, pull, and run mph renoise install"): the
+  Mac's safety checks want Dean's own typed message, and a tap on a decision
+  card was refused there (2026-11-21). Read-only commands from it are fine. Its
+  own `mph` serves the listening page and the MCP tools.
 - **mph's data folder**, `~/Library/Application Support/mph`, holds the renders,
   the catalogue DB (with Dean's ratings and ideas), the cache (stems included),
   and Renoise's jobs and scratch songs. Dean gave standing permission
@@ -77,6 +80,9 @@ Mac, started from the thread".
   - estimate from the newest render folder of the same benchmark.
 - A mac-check of a branch older than PR #62 leaves about 2.5 GB in
   `$TMPDIR/pytest-of-dean`; clear it afterwards.
+- Space outside mph's data folder (uv's and Homebrew's caches, other apps) is
+  Dean's: Dean chose to keep those caches (2026-11-10), so don't offer to
+  clear them again.
 
 ## Remote Control habits
 

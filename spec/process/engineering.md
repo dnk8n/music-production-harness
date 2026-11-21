@@ -53,7 +53,7 @@ macOS (REQ-ENG-08).
 
 ### REQ-ENG-07: Same checks locally and in CI
 `.pre-commit-config.yaml` is the one list of fast checks: file hygiene, no
-audio files, no private keys, `ruff format`, `ruff check`, `mypy` and
+audio files or other binaries (REQ-ENG-10), no private keys, `ruff format`, `ruff check`, `mypy` and
 `mph spec check` before each commit, and the Linux test suite before each
 push. Tool versions come from `uv.lock`. CI runs the same file with
 `pre-commit run --all-files`, so a check can't pass locally and fail in CI.
@@ -123,3 +123,18 @@ it can be looked at, and pytest keeps the folders of at most three runs.
   last three runs. On 2026-11-14 that helped fill Dean's disk and broke a
   Mac check (issue #61).
 - **Verify:** test
+
+### REQ-ENG-10: Only text in git, and images for the docs
+The repo holds text: code, spec, scores, project files, docs, skills and
+config examples. The only binary files it may hold are images that
+document something, in `docs/images/`, each under 500 KB. A pre-commit hook
+refuses any other binary file, and refuses audio files, Renoise songs and
+Renoise instruments by name, whatever is in them. Renders, songs, stems and
+the catalogue stay in `data_dir`, where mph can make them again
+(ADR-0010), and the snapshots and screenshots shared in a chat are not
+the record: what they taught goes into the repo as text.
+- **Why:** Dean, 2026-11-21: no binary artifacts or renderings in the
+  repo, only text and the odd image for documentation. Git keeps every byte
+  of every version, renders are made again from their scores, and many
+  hold sounds from packs that may not be published.
+- **Verify:** inspect (the hook in `.pre-commit-config.yaml`)

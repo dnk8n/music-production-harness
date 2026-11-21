@@ -28,10 +28,16 @@ repos:
   - repo: local
     hooks:
       - id: no-audio
-        name: no audio files in the repo (renders live in data_dir)
+        name: no audio files or Renoise songs in the repo (renders live in data_dir)
         language: fail
-        entry: audio files belong in data_dir, not the repo
-        files: (?i)\.(wav|aif|aiff|flac|mp3|ogg|m4a)$
+        entry: audio files and Renoise songs belong in data_dir, not the repo
+        files: (?i)\.(wav|aif|aiff|flac|mp3|ogg|m4a|xrns|xrni)$
+      - id: no-binaries
+        name: no binary files except images for the docs (REQ-ENG-10)
+        language: fail
+        entry: only text goes in the repo, plus images in docs/images/
+        types: [binary]
+        exclude: ^docs/images/[^/]+\.(png|jpe?g|gif|webp)$
       - id: ruff-format
         name: ruff format
         language: system

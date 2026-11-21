@@ -28,6 +28,16 @@ keep_work = false
 # After a render, prune older renders of the same benchmark variant straight away.
 prune_after_render = true
 
+[projects]
+# Which projects mph lists, renders and answers about (spec/components/projects.md).
+# Dean's projects ship with the repo in examples/projects/: true turns them all on,
+# false turns them all off (a clean slate), or list the ones you want, such as
+# ["drum-patterns", "sidechain"]. `mph projects list` shows them all.
+examples = true
+# Folders of your own projects: each project is a folder with a project.toml and
+# its scores. Use absolute paths or ~/... (`mph projects copy` writes here).
+folders = []
+
 [secrets]
 # macOS Keychain service name under which all secrets are stored.
 keychain_service = "mph"

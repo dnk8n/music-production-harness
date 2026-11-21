@@ -15,6 +15,7 @@ from pathlib import Path
 
 from mph import __version__, components, config, doctor, retention, secrets, speccheck
 from mph.bench import commands as bench_commands
+from mph.bench import project_commands, projects
 from mph.catalogue import commands as catalogue_commands
 from mph.catalogue import provenance
 from mph.components import Context, Stage
@@ -98,6 +99,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_search(cat_sub)
     _add_provenance(cat_sub)
     _add_bench(sub)
+    _add_projects(sub)
     _add_mcp(sub)
     renoise = sub.add_parser("renoise", help="the Renoise bridge tool")
     renoise_sub = renoise.add_subparsers(dest="action", required=True)
@@ -219,6 +221,38 @@ def _add_bench(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None
     serve.add_argument("--no-open", action="store_true", help="just print the address")
 
 
+def _add_projects(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    found = sub.add_parser(
+        "projects",
+        help="Dean's example projects and your own: list, show, copy, fill",
+        description="Projects are folders of scores (spec/components/projects.md). "
+        "Turn Dean's examples on or off with [projects] in your config.",
+    )
+    found_sub = found.add_subparsers(dest="action", required=True)
+    listed = found_sub.add_parser("list", help="every project, on or off, and its benchmarks")
+    listed.add_argument("--json", action="store_true", help="machine-readable output")
+    found_sub.add_parser("show", help="what a project is and needs").add_argument(
+        "project", help="its id or name"
+    )
+    copy = found_sub.add_parser("copy", help="copy a project into a folder of your own")
+    copy.add_argument("project", help="its id or name")
+    copy.add_argument(
+        "--to", type=Path, help="folder to copy into (default: the first in [projects].folders)"
+    )
+    fill = found_sub.add_parser(
+        "fill",
+        help="free placeholder sounds for what your catalogue lacks (shows the list first)",
+        description="Lists the sounds the projects that are on need and the catalogue "
+        "can't give. With --yes, downloads CC0, public domain or CC-BY placeholders.",
+    )
+    fill.add_argument("project", nargs="*", help="project ids or names (default: all that are on)")
+    fill.add_argument("--yes", action="store_true", help="download what the list shows")
+    fill.add_argument(
+        "--from", dest="source", choices=["freesound", "archive"], default="freesound"
+    )
+    fill.add_argument("--limit", type=int, default=2, help="sounds per missing kind (default 2)")
+
+
 def _add_mcp(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     mcp = sub.add_parser(
         "mcp",
@@ -252,6 +286,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except config.ConfigError as exc:
         print(exc, file=sys.stderr)
         return 2
+    projects.use(projects.settings_of(cfg))  # the projects that are on (REQ-PRJ-03)
     # Renders, synth compiles and stem separation take minutes; the rest should be quick.
     runner = SubprocessRunner(_timeout_s(args))
     host = current_host()
@@ -272,7 +307,7 @@ def dispatch(
             return cmd_doctor(cfg, ctx, store, stages, as_json=args.json)
         case "install":
             return cmd_install(components.by_id(args.component), ctx, run=args.yes)
-        case "catalogue" | "mcp":
+        case "catalogue" | "mcp" | "projects":
             return _library_commands(args, cfg, ctx, store)
         case "bench" | "renoise" | "prune":
             return _audio_commands(args, cfg, ctx)
@@ -285,6 +320,8 @@ def _library_commands(
 ) -> int:
     if args.command == "mcp":
         return query_commands.dispatch(args, Library(cfg, ctx, store), ctx.runner)
+    if args.command == "projects":
+        return project_commands.dispatch(args, cfg, ctx.runner, store)
     if args.action == "sound":  # the query channel's answer, shown for people (REQ-QRY-03)
         return query_commands.cmd_sound(Library(cfg, ctx, store), args.ref, as_json=args.json)
     return catalogue_commands.dispatch(args, cfg, ctx.runner, store)
@@ -308,6 +345,7 @@ def cmd_status(cfg: config.Config, ctx: Context, store: secrets.SecretStore | No
         f"sources      {len(cfg.sources)} configured: "
         + (", ".join(s.id for s in cfg.sources) or "none")
     )
+    print(f"projects     {doctor.projects_line(projects.discover(projects.settings_of(cfg)))}")
     print(f"production   {a.production_sample_rate} Hz, 32-bit float")
     print(
         f"delivery     {a.delivery_sample_rate} Hz, {a.delivery_bit_depth}-bit "

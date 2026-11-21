@@ -8,10 +8,12 @@ report doubles as a to-do list. The exit code is non-zero only when a
 from __future__ import annotations
 
 import os
+import tomllib
 from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass
 from enum import StrEnum
 
+from mph.bench import projects
 from mph.components import Component, Context, Stage, select
 from mph.config import Config, Source
 from mph.secrets import CREDENTIALS, SecretStore, missing_fields
@@ -112,6 +114,52 @@ def check_data_dir(config: Config) -> Finding:
     return Finding("data_dir", Status.OK, f"{data_dir} ({state})")
 
 
+def projects_line(selection: projects.Selection) -> str:
+    """'5 of 8 examples on, 2 of your own: 19 benchmarks' (REQ-PRJ-06)."""
+    examples = [p for p in selection.projects if p.example]
+    own = [p for p in selection.projects if not p.example]
+    on = len(selection.available())
+    return (
+        f"{sum(p.on for p in examples)} of {len(examples)} examples on, "
+        f"{len(own)} of your own: {on} benchmark{'' if on == 1 else 's'}"
+    )
+
+
+def check_projects(selection: projects.Selection) -> Iterable[Finding]:
+    """How many projects are on, and each problem with them (REQ-PRJ-06)."""
+    yield Finding("projects", Status.OK, projects_line(selection))
+    for problem in selection.problems:
+        yield Finding(
+            "projects",
+            Status.WARN,
+            problem,
+            "see `mph projects list` and [projects] in your config",
+        )
+    for project in (p for p in selection.on() if not p.problem):
+        for named in _misnamed(project):
+            yield Finding(
+                f"project:{project.id}",
+                Status.WARN,
+                f"{named} says it is in another project than {project.name!r}",
+                f"set project = {project.name!r} in it, or take the line out",
+            )
+
+
+def _misnamed(project: projects.Project) -> list[str]:
+    """Scores in the project that name another project (REQ-PRJ-01)."""
+    found = []
+    for benchmark_id in project.scores:
+        try:
+            raw = tomllib.loads(project.path(benchmark_id).read_text("utf-8"))
+        except (OSError, tomllib.TOMLDecodeError):
+            found.append(f"{benchmark_id} can't be read, and")
+            continue
+        named = raw.get("project", "")
+        if named and named != project.name:
+            found.append(benchmark_id)
+    return found
+
+
 def check_secrets(store: SecretStore) -> Iterable[Finding]:
     for credential in CREDENTIALS:
         check = f"secret:{credential.name}"
@@ -148,6 +196,7 @@ def run(
                 )
             )
         findings.extend(check_source(s) for s in config.sources)
+        findings.extend(check_projects(projects.discover(projects.settings_of(config))))
     findings.extend(check_component(c, ctx) for c in select(stages))
     if not stages or Stage.AI in stages or Stage.CATALOGUE in stages:
         if store is None:

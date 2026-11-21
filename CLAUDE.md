@@ -1,7 +1,10 @@
 # Agent instructions
 
 Rules for any agent working in this repo. The spec has the detail; this file
-is the short version so every new session starts with the same rules.
+is the short version so every new session starts with the same rules. For
+context (getting started, the reference Mac, history, roadmap, Dean's
+preferences), start at [docs/README.md](docs/README.md). The repo is Dean's:
+on someone else's Mac, read "Dean" as the person whose Mac and ear it is.
 
 ## How we work
 
@@ -11,7 +14,7 @@ is the short version so every new session starts with the same rules.
 2. **Cite IDs.** Module docstrings name their spec file. Tests link
    requirements with `@pytest.mark.req("REQ-...")`. PR descriptions list the
    IDs they implement, and the ids of Dean's ratings they answer: the
-   `feedback` tool lists his unresolved takes and open ideas (REQ-QRY-12).
+   `feedback` tool lists Dean's unresolved takes and open ideas (REQ-QRY-12).
 3. **Where work runs (REQ-PRC-06).** Code is changed and checked in a cloud
    copy of the repo, on its own branch. Anything that needs Renoise, demucs,
    real SuperCollider renders, the Keychain or Dean's samples runs on Dean's
@@ -19,12 +22,15 @@ is the short version so every new session starts with the same rules.
    after the PR is pushed. To look something up there (sounds, labels,
    benchmarks, ratings, ideas, health), use the read-only `mph` MCP tools, or
    `uv run mph mcp call TOOL` where they aren't loaded
-   (spec/components/query-channel.md).
+   (spec/components/query-channel.md). The `cloud-checks` skill sets up a
+   cloud copy, and `scripts/cloud-check` runs every check Linux can.
 4. **One branch per PR, cut from the latest `main`.** Don't stack PRs. Before
    merging, update the branch with `main` and let CI pass again (REQ-PRC-05).
 5. **Track work in GitHub issues** with labels from `.github/labels.yml`:
    one `type:` (`spec`, `dev`, `qa`, `infra`, ...), one `area:`, and a
    `step:` where relevant. PRs follow `.github/pull_request_template.md`.
+   Take the next item in `docs/roadmap.md` without asking unless Dean
+   reorders; stability and quality come before speed. Dean merges.
 
 ## Checks
 
@@ -56,7 +62,11 @@ is the short version so every new session starts with the same rules.
 12. **Secrets live in the macOS Keychain only** (ADR-0005), through
     `mph secrets`. Credential setup asks for every field a service needs and
     says where to find each one.
-13. **Never commit** secrets, audio files, local config or the catalogue DB.
+13. **Never commit** secrets, audio files, Renoise songs or other binaries
+    (only small images in `docs/images/`, REQ-ENG-10), local config or the
+    catalogue DB. Dean's projects are text in `examples/projects/`
+    (REQ-PRJ-02): a new project of Dean's gets a folder there, with a
+    README that says what Dean thought, kept current.
 
 ## Writing
 
@@ -67,7 +77,10 @@ is the short version so every new session starts with the same rules.
 
 15. **What we learn goes in the repo** (REQ-PRC-07), not only in an agent's
     memory or a chat: rules and facts in the spec, with their Why; ways of
-    working as skills in `.claude/skills/` (`mac-work`, `renoise-bridge`,
-    `remix`, `pick-sounds`); steps that can run as scripts. When a run
-    teaches something new, update the skill or spec it belongs to in the
-    same PR.
+    working as skills in `.claude/skills/` (`cloud-checks`, `mac-work`,
+    `renoise-bridge`, `remix`, `pick-sounds`); steps that can run as
+    scripts; context in `docs/` (history, roadmap, preferences, the
+    reference Mac); what Dean thought of a project in its README. When a run
+    teaches something new, update the skill, spec or doc it belongs to in
+    the same PR. The bar: an agent with no memory and only the repo could
+    carry on.

@@ -14,11 +14,17 @@ build/
 *.sqlite
 *.sqlite3
 *.db
-# Audio renders and caches live in the configured data_dir, never here
+# Audio renders, Renoise songs and caches live in the configured data_dir,
+# never here (REQ-ENG-10)
 *.wav
 *.aif
 *.aiff
 *.flac
+*.mp3
+*.ogg
+*.m4a
+*.xrns
+*.xrni
 # Local user config may reference private paths
 config/local.toml
 .env

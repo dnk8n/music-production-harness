@@ -17,7 +17,7 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from mph.bench import feedback, ideas, ratings, score
+from mph.bench import feedback, ideas, projects, ratings, score
 from mph.query import Unanswerable
 from mph.query.answers import RECENT, Answer, Library
 
@@ -365,7 +365,7 @@ def work(lib: Library, project: str | None, benchmark_id: str | None) -> Answer:
     with lib.reading_if_any() as conn:
         found = listing(lib, conn)
         every = ideas.every(conn)
-    known = ideas.known(found, ideas.specced())
+    known = ideas.known(found, projects.current().specced())
     wanted = _narrowed(found, every, known, project, benchmark_id)
     benches = [b for b in found if wanted(b["id"], b["project_id"])]
     queue = [entry for b in benches if (entry := _unresolved(b))]
@@ -501,7 +501,7 @@ def ideas_given(lib: Library, status: str | None, kind: str | None, limit: int) 
     with lib.reading_if_any() as conn:
         found = listing(lib, conn)
         every = ideas.every(conn)
-    known = ideas.known(found, ideas.specced())
+    known = ideas.known(found, projects.current().specced())
     chosen = [
         i
         for i in reversed(every)  # newest first

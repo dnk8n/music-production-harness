@@ -8,7 +8,10 @@ music generators: every sound traces back to a sample, a synth patch or a
 pattern.
 
 **Start with [spec/README.md](spec/README.md).** The spec is the product, and
-the code is regenerable from it.
+the code is regenerable from it. New here?
+[docs/getting-started.md](docs/getting-started.md) goes from a fresh Mac to a
+demo of Dean's example projects, and [docs/README.md](docs/README.md) maps the
+rest: the reference Mac, the history, the roadmap and Dean's preferences.
 
 ## Quick start (macOS, Apple Silicon)
 
@@ -28,13 +31,33 @@ id = "dj-samples"
 kind = "local"
 path = "/Users/you/dj/samples"   # read-only: never written to
 license = "commercial-pack"
+
+[projects]
+examples = true                  # Dean's example projects: true, false, or a list
+folders = []                     # folders of your own projects
 ```
+
+[config/example.toml](config/example.toml) is a full one to copy.
 
 Index your samples (read-only; the source folder is never written to):
 
 ```sh
 uv run mph catalogue scan
 uv run mph catalogue stats
+```
+
+Benchmarks live in projects: folders of scores judged together
+(spec/components/projects.md). Dean's ship with the repo as text in
+[examples/projects/](examples/projects/), each with a README of what Dean
+heard and decided; turn them off for a clean slate, or copy one to make it
+your own. Where your samples lack a sound a score needs, `fill` downloads a
+free placeholder (CC0, public domain or CC-BY):
+
+```sh
+uv run mph projects list                 # every project, on or off
+uv run mph projects show sidechain       # what it is and needs
+uv run mph projects fill                 # what your catalogue lacks; --yes downloads
+uv run mph projects copy drum-patterns --to ~/Music/mph-projects
 ```
 
 Render the benchmarks. Each one becomes a small Renoise song, with one track
@@ -99,10 +122,11 @@ uv run mph mcp call search_sounds '{"roles": ["kick"], "limit": 5}'
 |---|---|---|
 | 1 | Spec, config, Keychain secrets, doctor and installers, CI | done |
 | 2 | Sample catalogue and search engine | done |
-| 3 | Benchmark kit and listening/feedback page | in progress |
-| 4 | Renoise bridge and mastering | bridge in progress (benchmark songs) |
+| 3 | Benchmark kit and listening/feedback page | most benchmarks built |
+| 4 | Renoise bridge and mastering | bridge built for drums and arranged tracks; mastering to go |
 
-Once Dean signs off the benchmarks, the first track gets its own spec.
+Once Dean signs off the benchmarks, the first track gets its own spec. The
+order of the next work, and why, is in [docs/roadmap.md](docs/roadmap.md).
 
 ## Development
 
@@ -110,9 +134,14 @@ Once Dean signs off the benchmarks, the first track gets its own spec.
 uv sync && uv run pre-commit install   # once per checkout
 uv run pre-commit run --all-files      # format, lint, types, spec gate
 uv run pytest --cov=mph                # also runs before each push
+scripts/cloud-check                    # on Linux: every hook and test but the macOS ones
 scripts/mac-check [origin/main]        # on the Mac: doctor + every test, real tools
 scripts/renoise-check [origin/main]    # on the Mac: the bridge in the real Renoise
 ```
+
+Only text goes in git, plus small images for the docs (REQ-ENG-10): sounds,
+renders and Renoise songs stay in mph's data folder. Agents follow
+[CLAUDE.md](CLAUDE.md) and the skills in [.claude/skills/](.claude/skills/).
 
 Work is tracked in GitHub issues with `type:`, `area:` and `step:` labels.
 See [spec/process/agent-workflow.md](spec/process/agent-workflow.md).

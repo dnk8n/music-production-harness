@@ -25,7 +25,7 @@ from mph.renoise import luadata
 
 TOOL_ID = "com.mph.bridge"
 TOOL_FOLDER = f"{TOOL_ID}.xrnx"
-TOOL_FILES = ("manifest.xml", "main.lua", "build.lua", "mixer.lua", "json.lua")
+TOOL_FILES = ("manifest.xml", "main.lua", "build.lua", "mixer.lua", "slice.lua", "json.lua")
 SETTINGS = "settings.lua"
 APP = "/Applications/Renoise.app"
 PROCESS = "Renoise"

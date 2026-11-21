@@ -54,6 +54,13 @@ def test_tools_folder_is_the_newest_renoise_version(tmp_path: Path) -> None:
 
 
 @pytest.mark.req("REQ-REN-03")
+def test_every_file_of_the_tool_is_installed() -> None:
+    """A tool file left off the list would make Renoise fail to load the tool."""
+    shipped = {p.name for p in lua.tool_dir().iterdir() if p.suffix in {".lua", ".xml"}}
+    assert shipped == set(bridge.TOOL_FILES)
+
+
+@pytest.mark.req("REQ-REN-03")
 def test_install_copies_the_tool_and_names_the_job_folder(tmp_path: Path) -> None:
     cfg = cfg_for(tmp_path)
     home = renoise_home(tmp_path, "V3.5.4")

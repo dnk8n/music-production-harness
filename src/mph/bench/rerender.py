@@ -52,6 +52,7 @@ CODE = (
     "renoise/tool/com.mph.bridge.xrnx/json.lua",
     "renoise/tool/com.mph.bridge.xrnx/main.lua",
     "renoise/tool/com.mph.bridge.xrnx/mixer.lua",
+    "renoise/tool/com.mph.bridge.xrnx/slice.lua",
 )
 DOCUMENTED = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
 

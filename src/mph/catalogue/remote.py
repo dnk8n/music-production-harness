@@ -108,7 +108,12 @@ class RemoteSound:
 class Connector(Protocol):
     name: str
 
-    def search(self, query: str, limit: int, *, clear_only: bool) -> list[RemoteSound]: ...
+    def search(
+        self, query: str, limit: int, *, clear_only: bool, filters: Sequence[str] = ()
+    ) -> list[RemoteSound]:
+        """Sounds matching ``query``. ``filters`` narrow it in the source's own
+        terms (Freesound's ``duration:[0 TO 5]``); a source without them ignores them."""
+        ...
 
     def headers_for(self, sound_url: str) -> dict[str, str]: ...
 
@@ -130,6 +135,7 @@ class Freesound:
     http: Http
     store: secrets.SecretStore
     previews: bool = False
+    preview_format: str = "mp3"  # or "ogg", which SuperCollider plays as it is
     name: str = "freesound"
     _access: str | None = field(default=None, repr=False)
     _verifier: str | None = field(default=None, repr=False)
@@ -140,15 +146,18 @@ class Freesound:
             raise RemoteError("Freesound isn't set up: run `mph secrets set freesound`")
         return values
 
-    def search(self, query: str, limit: int, *, clear_only: bool) -> list[RemoteSound]:
+    def search(
+        self, query: str, limit: int, *, clear_only: bool, filters: Sequence[str] = ()
+    ) -> list[RemoteSound]:
         params: list[tuple[str, str | int]] = [
             ("query", query),
             ("fields", FREESOUND_FIELDS),
             ("page_size", min(limit, 150)),
             ("token", self._keys()["client_secret"]),
         ]
-        if clear_only:
-            params.append(("filter", FREESOUND_CLEAR_FILTER))
+        narrowed = [FREESOUND_CLEAR_FILTER] if clear_only else []
+        if narrowed or filters:
+            params.append(("filter", " ".join([*narrowed, *filters])))
         if not self.previews:
             self.access_token()  # fail early, before searching, if sign-in is missing
         data = self.http.get_json(with_query(f"{FREESOUND_API}/search/text/", params))
@@ -157,8 +166,8 @@ class Freesound:
     def _sound(self, item: Mapping[str, Any]) -> RemoteSound:
         sound_id = str(item["id"])
         if self.previews:
-            url = item["previews"]["preview-hq-mp3"]
-            filename = f"{safe_name(Path(str(item['name'])).stem)}.preview.mp3"
+            url = item["previews"][f"preview-hq-{self.preview_format}"]
+            filename = f"{safe_name(Path(str(item['name'])).stem)}.preview.{self.preview_format}"
         else:
             url = f"{FREESOUND_API}/sounds/{sound_id}/download/"
             stem = Path(str(item["name"])).stem
@@ -250,7 +259,9 @@ class Archive:
     collection: str | None = None
     default_licence: str = ""  # used when an item states none
 
-    def search(self, query: str, limit: int, *, clear_only: bool) -> list[RemoteSound]:
+    def search(
+        self, query: str, limit: int, *, clear_only: bool, filters: Sequence[str] = ()
+    ) -> list[RemoteSound]:
         terms = [f"({query})", "mediatype:audio"]
         if self.collection:
             terms.append(f"collection:{self.collection}")
@@ -302,6 +313,7 @@ class FetchReport:
     fetched: list[str] = field(default_factory=list)  # "hash title (licence)"
     already: int = 0
     failed: list[str] = field(default_factory=list)
+    hashes: list[str] = field(default_factory=list)  # every sound found, new or already here
 
 
 class Fetcher:
@@ -330,11 +342,13 @@ class Fetcher:
         *,
         clear_only: bool,
         max_bytes: int = DEFAULT_MAX_BYTES,
+        filters: Sequence[str] = (),
     ) -> FetchReport:
         report = FetchReport()
-        for sound in connector.search(query, limit, clear_only=clear_only):
-            if self._have(connector.name, sound.remote_id):
+        for sound in connector.search(query, limit, clear_only=clear_only, filters=filters):
+            if had := self._have(connector.name, sound.remote_id):
                 report.already += 1
+                report.hashes.append(had)
                 continue
             try:
                 digest = self._get(connector, sound, max_bytes)
@@ -342,6 +356,7 @@ class Fetcher:
                 report.failed.append(f"{sound.title}: {exc}")
                 continue
             report.fetched.append(f"{digest[:12]} {sound.title} ({sound.short_licence})")
+            report.hashes.append(digest)
         return report
 
     def refresh(self, connectors: Mapping[str, Connector]) -> FetchReport:
@@ -372,12 +387,13 @@ class Fetcher:
             report.fetched.append(f"{digest[:12]} {title}")
         return report
 
-    def _have(self, source_id: str, remote_id: str) -> bool:
+    def _have(self, source_id: str, remote_id: str) -> str:
+        """The hash of a download that is already here, or ""."""
         row = self._conn.execute(
-            "SELECT rel_path FROM download WHERE source_id = ? AND remote_id = ?",
+            "SELECT rel_path, asset_hash FROM download WHERE source_id = ? AND remote_id = ?",
             (source_id, remote_id),
         ).fetchone()
-        return row is not None and (self.folder(source_id) / row[0]).is_file()
+        return str(row[1]) if row and (self.folder(source_id) / row[0]).is_file() else ""
 
     def _get(self, connector: Connector, sound: RemoteSound, max_bytes: int) -> str:
         rel = f"{safe_name(sound.remote_id.replace('/', '_'))}/{sound.filename}"

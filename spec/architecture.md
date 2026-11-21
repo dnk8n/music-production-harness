@@ -12,7 +12,7 @@
  └──────────────────┘        └───────────────┬──────────────────────────────┘
                                              │ search + select
                                              ▼
-   spec/tracks/*.md ──▶ score (patterns, arrangement, automation, as data)
+   spec/tracks/*.md ──▶ score in a project folder (patterns, arrangement, automation)
                                              │
                      ┌───────────────────────┼────────────────────────┐
                      ▼                       ▼                        ▼
@@ -41,6 +41,7 @@
 | catalogue | Index sources, analyse, search, track provenance | [catalogue.md](components/catalogue.md) | 2 |
 | audio policy | Formats, rates, dither, determinism | [audio-policy.md](components/audio-policy.md) | 1 (rules), 3 (enforcement) |
 | benchmarks | Listening tests and measurements | [benchmarks.md](components/benchmarks.md) | 3 |
+| projects | Folders of scores: Dean's examples and the user's own, turned on or off, copied, given placeholder sounds | [projects.md](components/projects.md) | 3 |
 | tracks | Long arranged scores: sections, clips of a recording, blocks rated on their own | [tracks.md](components/tracks.md) | 3 |
 | mix | Channel strips, send effects and automation inside a score | [mix.md](components/mix.md) | 3 |
 | feedback | Local web page, ratings and ideas, work for agents, AI loop | [feedback.md](components/feedback.md) | 3 |
@@ -69,13 +70,15 @@
 | Data | Owner | Location | Rebuildable? |
 |---|---|---|---|
 | Source audio | Dean / archives | source paths, URLs | n/a, never touched |
-| Catalogue DB | catalogue | `data_dir/catalogue.sqlite` | yes, from sources |
+| Catalogue DB | catalogue | `data_dir/catalogue.sqlite` | labels and analysis yes, from sources; ratings and ideas no, so back it up |
 | Downloads | catalogue | `data_dir/downloads/` | yes, from URLs (while online) |
 | Cache | any stage | `data_dir/cache/<hash>` | yes, from recipes |
 | Stashes | Dean | `data_dir/stashes/` | yes, from recipes |
 | Renders + QA reports | benchmarks, tracks | `data_dir/renders/` | yes |
 | Renoise jobs and scratch songs | renoise bridge | `data_dir/renoise/` | yes, throwaway (REQ-REN-08) |
 | Spec, code, tests | repo | git | spec is the root |
+| Example projects (scores, notes) | repo | `examples/projects/` | text in git (REQ-PRJ-02) |
+| The user's own projects | user | `[projects].folders` | theirs to keep |
 | Secrets | Dean | macOS Keychain | re-enter |
 
 ## Quality attributes

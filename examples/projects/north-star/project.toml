@@ -1,0 +1,9 @@
+# One of Dean's example projects (spec/components/projects.md).
+name = "North star"
+about = """The palette of Dean's first track: spoken word over Detroit techno, with a Jersey \
+garage twist and West African drums that mix machines with recordings. Built so far: the \
+standard bell pattern on a triplet grid over a 909 four, and the uneven feel of jembe \
+drumming."""
+spec = "spec/components/benchmarks.md (section North star)"
+needs = """Nothing: the bell, djembe and dunun are SuperCollider synths until one-shots of \
+them are in the catalogue (`mph projects fill` looks for them)."""

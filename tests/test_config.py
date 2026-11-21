@@ -147,3 +147,65 @@ def test_example_config_is_valid() -> None:
     example = Path(__file__).resolve().parents[1] / "config" / "example.toml"
     cfg = config.load(example)
     assert cfg.sources[0].id == "dj-samples"
+
+
+@pytest.mark.req("REQ-CFG-08")
+def test_projects_default_to_every_example_and_no_folders() -> None:
+    assert config.load().projects == config.Projects(True, ())
+
+
+@pytest.mark.req("REQ-CFG-08")
+def test_projects_take_a_list_of_examples_and_folders(tmp_path: Path) -> None:
+    user = write(
+        tmp_path / "c.toml",
+        '[projects]\nexamples = ["sidechain", "bass"]\nfolders = ["~/mph-projects"]\n',
+    )
+    found = config.load(user).projects
+    assert found.examples == ("sidechain", "bass")
+    assert found.folders == (Path("~/mph-projects").expanduser(),)
+    off = write(tmp_path / "off.toml", "[projects]\nexamples = false\n")
+    assert config.load(off).projects.examples is False
+
+
+@pytest.mark.req("REQ-CFG-08")
+@pytest.mark.parametrize(
+    ("body", "message"),
+    [
+        ('examples = "all"', "projects.examples must be true, false or a list"),
+        ("examples = [1]", "projects.examples must be true, false or a list"),
+        ('folders = "~/p"', "projects.folders must be a list of paths"),
+        ('colour = "red"', r"unknown keys \['colour'\]"),
+    ],
+)
+def test_bad_projects_are_rejected(tmp_path: Path, body: str, message: str) -> None:
+    user = write(tmp_path / "c.toml", f"[projects]\n{body}\n")
+    with pytest.raises(config.ConfigError, match=message):
+        config.load(user)
+    with pytest.raises(config.ConfigError, match="must be a table"):
+        config.parse({**config._defaults(), "projects": ["x"]})
+
+
+@pytest.mark.req("REQ-CFG-08")
+def test_a_project_folder_may_not_be_inside_a_source(tmp_path: Path) -> None:
+    user = write(
+        tmp_path / "c.toml",
+        f"""
+[paths]
+data_dir = "{tmp_path / "data"}"
+[projects]
+folders = ["{tmp_path / "samples" / "projects"}"]
+[[sources]]
+id = "dj"
+kind = "local"
+path = "{tmp_path / "samples"}"
+""",
+    )
+    with pytest.raises(config.ConfigError, match="inside read-only source dj"):
+        config.load(user)
+
+
+@pytest.mark.req("REQ-CFG-08")
+def test_deans_own_config_is_valid() -> None:
+    dean = Path(__file__).resolve().parents[1] / "examples" / "config" / "dean.toml"
+    cfg = config.load(dean)
+    assert cfg.sources and cfg.projects.examples is True

@@ -6,10 +6,20 @@ description: Make a remix of a song from Dean's library as mph scores (a whole-t
 # Remix a song
 
 The worked example is Love Train remix 1, Detroit x Jersey
-(`spec/tracks/love-train.md`; scores BM-LTDJ-01 to BM-LTDJ-05 in
-`src/mph/bench/scores/`). Read it first: it shows every step below. The
-rules for tracks, clips, excerpts and stems are in
-`spec/components/tracks.md`, and the mix in `spec/components/mix.md`.
+(`spec/tracks/love-train.md`; scores BM-LTDJ-01 to BM-LTDJ-05 in the example
+project `examples/projects/love-train-remix-1-detroit-x-jersey/`, whose
+README says what Dean thought of each version). Read it first: it shows
+every step below. The rules for tracks, clips, excerpts and stems are in
+`spec/components/tracks.md`, the mix in `spec/components/mix.md`, and the
+background research in `docs/research/love-train-remix-practice.md` (the
+spec wins where they differ).
+
+A new remix is a new project: a folder with a `project.toml` and its scores
+(spec/components/projects.md). Dean's own remixes go under
+`examples/projects/`; anyone else's go in a folder listed in
+`[projects].folders` of their own config. `mph projects fill` lists what a
+project needs that the catalogue lacks, and a remix's stems are recordings
+no placeholder can stand in for.
 
 ## Dean's rules
 

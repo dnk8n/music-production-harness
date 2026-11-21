@@ -1,0 +1,6 @@
+# One of Dean's example projects (spec/components/projects.md).
+name = "Bass"
+about = """A 303-style acid line with accents and slides, plus takes with the cutoff turned \
+down, opened up and the resonance near the edge."""
+spec = "spec/components/benchmarks.md (section Bass)"
+needs = "Nothing: the acid line is a SuperCollider synth."

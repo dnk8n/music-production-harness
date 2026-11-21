@@ -47,6 +47,18 @@ and `prune_after_render` (true or false). See [retention.md](retention.md).
 - **Why:** a typo here decides what gets deleted, so it must fail at load.
 - **Verify:** test
 
+### REQ-CFG-08: Projects are validated
+`[projects]` holds `examples` (true, false, or a list of example project
+ids) and `folders` (a list of paths to folders of the user's own projects,
+`~` allowed). A wrong type, an unknown key, or a folder inside a local source
+fails at load. An example id that isn't in `examples/projects/` is reported
+by `mph doctor` rather than refused, so a config still loads after an
+example is renamed. See [projects.md](projects.md).
+- **Why:** this decides what mph lists and renders, so a typo should fail
+  at once, and project folders get written to by `mph projects copy`, which
+  must never happen inside a read-only source.
+- **Verify:** test
+
 ### REQ-CFG-06: No secrets in config
 Config files never hold secrets. Secret values live only in the Keychain
 (see [secrets.md](secrets.md)).

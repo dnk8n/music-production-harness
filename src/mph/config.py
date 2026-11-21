@@ -65,6 +65,15 @@ class Retention:
 
 
 @dataclass(frozen=True, slots=True)
+class Projects:
+    """Which projects mph works with (spec/components/projects.md, REQ-CFG-08):
+    Dean's examples (all, none, or the ids listed) and folders of the user's own."""
+
+    examples: bool | tuple[str, ...] = True
+    folders: tuple[Path, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class Config:
     data_dir: Path
     audio: AudioPolicy
@@ -75,6 +84,7 @@ class Config:
     sources: tuple[Source, ...]
     retention: Retention
     loaded_from: tuple[Path, ...]
+    projects: Projects = Projects()
 
 
 def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -118,7 +128,8 @@ def parse(raw: dict[str, Any], loaded_from: tuple[Path, ...] = ()) -> Config:
     audio = _table(AudioPolicy, raw, "audio", problems)
     master = _table(MasterTargets, raw, "master", problems)
     retention = _table(Retention, raw, "retention", problems)
-    if audio is None or master is None or retention is None:
+    projects = _parse_projects(raw.get("projects", {}), problems)
+    if audio is None or master is None or retention is None or projects is None:
         raise ConfigError(problems)
     config = Config(
         data_dir=Path(raw["paths"]["data_dir"]).expanduser(),
@@ -130,6 +141,7 @@ def parse(raw: dict[str, Any], loaded_from: tuple[Path, ...] = ()) -> Config:
         sources=sources,
         retention=retention,
         loaded_from=loaded_from,
+        projects=projects,
     )
     problems.extend(_validate(config))
     if problems:
@@ -144,6 +156,33 @@ def _table[T](cls: type[T], raw: dict[str, Any], name: str, problems: list[str])
     except TypeError as exc:
         problems.append(f"[{name}]: {exc}")
         return None
+
+
+def _parse_projects(raw: Any, problems: list[str]) -> Projects | None:
+    """``[projects]``: examples is true, false or a list of example ids; folders
+    is a list of paths (REQ-CFG-08)."""
+    if not isinstance(raw, dict):
+        problems.append("[projects] must be a table")
+        return None
+    unknown = sorted(set(raw) - {"examples", "folders"})
+    if unknown:
+        problems.append(f"[projects]: unknown keys {unknown} (it takes examples and folders)")
+    examples = raw.get("examples", True)
+    folders = raw.get("folders", [])
+    found: list[str] = []
+    if not isinstance(examples, bool) and not _strings(examples):
+        found.append("projects.examples must be true, false or a list of project ids")
+    if not _strings(folders):
+        found.append("projects.folders must be a list of paths")
+    problems.extend(found)
+    if found or unknown:
+        return None
+    chosen = examples if isinstance(examples, bool) else tuple(examples)
+    return Projects(chosen, tuple(Path(f).expanduser() for f in folders))
+
+
+def _strings(value: object) -> bool:
+    return isinstance(value, list) and all(isinstance(item, str) and item for item in value)
 
 
 def _parse_sources(items: list[dict[str, Any]], problems: list[str]) -> list[Source]:
@@ -170,7 +209,22 @@ def _validate(config: Config) -> list[str]:
         if not source.location:
             problems.append(f"source {source.id}: needs a path (local) or url (remote)")
         problems.extend(_validate_isolation(config.data_dir, source))
+        problems.extend(_validate_project_folders(config.projects.folders, source))
     return problems
+
+
+def _validate_project_folders(folders: tuple[Path, ...], source: Source) -> list[str]:
+    """`mph projects copy` writes into a project folder, so none may be inside a
+    read-only source (REQ-CFG-08, REQ-CAT-01)."""
+    root = source.local_path
+    if root is None:
+        return []
+    src = root.resolve()
+    return [
+        f"projects.folders: {folder} is inside read-only source {source.id} ({src})"
+        for folder in folders
+        if folder.resolve() == src or folder.resolve().is_relative_to(src)
+    ]
 
 
 def _validate_audio(audio: AudioPolicy) -> list[str]:

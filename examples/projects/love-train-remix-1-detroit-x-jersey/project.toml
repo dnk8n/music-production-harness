@@ -1,0 +1,12 @@
+# One of Dean's example projects (spec/components/projects.md).
+name = "Love Train remix 1: Detroit x Jersey"
+about = """An 8-minute Detroit techno remix, with a splash of Jersey garage, of "Love Train" \
+by PillowTalk x Soul Clap featuring Greg Paulus and Crew Love. Only the vocals and the \
+train's horn come from the song; the drums, bass, chords, strings and effects are new. \
+Four short blocks, rated early, and the whole track, each as a Renoise song and a \
+SuperCollider render. For Dean's own listening, never to be released."""
+spec = "spec/tracks/love-train.md"
+needs = """Your own copy of the song (Love Train Remixes, Soul Clap Records SCR100, track 7, \
+the 2016 original) and its stems from `mph catalogue derive SOUND stems`. The scores play \
+the vocal and horn stems by their hashes, so they render only where those stems exist: \
+see README.md here."""

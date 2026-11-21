@@ -1,0 +1,6 @@
+# One of Dean's example projects (spec/components/projects.md).
+name = "Sidechain"
+about = """Kick-triggered ducking of a held pad and the acid line, in takes from bypassed \
+to far too much, measured on the envelope and in the whole mix."""
+spec = "spec/components/benchmarks.md (section Sidechain)"
+needs = "Nothing: drum sounds the catalogue lacks fall back to SuperCollider synths."

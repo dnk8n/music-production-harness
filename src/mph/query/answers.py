@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from mph import __version__, doctor, retention
-from mph.bench import feedback, ideas, ratings
+from mph.bench import feedback, ideas, projects, ratings
 from mph.catalogue import db, provenance, search, stats
 from mph.components import Context, Stage
 from mph.config import Config
@@ -228,7 +228,7 @@ def _projects(listing: list[dict[str, Any]]) -> Answer:
 
 def _ideas(listing: list[dict[str, Any]], conn: sqlite3.Connection | None) -> Answer:
     """How many of Dean's ideas are open, built and dropped (REQ-FBK-08)."""
-    known = ideas.known(listing, ideas.specced())
+    known = ideas.known(listing, projects.current().specced())
     return dict(Counter(i.status(known) for i in ideas.every(conn)))
 
 

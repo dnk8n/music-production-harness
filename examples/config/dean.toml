@@ -1,0 +1,23 @@
+# Dean's own config (~/.config/mph/config.toml on Dean's Mac), the one every
+# example project was made and rendered with. Spec: spec/components/config.md.
+# Copy it and change the paths to yours; docs/getting-started.md walks
+# through it, and docs/reference-mac.md describes the Mac it runs on.
+# Secrets never go here: they are in the macOS Keychain (`mph secrets list`).
+
+[paths]
+# The catalogue, downloads, cache, renders and Renoise jobs. Rebuildable.
+data_dir = "~/Library/Application Support/mph"
+
+# Dean's sample library: about 4,060 sounds from commercial packs (Loopmasters,
+# Novation, Photek and others), plus full tracks Dean owns, in full_tracks/.
+# Read-only: mph never writes inside it (REQ-CAT-01).
+[[sources]]
+id = "dj-samples"
+kind = "local"
+path = "/Users/dean/dj/samples"
+license = "commercial-pack"
+
+[projects]
+# Every example project is on: they are Dean's own.
+examples = true
+folders = []

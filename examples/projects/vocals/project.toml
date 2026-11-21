@@ -1,0 +1,6 @@
+# One of Dean's example projects (spec/components/projects.md). Planned: no scores yet.
+name = "Vocals"
+about = """A vocal from the catalogue fitted to the grid, and spoken word from an archive. \
+Planned in issue #7."""
+spec = "spec/components/benchmarks.md (section Vocals)"
+needs = "No scores yet."

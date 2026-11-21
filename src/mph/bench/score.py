@@ -33,10 +33,9 @@ import re
 import tomllib
 from collections.abc import Iterator
 from dataclasses import asdict, dataclass, replace
-from importlib import resources
 from typing import Any, TypeGuard
 
-from mph.bench import mix
+from mph.bench import mix, projects
 from mph.bench.mix import MixError, Send, Strip
 
 STEPS = 16  # sixteenths in a bar: the usual grid
@@ -1004,22 +1003,35 @@ def load_text(text: str) -> Score:
 
 
 def available() -> list[str]:
-    folder = resources.files("mph.bench").joinpath("scores")
-    return sorted(
-        p.name.removesuffix(".toml") for p in folder.iterdir() if p.name.endswith(".toml")
-    )
+    """The benchmarks of the projects that are on (spec/components/projects.md)."""
+    return projects.current().available()
+
+
+def _found(benchmark_id: str) -> projects.Found:
+    try:
+        return projects.current().score(benchmark_id)
+    except projects.ProjectError as exc:
+        raise ScoreError(str(exc)) from exc
 
 
 def source(benchmark_id: str) -> str:
     """The score file's text, as written."""
-    if benchmark_id not in available():
-        raise ScoreError(f"no score for {benchmark_id} (have: {', '.join(available())})")
-    path = resources.files("mph.bench").joinpath("scores", f"{benchmark_id}.toml")
-    return path.read_text("utf-8")
+    return _found(benchmark_id).text
 
 
 def load(benchmark_id: str) -> Score:
-    return load_text(source(benchmark_id))
+    """A score from its project's folder. One that leaves out its project is in
+    its folder's; one that names another is refused (REQ-PRJ-01)."""
+    found = _found(benchmark_id)
+    loaded = load_text(found.text)
+    if not loaded.project:
+        return replace(loaded, project=found.project.name)
+    if loaded.project != found.project.name:
+        raise ScoreError(
+            f"{benchmark_id} says it is in project {loaded.project!r}, but its folder "
+            f"{found.project.folder} is {found.project.name!r}: change one (REQ-PRJ-01)"
+        )
+    return loaded
 
 
 # --- events ---------------------------------------------------------------------------

@@ -1,0 +1,10 @@
+# One of Dean's example projects (spec/components/projects.md).
+name = "Drum patterns"
+about = """Ten drum patterns from the music Dean plays and wants mph to make: Detroit \
+four-to-the-floor, Jersey garage shuffle, UK garage 2-step, electro, dub techno with \
+ghost notes, Chicago jack, tribal techno, Afro house clave, a breakbeat chop and speed \
+garage. Each is measured for timing, swing and chokes, and rated by ear."""
+spec = "spec/components/benchmarks.md (section Drum patterns)"
+needs = """Nothing to start: a drum sound the catalogue lacks falls back to a SuperCollider \
+synth. BM-DRUM-09 slices a breakbeat, so it needs a break loop with a known tempo \
+(`mph projects fill` can fetch one)."""

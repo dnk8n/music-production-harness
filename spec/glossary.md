@@ -16,6 +16,9 @@
 | **Embedded metadata** | What an audio file says about itself: its tags (title, artist, album...) and its loop and sampler chunks (ACID tempo, root note, loop points). Labels from it have `origin=embedded` (REQ-CAT-12). |
 | **Production rate** | Sample rate for synthesis and rendered stems (default 96 kHz). |
 | **Delivery** | The final 48 kHz / 24-bit AIFF. The only point where sample rate conversion (SRC) and dither happen. |
+| **Project** | A folder of scores judged together, with a `project.toml` that names it: the benchmarks of one kind, or the blocks of one track (spec/components/projects.md). |
+| **Example project** | One of Dean's projects, shipped in `examples/projects/`. On by default, and turned off in `[projects]` for a clean slate (REQ-PRJ-03). |
+| **Placeholder** | A free sound (CC0, public domain or CC-BY) `mph projects fill` downloads for a voice the catalogue has nothing for (REQ-PRJ-05). |
 | **Benchmark** | A short render with a written description of what Dean should hear, automated measurements, and Dean's rating. ID `BM-...`. |
 | **Rating** | Dean's 0 to 5 stars on a take (3 or more is a pass), whether it is resolved, and his feedback, given on the feedback page (REQ-FBK-02). |
 | **Resolved** | A take needs nothing more: it renders again only when forced. **Unresolved**: it needs work, and agents find it through `feedback` (REQ-FBK-06). Set by Dean, or by the stars when he doesn't. |

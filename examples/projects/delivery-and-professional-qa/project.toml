@@ -1,0 +1,6 @@
+# One of Dean's example projects (spec/components/projects.md). Planned: no scores yet.
+name = "Delivery and professional QA"
+about = """A mastered delivery, render determinism, and a comparison of delivery paths. \
+Planned in issue #10 (mastering)."""
+spec = "spec/components/benchmarks.md (section Delivery and professional QA)"
+needs = "No scores yet."

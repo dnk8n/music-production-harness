@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import plistlib
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
+from mph.bench import projects
 from mph.platform_info import Host
 
 
@@ -43,6 +45,15 @@ def _isolate_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         return home
 
     monkeypatch.setattr(Path, "home", classmethod(elsewhere))
+
+
+@pytest.fixture(autouse=True)
+def _restore_projects() -> Iterator[None]:
+    """A test that chooses projects (as ``mph`` does from the config at start)
+    leaves the default, every example on, for the next one."""
+    before = projects.chosen()
+    yield
+    projects.use(before)
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:

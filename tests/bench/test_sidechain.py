@@ -307,6 +307,31 @@ def test_a_dip_cut_short_by_the_next_hit_is_followed_up_to_it() -> None:
 
 
 @pytest.mark.req("REQ-BEN-12")
+@pytest.mark.req("REQ-REN-11")
+def test_the_way_back_ends_where_the_next_dip_starts_to_fall() -> None:
+    # Renoise draws each dip a tick early, so after a kick pushed onto the last eighth the
+    # downbeat's dip falls just before its hit. That fall is the next dip's: counted as
+    # the last one's way back, it failed the remix's Renoise takes (2026-11-21).
+    chain = Sidechain("kick", ("bass",), depth_db=24.0, release_ms=430.0)
+    first = 1 - 10 ** (_dip(24, 0.002, 0.43, length_s=0.75) / 20)
+    second = np.zeros_like(first)
+    starts = round((0.25 - 0.002) * RATE)  # a tick early, at 16 lines a beat and 120 BPM
+    second[starts:] = 1 - 10 ** (_dip(24, 0.002, 0.43, length_s=(len(first) - starts) / RATE) / 20)
+    deeper = np.maximum(first, second)  # the deeper dip wins, as in Renoise
+    found = checks.sidechain(chain, "bass", *_gain(20 * np.log10(1 - deeper)), [0.0, 0.25],
+                             rate=RATE)  # fmt: skip
+    assert all(c.passed for c in found)
+    assert found[3].value < 0.1  # the release's own steps
+    # A step on a way back cut short still counts.
+    stepped = deeper.copy()
+    stepped[round(0.15 * RATE) : starts] = np.minimum(stepped[round(0.15 * RATE) : starts], 0.5)
+    jumpy = checks.sidechain(chain, "bass", *_gain(20 * np.log10(1 - stepped)), [0.0, 0.25],
+                             rate=RATE)  # fmt: skip
+    assert [c.passed for c in jumpy] == [True, True, True, False]
+    assert jumpy[3].note.startswith("150.0 ms after the kick at 0.000 s")
+
+
+@pytest.mark.req("REQ-BEN-12")
 def test_the_whole_mix_is_measured_after_hits_where_a_target_sounds() -> None:
     rate = RATE
     t = np.arange(rate) / rate

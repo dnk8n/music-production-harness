@@ -99,7 +99,11 @@ Renoise shows them.
   remix's four blocks failed REQ-BEN-12's steps (2026-11-20). A take's
   "biggest step on the way back" check says where its step is, the level
   either side and the dry part's own level there: a big change in the dry
-  level means a note starting, not the duck.
+  level means a note starting, not the duck. A fall just before a hit is
+  that hit's own dip, drawn a tick early, so the check ends each way back
+  at its highest point (REQ-BEN-12). Before it did, the remix's takes
+  failed at 3.7 dB, half a millisecond before each kick that came 250 ms
+  after the last (2026-11-21).
 
 ## Traps in the API
 

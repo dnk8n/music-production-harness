@@ -322,7 +322,8 @@ def dips(
     the hit, or from the target's first sound after it if it starts later (a
     pad fading in on the kick): a dip can't be heard, or measured, in silence.
     A dip that the next hit interrupts is followed only up to that hit, and has
-    no recovery to measure."""
+    no recovery to measure. Its steps are counted on the way back, which ends
+    at its highest point before the next dip starts to fall."""
     frames = max(1, round(window_s * rate))
     gain = gain_curve(wet, dry, frames)
     alone = window_levels(dry, frames)[: len(gain)]
@@ -341,7 +342,7 @@ def dips(
         end = start + round(recover_s / window)
         following = int(ordered[n + 1] / window) if n + 1 < len(ordered) else len(gain)
         last = min(end, following - 1)
-        step, where = _biggest_step(gain[deepest : last + 1])
+        step, where = _biggest_step(_way_back(gain[deepest : last + 1]))
         before, after = deepest + max(where - 1, 0), deepest + where
         found.append(
             Dip(
@@ -356,6 +357,15 @@ def dips(
             )
         )
     return found
+
+
+def _way_back(gain: np.ndarray) -> np.ndarray:
+    """A dip's way back, from its deepest window: up to its highest one. A dip
+    can start to fall a little before its hit (Renoise draws it a tick early),
+    and that fall belongs to the next dip, not to this one's way back."""
+    if np.isnan(gain).all():
+        return gain
+    return gain[: int(np.nanargmax(gain)) + 1]
 
 
 def _biggest_step(gain: np.ndarray) -> tuple[float, int]:

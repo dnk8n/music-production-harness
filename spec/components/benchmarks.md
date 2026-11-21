@@ -229,8 +229,9 @@ compare against it:
   first sound when it starts after the hit, like a pad fading in on the
   kick. It is back within 0.5 dB of full level 10 ms after
   the release ends, or as soon as it sounds after that (a bass line can
-  be between notes then). On the way back, the gain never changes by more than
-  0.5 dB from one window to the next. That check says where its biggest
+  be between notes then). On the way back, from the dip's deepest point to
+  its highest before the next dip starts to fall, the gain never changes by
+  more than 0.5 dB from one window to the next. That check says where its biggest
   step is: after which hit and how long after it, the level on either side,
   and the dry target's own level there, so a step in the duck can be told
   from a note starting. A dip that the next hit cuts short,
@@ -270,7 +271,13 @@ compare against it:
   to -1.9 dB. Measuring all 59 kick one-shots in Dean's library against the
   rendered blocks picked one down 18 dB by 150 ms, and every block then
   passed at -2.3 to -3.9 dB (2026-11-15). A kick for a pumping track should
-  be down at least 12 dB 150 ms after it hits.
+  be down at least 12 dB 150 ms after it hits. The way back ends at its
+  highest point because a dip can start to fall just before its hit, as
+  Renoise draws it a tick early (REQ-REN-11), and that fall belongs to the
+  next dip, whose speed is checked on its own. Counted as the last dip's way
+  back, it failed the remix's Renoise takes at the kick pushed onto the last
+  eighth: a 3.7 dB step half a millisecond before the next kick, with the
+  bass's own level steady (2026-11-21).
 - **Verify:** test
 
 ### REQ-BEN-13: Triplet grids and feel

@@ -129,6 +129,13 @@ Renoise shows them.
   (the kick's first in every score so far), then the dry renders; keep
   renoise-check in that order, and don't make a measured part the first
   render after a switch.
+- Renoise asks whether to stop a script that holds it for too long ("may
+  be busy or may have stopped responding"), and the render then waits for
+  a click. So the build runs in a coroutine (`main.lua`) and calls
+  `slice.pause()`, which yields once a slice has run 0.2 s (REQ-REN-03). A
+  new loop in the build should call it too, but never inside a `pcall`:
+  Lua 5.1 can't yield across one. The harness's `slice=0` makes the build
+  pause at every chance.
 - Save each song in an idle step of its own, after the step that last
   changed it (REQ-REN-08). Otherwise Renoise asks whether to save, and a
   render waits for a click nobody makes.

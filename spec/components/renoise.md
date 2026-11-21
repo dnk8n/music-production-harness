@@ -50,6 +50,10 @@ once built, with the optional settings it doesn't have and the other
 settings in its preset data. mph keeps it in the render folder, so a
 parameter Renoise names or shows differently comes to light in one run.
 mph deletes each rendered WAV once it has read it.
+The tool builds a song a slice at a time: once a slice has run about 0.2 s,
+it stops and goes on in Renoise's next idle step, so no single call runs
+long enough for Renoise to ask whether the script has stopped responding.
+Every file the tool needs is installed with it.
 mph starts Renoise in the background and waits for the result. If Renoise is
 already open when a render command starts, mph refuses and asks the user to
 save their work and quit Renoise: it only renders in a Renoise it started
@@ -59,7 +63,12 @@ command reuse the Renoise mph started. Nobody needs to click anything. `mph reno
 into Renoise's Tools folder, and doctor checks that it's there.
 - **Why:** Renoise has no command-line render. A job folder needs no network
   port or preference changes, survives a Renoise restart, and leaves a
-  readable trail when something fails.
+  readable trail when something fails. Renoise asks whether to stop a script
+  that holds it too long, and a render then waits for someone to click "no":
+  built in one call, each of the remix's blocks took about 19 s and asked
+  every time (2026-11-21). In slices, the longest step took 0.8 s, and the
+  blocks rendered with nobody at the Mac. A tool file the installer left out
+  stopped Renoise loading the tool at all.
 - **Verify:** test
 
 ### REQ-REN-04: Laptop keyboard performance

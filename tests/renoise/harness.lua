@@ -5,7 +5,9 @@
 -- Job options: `refuse` (Renoise never starts a new song), `open=<path>`
 -- (someone has that song open before the first tick), `changed` (with
 -- unsaved changes) and `loading=<n>` (no song for the first n ticks, as while
--- one loads). Each tick moves the clock on 1000 s, so timeouts are quick.
+-- one loads), and `slice=<s>` (a build pauses once it has run s seconds of
+-- CPU time; 0 pauses at every chance). Each tick moves the clock on 1000 s,
+-- so timeouts are quick.
 
 local here = arg[0]:match("^(.*)/") or "."
 local tool_dir, mode = arg[1], arg[2]
@@ -231,6 +233,9 @@ elseif mode == "job" then
     return state.clock
   end
   dofile(tool_dir .. "/main.lua")
+  if options.slice then
+    require("slice").SLICE_S = tonumber(options.slice)
+  end
   if options.open then
     state.open(options.open, options.changed == true)
   end

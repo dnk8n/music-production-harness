@@ -11,22 +11,30 @@ difference in your takes might come from. Checked with `mph doctor` and
 |---|---|
 | Model | MacBook Pro 14-inch (2021) |
 | Chip and memory | Apple M1 Pro, 16 GB |
-| Disk | 460 GiB, nearly full: about 8 GiB free most of November 2026 |
+| System | macOS 26.5.2 (build 25F84), arm64 (2026-11-21) |
+| Disk | 460 GiB, nearly full: 6 to 8 GiB free through November 2026 (6.1 GiB on 2026-11-21) |
 | Checkout | `/Users/dean/src/music-production-harness` |
-| Data folder | `~/Library/Application Support/mph` (about 10 GB in November 2026, nearly all renders) |
+| Data folder | `~/Library/Application Support/mph`: renders took 13.8 GB on 2026-11-21 |
 | Config | `~/.config/mph/config.toml`, as in [examples/config/dean.toml](../examples/config/dean.toml) |
 
 ## The tools
+
+As `mph doctor` reported them on 2026-11-21, every check green:
 
 | Tool | Version | Notes |
 |---|---|---|
 | Renoise | 3.5.4, arm64, licensed | the licence likely covers upgrades to about 4.5 |
 | SuperCollider | 3.13.0, with sc3-plugins | |
-| Surge XT | 1.3.4 | |
-| FFmpeg, SoX | from Homebrew | SoX with libsoxr |
-| Demucs | 4.1, `htdemucs_ft` on the CPU | a `uv tool`, installed with numpy |
-| LuaJIT | from Homebrew | Renoise's own Lua; the bridge tests prefer it |
-| uv, gh, Ollama | from Homebrew | |
+| Surge XT | 1.3.4 | an Audio Unit |
+| FFmpeg | 9.0.2 | Homebrew |
+| SoX | Homebrew's, with libsoxr | |
+| Demucs | 4.1.0, `htdemucs_ft` on the CPU | a `uv tool`, installed with numpy |
+| uv | 0.9.17 | |
+| Homebrew | 7.0.13 | |
+| GitHub CLI | 2.103.3 | |
+| Ollama | 0.40.16 | |
+| Tidal Cycles, Ultimate Vocal Remover | installed | optional; nothing uses them yet |
+| LuaJIT | Homebrew's | Renoise's own Lua; the bridge tests prefer it |
 | Claude Code | with `mph mcp install` done | the `mph` tools at user scope |
 
 Freesound and Gemini keys are in the Keychain (`mph secrets list`).

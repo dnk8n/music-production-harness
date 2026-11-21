@@ -53,7 +53,8 @@ mkdir -p "$XDG_RUNTIME_DIR"
 
 - Nothing binary but small images in `docs/images/` (REQ-ENG-10), no audio,
   no Renoise songs, no secrets, local config or catalogue (CLAUDE.md rule 13).
-  The `no-audio` and `no-binaries` hooks refuse them.
+  The `no-audio` and `no-binaries` hooks refuse them; when they print
+  "(no files to check) Skipped", nothing matched, which is the pass.
 - Changing a file the render gate hashes (`rerender.CODE`, such as
   `bench/score.py`) makes every unresolved or unrated take render once more
   on the next `render --all`. Say so in the PR, with how long the big ones

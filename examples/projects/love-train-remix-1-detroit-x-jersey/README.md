@@ -60,4 +60,6 @@ stand-in, so it needs one), but never for the recordings.
   0.245 dB at most, and a 2.8 GB render folder; it needs about 6 GB free
   while it renders. The blocks measure -15.93, -15.12, -16.31 and -16.11
   LUFS.
+- As of 2026-11-21 none of version 2's ten takes (five benchmarks, each in
+  Renoise and SuperCollider) has a rating yet: they wait for Dean's ears.
 - Next: a version anyone can render from free sources (issue #68).

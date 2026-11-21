@@ -16,4 +16,5 @@ only for now; a Renoise take (a native Renoise instrument, with a modulated
 filter and glides) is issue #30.
 
 Dean resolved all its takes on 2026-11-13. It has no fresh take, because its
-only voice is the synth.
+only voice is the synth: Dean's idea for one (idea 14) has nothing to pick,
+so it can be dropped.

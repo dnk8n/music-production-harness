@@ -23,7 +23,9 @@ uv run mph bench render BM-AFRO-01
 The bell, djembe (its stroke is a parameter: 0 bass, 1 tone, 2 slap) and
 dunun are SuperCollider synths: Dean's library has no agogo, shekere or
 talking drum, and its djembes are loops. `mph projects fill north-star`
-looks for one-shots. On BM-AFRO-01 Dean preferred the synth-kit shaker.
+looks for one-shots; on Dean's own catalogue these five voices are all it
+finds missing across every example project (2026-11-21). On BM-AFRO-01
+Dean preferred the synth-kit shaker.
 
 Planned, one PR each: BM-AFRO-03 (a borrowed conga groove) and BM-MIX-01 (a
 layered kick) in issue #39; BM-KEYS-01 (Detroit parallel stabs) and

@@ -4,17 +4,28 @@
 -- mph wrote: a list of songs, each with its plan, where to save it, and the
 -- renders wanted, and where scratch songs go. For a job this tool first saves
 -- the open song if it's mph's. Then, for each song, it starts a new song,
--- builds it (build.lua), saves it, renders each WAV, and saves it again. Last
--- it saves the open song as mph's scratch song and writes
--- `<name>.result.json`, with the error if anything failed. Heavy work runs
+-- builds it (build.lua), saves it, renders each WAV, and saves it again. A
+-- render can solo a track and switch the mixer to a kind of render ("stem"
+-- or "dry", mixer.lua); the song is saved with nothing muted and every
+-- device as built. Last it saves the open song as mph's scratch song and
+-- writes `<name>.result.json`, with the error if anything failed, the
+-- parameters of every kind of mixer device the songs used, and what each
+-- song's mixer devices and synth envelopes show once built. Heavy work runs
 -- from the idle loop, never inside a notifier.
 --
 -- Nothing is left unsaved (REQ-REN-08). Renoise can count a step's changes as
 -- unsaved even when the step saved the song, so a save that must leave the
 -- song with nothing to ask about runs in an idle step with no changes in it.
+--
+-- A big song takes longer to build than Renoise lets one call run before it
+-- asks whether to stop the script, so the build runs in a coroutine that
+-- yields every fraction of a second (slice.lua) and goes on in the next idle
+-- step ("building"). The save after the build stays in the step that makes
+-- the build's last change.
 
 local build = require("build")
 local json = require("json")
+local slice = require("slice")
 
 local NEW_SONG_TIMEOUT_S = 120
 local POLL_EVERY_S = 1
@@ -74,6 +85,8 @@ local function finish(result)
   result.renoise = renoise.RENOISE_VERSION
   result.files = job.files
   result.kept = job.kept
+  result.devices = job.devices
+  result.shown = job.shown
   write_atomically(job.base .. ".result.json", json.encode(result) .. "\n")
   os.remove(job.base .. ".working")
   job = nil
@@ -141,10 +154,12 @@ local function next_render()
   local wanted = plan.renders[job.render]
   if wanted == nil then
     build.solo(song, nil)
+    build.switch(song, plan, "mix")
     job.phase = "save" -- on the next idle step, after this change
     return
   end
   build.solo(song, wanted.solo)
+  build.switch(song, plan, wanted.mode)
   job.phase = "rendering"
   local options = {
     sample_rate = plan.rate,
@@ -162,16 +177,47 @@ local function next_render()
 end
 
 local function save_song()
-  renoise.app():save_song_as(current_song().save) -- saved with nothing muted
+  renoise.app():save_song_as(current_song().save) -- saved with nothing muted, as built
   next_song()
+end
+
+-- Once the build is done: what it shows, the first save, the first render.
+local function after_build()
+  local plan = current_song()
+  local song = renoise.song()
+  local shown = build.shown(song, plan)
+  if shown then
+    shown.song = stem(plan.save)
+    job.shown[#job.shown + 1] = shown
+  end
+  renoise.app():save_song_as(plan.save)
+  job.render = 0
+  next_render()
+end
+
+-- Runs the build for one slice. An error in it fails the job with that error.
+local function continue_build()
+  slice.begin()
+  local ok, problem = coroutine.resume(job.builder)
+  if not ok then
+    job.builder = nil
+    error(problem, 0)
+  end
+  if coroutine.status(job.builder) ~= "dead" then
+    job.phase = "building" -- more on the next idle step
+    return
+  end
+  job.builder = nil
+  after_build()
 end
 
 local function build_song()
   local plan = current_song()
-  build.build(renoise.song(), plan)
-  renoise.app():save_song_as(plan.save)
-  job.render = 0
-  next_render()
+  local song = renoise.song()
+  job.builder = coroutine.create(function()
+    build.build(song, plan, job.devices)
+  end)
+  continue_build()
 end
 
 local function start(folder, name)
@@ -180,7 +226,7 @@ local function start(folder, name)
   if not os.rename(join(folder, name), working) then
     return
   end
-  job = { base = base, song = 0, files = {}, kept = {} }
+  job = { base = base, song = 0, files = {}, kept = {}, devices = {}, shown = {} }
   local data, problem = load_data(working)
   if type(data) ~= "table" or type(data.songs) ~= "table" or type(data.scratch) ~= "table" then
     fail("unreadable job: " .. tostring(problem))
@@ -194,6 +240,7 @@ end
 local STEPS = {
   open = save_open_song,
   build = build_song,
+  building = continue_build,
   rendered = next_render,
   save = save_song,
 }

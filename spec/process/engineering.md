@@ -20,9 +20,11 @@ when the package outgrows a handful of modules.
 ### REQ-ENG-03: Side effects behind seams
 Processes, the filesystem outside `data_dir`, network and clocks are
 reached through injected interfaces (`Runner`, `Host`, ...). Unit tests never
-touch the real system.
+touch the real system, the home folder included.
 - **Why:** tests are fast and deterministic, and they run on Linux CI without
-  macOS apps.
+  macOS apps. On Dean's Mac the Renoise bridge is installed in his home
+  folder, so two tests whose renders picked their engine from it waited
+  12 minutes each for Renoise (2026-11-14). Tests get a home of their own.
 - **Verify:** test
 
 ### REQ-ENG-04: Security baseline
@@ -71,11 +73,26 @@ checkout alone. The log goes to `~/Library/Logs/mph/`. No schedule, no
 self-hosted runner, no secrets in the repo or the log.
 
 `scripts/renoise-check [REF]` checks the Renoise bridge tool in the real
-Renoise, with Renoise closed first: two small jobs in one Renoise that mph
+Renoise, with Renoise closed first: three small jobs in one Renoise that mph
 starts, songs opened the way "Open in Renoise" opens them, then a request to
-quit, which Renoise must obey without asking to save (REQ-REN-08). It puts
-back the bridge tool that was installed before. Run it before merging a
-change to the bridge tool.
+quit, which Renoise must obey without asking to save (REQ-REN-08). The third
+job builds a song with a mix and sampled synths: every planned setting must
+show what was asked, the duck must pass REQ-BEN-12's own checks at every
+kick, rendered in a take's order and measured as a render's report measures
+it, a part must still sound on its own
+track while it sends, and its echo must come back on time (REQ-REN-09 to
+REQ-REN-11). The duck is the remix's own (24 dB in 2 ms, back over 430 ms),
+on the bass and on a steady tone. It prints how Renoise names and shows each
+kind of device, the optional settings Renoise doesn't have or didn't take,
+the other settings in those devices' preset data, how many samples apart
+each ducked render and its dry render are, the duck's shape around a kick
+on the tone, where each part's deepest moment and biggest step fall, each
+part's first two milliseconds (where a part that starts with the song starts
+from silence), and REQ-BEN-12's checks on both, so a name the plan got
+wrong, or how Renoise applies automation, is learnt from one run. If a step
+fails, it still asks the Renoise it started to quit. It puts back the bridge
+tool that was installed before. Run it before merging a change to the bridge
+tool.
 
 `scripts/kit-diff REF [BASE]` checks a change against Dean's own library:
 the sounds every benchmark take would pick, and the sounds whose roles

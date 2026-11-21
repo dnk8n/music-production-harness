@@ -183,15 +183,21 @@ def _frames(signal: Audio, start: int, length: int) -> Audio:
     return out
 
 
-def aligned(stem: Audio, wanted: Audio, at: int, reach: int) -> tuple[int, float, float]:
+def aligned(
+    stem: Audio, wanted: Audio, at: int, reach: int, *, against: Audio | None = None
+) -> tuple[int, float, float]:
     """Where ``wanted`` sits in ``stem`` near frame ``at``: the lag in frames,
-    within +/- ``reach``; how much of the stem is left there once ``wanted``,
-    at its best level, is cancelled from it, in dB; and that level in dB
+    within +/- ``reach``, found by shape rather than size, so a window that
+    ends as a sung line starts isn't pulled a pitch period late, to where the
+    line is louder; how much of the stem is left there once ``wanted``, at
+    its best level, is cancelled from it, in dB against ``against`` (as long
+    as ``wanted``, such as the loudest stretch of the same recording) or
+    against ``wanted`` itself, whichever is louder; and that level in dB
     (REQ-TRK-02). A stem with nothing there cancels nothing: 0 dB. A mono
     recording plays on both of a stem's channels."""
     shape = mono(wanted).astype(np.float64)
     segment = _window(mono(stem), at - reach, 2 * reach + len(shape))
-    lag = int(np.argmax(np.correlate(segment, shape, mode="valid"))) - reach
+    lag = _best_fit(segment, shape, max(float(np.dot(shape, shape)), 1e-30)) - reach
     heard = _frames(stem, at + lag, len(wanted)).ravel()
     channels = stem.shape[1] if wanted.shape[1] == 1 else 1
     want = np.repeat(wanted.astype(np.float64), channels, axis=1).ravel()
@@ -199,8 +205,11 @@ def aligned(stem: Audio, wanted: Audio, at: int, reach: int) -> tuple[int, float
     if not all(energies):
         return lag, NO_MATCH_DB, -math.inf
     shared = float(np.dot(heard, want))
-    kept = max(1.0 - shared * shared / (energies[0] * energies[1]), 1e-12)
-    return lag, 10 * math.log10(kept), db(abs(shared) / energies[1])
+    left = energies[0] - shared * shared / energies[1]
+    louder = energies[1]
+    if against is not None:
+        louder = max(louder, float(np.sum(np.repeat(against.astype(np.float64), channels, 1) ** 2)))
+    return lag, 10 * math.log10(max(left / louder, 1e-12)), db(abs(shared) / energies[1])
 
 
 def _best_fit(segment: Audio, tpl: Audio, energy: float) -> int:
@@ -287,9 +296,14 @@ class Dip:
     """One trigger hit's dip in a gain curve (REQ-BEN-12)."""
 
     depth_db: float  # how far the level fell
-    reach_ms: float  # from the hit until it had fallen ``reached_db``
-    recovered_db: float  # the level ``recover_s`` after the hit (nan if silent then)
+    reach_ms: float  # from the hit (or the target's first sound) until it had fallen ``reached_db``
+    recovered_db: float  # the level ``recover_s`` after the hit, or as soon as heard after it
+    # (nan if silent until the next hit, or cut short by it)
     step_db: float  # the biggest change between neighbouring windows on the way back
+    at_s: float = 0.0  # the hit
+    step_ms: float = 0.0  # where that change ends, after the hit
+    step_gains: tuple[float, float] = (0.0, 0.0)  # the level either side of it (dB)
+    step_dry: tuple[float, float] = (0.0, 0.0)  # the dry target's own level there (dBFS)
 
 
 def dips(
@@ -304,31 +318,79 @@ def dips(
     reached_db: float,
 ) -> list[Dip]:
     """The dip at each trigger, from ``wet`` against ``dry``; hits where the
-    dry signal is silent are left out."""
+    dry signal is silent are left out. How fast the dip came is counted from
+    the hit, or from the target's first sound after it if it starts later (a
+    pad fading in on the kick): a dip can't be heard, or measured, in silence.
+    A dip that the next hit interrupts is followed only up to that hit, and has
+    no recovery to measure. Its steps are counted on the way back, which ends
+    at its highest point before the next dip starts to fall."""
     frames = max(1, round(window_s * rate))
     gain = gain_curve(wet, dry, frames)
+    alone = window_levels(dry, frames)[: len(gain)]
     window = frames / rate
+    ordered = sorted(triggers_s)
     found = []
-    for at in triggers_s:
+    for n, at in enumerate(ordered):
         start = int(at / window)
         near = gain[start : start + math.ceil(search_s / window)]
         if near.size == 0 or np.isnan(near).all():
             continue
         deepest = start + int(np.nanargmin(near))
-        reached = np.flatnonzero(near <= -reached_db)
-        reach = (reached[0] + 1) if reached.size else len(near) + 1
+        heard = int(np.flatnonzero(~np.isnan(near))[0])
+        reached = np.flatnonzero(near[heard:] <= -reached_db)
+        reach = (reached[0] + 1) if reached.size else len(near) - heard + 1
         end = start + round(recover_s / window)
-        steps = np.abs(np.diff(gain[deepest : end + 1]))  # neighbours only: NaN across silence
-        steps = steps[~np.isnan(steps)]
+        following = int(ordered[n + 1] / window) if n + 1 < len(ordered) else len(gain)
+        last = min(end, following - 1)
+        step, where = _biggest_step(_way_back(gain[deepest : last + 1]))
+        before, after = deepest + max(where - 1, 0), deepest + where
         found.append(
             Dip(
                 depth_db=-float(gain[deepest]),
                 reach_ms=float(reach * window * 1000),
-                recovered_db=float(gain[end]) if end < len(gain) else math.nan,
-                step_db=float(steps.max()) if steps.size else 0.0,
+                recovered_db=_first_heard(gain[end:following]) if end == last else math.nan,
+                step_db=step,
+                at_s=at,
+                step_ms=(after * window - at) * 1000,
+                step_gains=(float(gain[before]), float(gain[after])),
+                step_dry=(float(alone[before]), float(alone[after])),
             )
         )
     return found
+
+
+def _way_back(gain: np.ndarray) -> np.ndarray:
+    """A dip's way back, from its deepest window: up to its highest one. A dip
+    can start to fall a little before its hit (Renoise draws it a tick early),
+    and that fall belongs to the next dip, not to this one's way back."""
+    if np.isnan(gain).all():
+        return gain
+    return gain[: int(np.nanargmax(gain)) + 1]
+
+
+def _biggest_step(gain: np.ndarray) -> tuple[float, int]:
+    """The biggest change between neighbouring windows of a stretch of a gain
+    curve, and the window it ends on (0 if there is none). Only neighbours
+    count: a window where the target is silent splits the stretch."""
+    steps = np.abs(np.diff(gain))
+    if steps.size == 0 or np.isnan(steps).all():
+        return 0.0, 0
+    k = int(np.nanargmax(steps))
+    return float(steps[k]), k + 1
+
+
+def window_levels(signal: Audio, frames: int) -> np.ndarray:
+    """A signal's level in dBFS over windows of ``frames``."""
+    count = len(signal) // frames
+    flat = mono(signal)[: count * frames].astype(np.float64).reshape(count, frames)
+    return 10 * np.log10(np.maximum((flat**2).mean(axis=1), 1e-30))
+
+
+def _first_heard(gain: np.ndarray) -> float:
+    """The first level in a stretch of a gain curve where the target sounds:
+    between two notes of a bass line, the gain waits for the next note."""
+    heard = np.flatnonzero(~np.isnan(gain))
+    return float(gain[heard[0]]) if heard.size else math.nan
 
 
 def k_weighted(data: Audio, rate: int) -> Audio:
@@ -353,10 +415,12 @@ def window_changes(
     rate: int,
     start_s: float,
     end_s: float,
+    heard: Audio | None = None,
 ) -> list[float]:
     """For each hit, how much louder ``wet`` is than ``dry`` (dB, negative
     when quieter) over the window from ``start_s`` to ``end_s`` after it.
-    Hits whose dry window is silent are left out."""
+    Hits whose dry window is silent are left out, and so are hits where
+    ``heard`` (what the change comes from) is silent in the window."""
     found = []
     for at in hits_s:
         first, last = round((at + start_s) * rate), round((at + end_s) * rate)
@@ -364,7 +428,7 @@ def window_changes(
         if dry_part.size == 0 or wet_part.size == 0:
             continue
         dry_power = float(np.mean(np.square(dry_part, dtype=np.float64)))
-        if dry_power <= SILENCE**2:
+        if dry_power <= SILENCE**2 or (heard is not None and rms(heard[first:last]) <= SILENCE):
             continue
         wet_power = float(np.mean(np.square(wet_part, dtype=np.float64)))
         found.append(10 * math.log10(max(wet_power, 1e-30) / dry_power))

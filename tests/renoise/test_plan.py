@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -195,3 +196,122 @@ def test_the_tool_builds_a_triplet_song(tmp_path: Path) -> None:
     assert (2, 8, 164) in notes  # the bell's third pulse, leaning late
     assert (2, 0, 0) in notes and (2, 192, 0) in notes  # bar 5 starts the second pattern
     assert (1, 3, 154) in notes  # a swung sixteenth
+
+
+# --- sampled synths (REQ-REN-09) ------------------------------------------------------
+
+ACID = """
+id = "M"
+bpm = 120
+bars = 1
+
+[voices.bass]
+notes  = "C2 C2 C3 C3 F1 F1 F2 F1 G1 A1 G2 G1 C2 C2 C3 C2"
+gate   = "x  .  x  -  x  .  .  .  x  x  .  .  .  .  .  ."
+accent = ".  .  X  .  .  .  .  .  .  .  .  .  .  .  .  ."
+slide  = ".  .  .  .  .  .  .  .  S  .  .  .  .  .  .  ."
+sound = { synth = "mph_bass" }
+"""
+
+
+@pytest.mark.req("REQ-REN-09")
+def test_each_key_plays_the_nearest_sample() -> None:
+    assert song_plan.key_ranges([36]) == [(0, 119)]
+    assert song_plan.key_ranges([36, 24, 29]) == [(0, 26), (27, 32), (33, 119)]
+    assert song_plan.key_ranges([24, 25]) == [(0, 24), (25, 119)]
+
+
+@pytest.mark.req("REQ-REN-09")
+def test_a_glide_covers_its_interval_in_the_synths_glide_time() -> None:
+    line_s = 0.0625  # 120 BPM at 8 lines a beat: a tick is 1/16 of that
+    assert song_plan.glide_speed(12, 0.05, line_s) == 15  # 192 sixteenths over 12.8 ticks
+    assert song_plan.glide_speed(-12, 0.05, line_s) == 15  # down as fast as up
+    assert song_plan.glide_speed(2, 0.001, line_s) == 32  # under a tick: all in one
+    assert song_plan.glide_speed(0, 0.05, line_s) == 1  # the same note: the slowest glide
+    assert song_plan.glide_speed(48, 0.0, line_s) == 0xFF  # no glide time: at once
+    assert song_plan.glide_speed(48, 0.001, line_s) == 0xFF  # as fast as 0Gxx goes
+
+
+@pytest.mark.req("REQ-REN-09")
+def test_melodic_notes_carry_accents_glides_and_note_offs() -> None:
+    loaded = score.load_text(ACID)
+    assert (song_plan.lpb(loaded), song_plan.seconds_per_line(loaded)) == (8, 0.0625)
+    synth = song_plan.Synth(
+        (song_plan.Zone("c2.wav", 24),), (song_plan.Zone("c3.wav", 36),), 0.02, 0.05
+    )
+    found = song_plan.melodic_notes(
+        loaded, score.events(loaded), song_plan.Track("bass", "", 1.0, synth=synth)
+    )
+    shown = [
+        (n["line"], n.get("note", "off" if n.get("off") else None), n.get("accent"), n.get("glide"))
+        for n in found
+    ]
+    assert shown == [
+        (0, 24, False, None),
+        (1, "off", None, None),  # a plain note's gate: half a sixteenth
+        (4, 36, True, None),  # accented, and held through "-": the next note ends it
+        (8, 17, False, None),
+        (9, "off", None, None),
+        (16, 19, False, None),  # slid: held its whole step, tied into the next
+        (18, 21, None, song_plan.glide_speed(2, 0.05, 0.0625)),  # glides, no new note
+        (19, "off", None, None),
+    ]
+    # A synth with no accent samples plays every note from its one instrument.
+    plain = song_plan.Track("bass", "", 1.0, synth=replace(synth, accents=()))
+    notes = song_plan.melodic_notes(loaded, score.events(loaded), plain)
+    assert not any(n.get("accent") for n in notes)
+
+
+LEAD = """
+[voices.lead]
+notes  = "C3 C3 C3 C3 C3 C3 C3 C3 C3 C3 C3 C3 C3 C3 C3 C3"
+gate   = "x  .  .  .  x  .  .  .  x  .  .  .  x  .  .  ."
+accent = "X  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+sound = { synth = "mph_acid" }
+"""
+
+
+@pytest.mark.req("REQ-REN-09")
+def test_accent_instruments_come_after_every_track() -> None:
+    loaded = score.load_text(ACID + LEAD)
+    synth = song_plan.Synth((song_plan.Zone("a.wav", 24),), (song_plan.Zone("b.wav", 36),))
+    tracks = [
+        song_plan.Track("bass", "", 1.0, synth=synth),
+        song_plan.Track("lead", "", 1.0, synth=synth),
+    ]
+    song = song_plan.song(loaded, score.events(loaded), tracks, rate=48000, save="x", renders=[])
+    found = cast("list[dict[str, Any]]", song["tracks"])
+    planned = [(t["instrument"], t.get("accent_instrument")) for t in found]
+    assert (planned, song["instruments"]) == ([(1, 3), (2, 4)], 4)
+    assert "mix" not in song  # no mix and no sidechain: no mixer to build
+
+
+@pytest.mark.lua
+@pytest.mark.req("REQ-REN-01")
+def test_the_tool_adds_tracks_before_the_master(tmp_path: Path) -> None:
+    # A new song has fewer tracks than a track's voices; a track added at the
+    # master would be a send track, so the tool adds them at the front.
+    hat = tmp_path / "hat.wav"
+    hat.write_bytes(b"x")
+    track: dict[str, luadata.Data] = {
+        "sample": str(hat),
+        "volume": 1.0,
+        "transpose": 0,
+        "fine_tune": 0,
+        "slices": [],
+    }
+    plan: dict[str, luadata.Data] = {
+        "bpm": 120,
+        "lpb": 4,
+        "lines": 16,
+        "patterns": [{"lines": 16}],
+        "rate": 48000,
+        "save": "x",
+        "renders": [],
+        "tracks": [{**track, "name": f"voice {n}", "notes": []} for n in range(1, 15)],
+    }
+    path = tmp_path / "plan.lua"
+    path.write_text(luadata.document(plan), "utf-8")
+    built = lua.run("build", str(path))
+    names = [(t["name"], t["type"]) for t in built["mixer"]]
+    assert names == [*((f"voice {n}", 1) for n in range(1, 15)), ("Master", 2)]

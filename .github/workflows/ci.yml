@@ -24,8 +24,8 @@ jobs:
           python-version: "3.12"
           enable-cache: true
       - run: uv sync --locked
-      - name: Lua for the Renoise bridge tests
-        run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends lua5.1
+      - name: LuaJIT, Renoise's Lua, for the Renoise bridge tests
+        run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends luajit
       - name: Format, lint, types, spec gate (pre-commit hooks; REQ-ENG-07, REQ-PRC-01, REQ-PRC-02)
         env:
           RUFF_OUTPUT_FORMAT: github

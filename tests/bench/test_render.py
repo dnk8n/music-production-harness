@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sqlite3
 from collections.abc import Iterator, Sequence
@@ -308,6 +309,20 @@ def test_templates_cover_every_distinct_sound() -> None:
     assert all(v.chokes == () for v in replace(score.load("BM-DRUM-06")).voices[:2])
 
 
+@pytest.mark.req("REQ-BEN-01")
+def test_a_template_holds_a_long_note_only_briefly() -> None:
+    # A pad held for a bar would still be ringing out when the next template starts.
+    held = score.load_text(
+        'id = "X"\nbpm = 120\nbars = 1\n[voices.pad]\n'
+        f'notes = "{" ".join(["C4"] * 16)}"\ngate = "x{" -" * 15}"\n'
+        'sound = { synth = "mph_strings" }\n'
+    )
+    found = score.events(held)
+    assert found[0].length_s > render.TEMPLATE_HOLD_S
+    assert [e.length_s for e in render.template_events(held, found)] == [render.TEMPLATE_HOLD_S]
+    assert [e.length_s for e in render.spaced_templates(held, found)] == [render.TEMPLATE_HOLD_S]
+
+
 # --- commands -------------------------------------------------------------------------
 
 
@@ -388,6 +403,16 @@ def test_engine_choice(tmp_path: Path) -> None:
     home = renoise_ready(tmp_path, cfg)
     assert render.pick_engine("auto", home) == "renoise"
     assert render.pick_engine("supercollider", home) == "supercollider"
+
+
+@pytest.mark.req("REQ-ENG-03")
+def test_tests_never_see_the_real_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # On Dean's Mac the Renoise bridge is installed in his real home, so a render
+    # that picks its own engine there would wait for Renoise. Tests get their own.
+    real = Path(os.path.expanduser("~"))
+    monkeypatch.setattr(bridge, "status", lambda home: "ready" if home == real else "missing")
+    assert Path.home() == tmp_path / "home"
+    assert render.pick_engine("auto", Path.home()) == "supercollider"
 
 
 @pytest.mark.lua

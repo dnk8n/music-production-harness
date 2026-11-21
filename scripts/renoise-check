@@ -1,12 +1,15 @@
 #!/bin/bash
 # The bridge tool in the real Renoise: it never leaves Renoise asking to save
-# (REQ-REN-08).
+# (REQ-REN-08), and a song's mixer and sampled synths are built as planned
+# (REQ-REN-09 to REQ-REN-11).
 #
 #   scripts/renoise-check        check this checkout's bridge tool
 #   scripts/renoise-check REF    check a branch, tag or commit (e.g. origin/main)
 #                                in a temporary worktree; this checkout is untouched
 #
-# Quit Renoise first. The check starts Renoise, runs two small jobs, opens
+# Quit Renoise first. The check starts Renoise, runs three small jobs, the
+# last a song with a mix and sampled synths whose every setting and duck it
+# checks, printing how Renoise names and shows each kind of device. It opens
 # songs the way "Open in Renoise" does, then asks Renoise to quit, which it
 # must do without asking anything (scripts/renoise_check.py says more). The
 # bridge tool that was installed before is put back afterwards.

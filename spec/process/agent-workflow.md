@@ -70,6 +70,21 @@ over Remote Control, from the local checkout, after the PR is pushed.
   shared between parallel threads.
 - **Verify:** inspect
 
+### REQ-PRC-07: What we learn goes in the repo
+What Dean and the agents learn while working goes into the repo, where
+anyone who clones it finds it: rules, facts and measurements in the spec,
+with their Why; ways of working (how to run things on the Mac, change the
+Renoise bridge, make a remix, pick sounds) as skills in `.claude/skills/`;
+steps that can run as scripts; and the short rules every session needs in
+`CLAUDE.md`. An agent's memory and the chat are working notes, not the
+record. A skill points to the spec items it rests on rather than copying
+them, and a PR that learns something new updates the skill or spec it
+belongs to.
+- **Why:** Dean's rule (2026-11-15): everything learned together must be
+  reproducible and available to future users of the repo, who won't have
+  this project's memory or chats.
+- **Verify:** inspect
+
 ## Labels
 
 | Group | Labels | Meaning |

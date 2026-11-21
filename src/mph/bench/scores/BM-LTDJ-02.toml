@@ -1,7 +1,7 @@
-# spec/tracks/love-train.md#bm-ltdj-02: bars 65-96 of remix 1 (BM-LTDJ-05):
-# the verse and chorus, where the vocal will meet the new bass and chords.
+# spec/tracks/love-train.md#bm-ltdj-02: bars 53-80 of remix 1 (BM-LTDJ-05):
+# the pre-chorus and the hook.
 id = "BM-LTDJ-02"
-title = "Remix 1, bars 65-96: verse and chorus"
-hear = "the original's first verse and chorus, untouched in this version. Later versions put the organ bass and stabs under the vocal here."
+title = "Remix 1, bars 53-80: pre-chorus and hook"
+hear = "the pre-chorus over the groove with the strings swelling in, then the hook with the Jersey splash: the organ bass and shaker take over, the strings hold Cmaj9 and Fmaj9, and the stabs answer each hook line. The vamp runs into the end of the block."
 project = "Love Train remix 1: Detroit x Jersey"
-excerpt = { of = "BM-LTDJ-05", bars = [65, 96] }
+excerpt = { of = "BM-LTDJ-05", bars = [53, 80] }

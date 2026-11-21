@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import shutil
+from importlib import resources
 from pathlib import Path
 
 import pytest
 
 from mph import config
+from mph.bench import rerender
 from mph.proc import Result
 from mph.renoise import bridge, luadata
 from tests.fakes import FakeRunner
@@ -67,6 +69,17 @@ def test_install_copies_the_tool_and_names_the_job_folder(tmp_path: Path) -> Non
     assert bridge.status(home) == "outdated"
     (target / "main.lua").unlink()
     assert bridge.status(home) == "missing"
+
+
+@pytest.mark.req("REQ-REN-03")
+@pytest.mark.req("REQ-BEN-14")
+def test_every_file_of_the_tool_is_installed_and_shapes_the_render() -> None:
+    # A file left off the installer's list stopped Renoise loading the tool (2026-11-21).
+    folder = resources.files("mph.renoise").joinpath("tool", bridge.TOOL_FOLDER)
+    shipped = sorted(p.name for p in folder.iterdir() if not p.name.startswith("."))
+    assert sorted(bridge.TOOL_FILES) == shipped
+    lua = {f"renoise/tool/{bridge.TOOL_FOLDER}/{name}" for name in shipped if name.endswith(".lua")}
+    assert lua <= set(rerender.CODE)
 
 
 def test_install_needs_renoise_to_have_run_once(tmp_path: Path) -> None:
@@ -274,6 +287,30 @@ def test_the_tool_runs_a_job_from_the_folder_to_a_result(tmp_path: Path) -> None
     assert seen["saved"] == [*songs, scratch]
     assert seen["prompts"] == [] and seen["unsaved"] is False and seen["open"] == scratch
     assert sorted(p.name for p in bridge.jobs_dir(cfg).iterdir()) == ["BM-1.result.json"]
+
+
+@pytest.mark.lua
+@pytest.mark.req("REQ-REN-03")
+@pytest.mark.parametrize(
+    ("ticks", "options", "done"),
+    [("8", (), True), ("8", ("slice=0",), False), ("14", ("slice=0",), True)],
+)
+def test_a_build_goes_on_across_idle_steps(
+    tmp_path: Path, ticks: str, options: tuple[str, ...], done: bool
+) -> None:
+    # Built in one call, a remix block ran long enough for Renoise to ask whether to stop
+    # the script (2026-11-21). Pausing at every chance, the job takes more idle steps than
+    # the 8 that finish it in whole slices, and ends the same.
+    cfg, installed, sample = _setup_tool(tmp_path)
+    result = bridge.submit(cfg, "BM-1", _job(tmp_path, sample))
+
+    seen = lua.run("job", str(installed), ticks, *options)
+
+    assert result.exists() is done
+    if done:
+        assert json.loads(result.read_text("utf-8"))["ok"] is True
+        assert len(seen["renders"]) == 2 and len(seen["saved"]) == 5
+        assert seen["prompts"] == [] and seen["unsaved"] is False
 
 
 @pytest.mark.lua

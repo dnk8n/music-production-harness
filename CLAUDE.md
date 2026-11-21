@@ -62,3 +62,12 @@ is the short version so every new session starts with the same rules.
 
 14. Write for Dean: plain words in user-facing text, and no gendered pronouns
     for people whose pronouns aren't stated.
+
+## Knowledge
+
+15. **What we learn goes in the repo** (REQ-PRC-07), not only in an agent's
+    memory or a chat: rules and facts in the spec, with their Why; ways of
+    working as skills in `.claude/skills/` (`mac-work`, `renoise-bridge`,
+    `remix`, `pick-sounds`); steps that can run as scripts. When a run
+    teaches something new, update the skill or spec it belongs to in the
+    same PR.

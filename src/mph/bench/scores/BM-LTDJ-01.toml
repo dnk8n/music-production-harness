@@ -1,7 +1,7 @@
-# spec/tracks/love-train.md#bm-ltdj-01: bars 25-48 of remix 1 (BM-LTDJ-05):
-# the departure: the kit hands over to the train, which drops the groove.
+# spec/tracks/love-train.md#bm-ltdj-01: bars 25-52 of remix 1 (BM-LTDJ-05):
+# the build, the first horn and verse 1.
 id = "BM-LTDJ-01"
-title = "Remix 1, bars 25-48: the build, the train and the groove"
-hear = "four bars of the full Jersey kit, then everything stops and the train plays alone, its horn swelling and bending. The original groove drops on bar 9 of the block, exactly as the original's dropped at 0:24."
+title = "Remix 1, bars 25-52: build, departure and verse 1"
+hear = "eight bars of 909 groove with dark, echoing stabs and the hook teaser thrown into the echo. Then the drums and bass stop, the strings swell and the train's horn rises over a chugging shaker. Its bend drops the groove on bar 13 of the block, and verse 1 comes in line by line, each last word echoing away."
 project = "Love Train remix 1: Detroit x Jersey"
-excerpt = { of = "BM-LTDJ-05", bars = [25, 48] }
+excerpt = { of = "BM-LTDJ-05", bars = [25, 52] }

@@ -50,6 +50,7 @@ SYNTHS: dict[str, tuple[str, dict[str, float]]] = {
     "hat": ("mph_hat", {"decay": 0.06}),
     "hat_open": ("mph_hat", {"decay": 0.45}),
     "rim": ("mph_rim", {}),
+    "ride": ("mph_ride909", {}),
     "tom": ("mph_tom", {}),
     "clave": ("mph_clave", {}),
     "conga": ("mph_conga", {}),

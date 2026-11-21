@@ -8,9 +8,11 @@
 --   tracks = { { name, sample, volume, transpose, fine_tune, slices = {frame, ...},
 --                instrument, clips = { { file, name }, ... } or nil,
 --                zones = { { file, note, low, high }, ... } or nil (a sampled synth),
---                accents = zones or nil, accent_instrument, release (seconds),
+--                label (its instrument's name), release (seconds),
+--                more = { { name, zones, instrument }, ... } or nil: its other
+--                       instruments, accented or for a syllable (REQ-BEN-19),
 --                notes = { { line, delay, volume, note | slice | clip | off,
---                            accent, glide }, ... } }, ... }
+--                            sound (into more), glide }, ... } }, ... }
 --   mix, modes: the mixer (mixer.lua), if the score has one
 -- Lines are 0-based across the whole song; Renoise's own indices are 1-based.
 
@@ -224,10 +226,9 @@ local function setup_sound(song, plan, index, described)
   if plan.clips then
     return setup_clips(instrument, plan)
   elseif plan.zones then
-    setup_synth(instrument, plan, plan.zones, plan.name, described)
-    if plan.accents then
-      local accents = song:instrument(plan.accent_instrument)
-      setup_synth(accents, plan, plan.accents, plan.name .. " accent", described)
+    setup_synth(instrument, plan, plan.zones, plan.label or plan.name, described)
+    for _, more in ipairs(plan.more or {}) do
+      setup_synth(song:instrument(more.instrument), plan, more.zones, more.name, described)
     end
     return function(note)
       return note.note
@@ -252,7 +253,7 @@ local function write_note(song, starts, index, plan, note, pitch)
     effect.number_string = M.GLIDE
     effect.amount_value = note.glide
   else
-    local instrument = (note.accent and plan.accent_instrument) or plan.instrument or index
+    local instrument = (note.sound and plan.more[note.sound].instrument) or plan.instrument or index
     column.note_value = pitch
     column.instrument_value = instrument - 1
     column.volume_value = note.volume
@@ -304,7 +305,11 @@ M.switch = mixer.switch
 function M.shown(song, plan)
   local envelopes = {}
   for index, track in ipairs(plan.tracks) do
-    for _, k in ipairs(track.zones and { track.instrument or index, track.accent_instrument } or {}) do
+    local numbers = track.zones and { track.instrument or index } or {}
+    for _, more in ipairs(track.more or {}) do
+      numbers[#numbers + 1] = more.instrument
+    end
+    for _, k in ipairs(numbers) do
       local instrument = song:instrument(k)
       local set = instrument.sample_modulation_sets[1]
       local envelope = set and set.devices[1]

@@ -337,7 +337,7 @@ def test_a_melodic_voice_plays_notes_with_303_slides() -> None:
     # A slide before a rest just holds; so does one on the last step of the score.
     assert not found[9].tie and found[9].length_s == pytest.approx(step)
     assert not found[15].tie and found[15].length_s == pytest.approx(step)
-    assert {e.kind for e in (found[2], found[0])} == {(0, 48, True), (0, 36, False)}
+    assert {e.kind for e in (found[2], found[0])} == {(0, 48, True, ""), (0, 36, False, "")}
 
 
 @pytest.mark.parametrize(
@@ -359,7 +359,7 @@ def test_melodic_mistakes(change: tuple[str, str], message: str) -> None:
         + "X " * 16
         + '"\n'
     )
-    with pytest.raises(ScoreError, match="accent and slide rows need notes"):
+    with pytest.raises(ScoreError, match="accent, slide and syllables rows need notes"):
         score.load_text(drum)
 
 

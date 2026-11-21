@@ -42,8 +42,8 @@ the catalogue. To render it you need:
    Check the grid first: the scores assume bar 1 starts at 0 s at exactly
    120 BPM.
 
-`mph projects fill` finds placeholders for the drums (the ride has no synth
-stand-in, so it needs one), but never for the recordings.
+`mph projects fill` finds placeholders for the drums (a synth stands in for
+each of them meanwhile), but never for the recordings.
 
 ## What Dean thought
 

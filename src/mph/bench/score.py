@@ -16,12 +16,14 @@ one catalogue sound pinned by its hash with the reason it was picked
 A track (spec/components/tracks.md) adds sections that say which voices play
 in which bars (REQ-TRK-01), clip voices that play whole bars of a recording,
 cued by the sections or by the voice's own ``cues`` (REQ-TRK-02, REQ-TRK-07),
+phrase voices whose written lines are cued the same way (REQ-TRK-08),
 excerpts: a block of a track's bars as a score of its own (REQ-TRK-03), and a
 sample rate of its own (REQ-TRK-06).
 
-Rows can hold several bars, split by ``|`` (REQ-BEN-17), and a melodic voice
-can play a chord shape on every note (REQ-BEN-18). A score can mix its voices
-through strips, sends and automation (spec/components/mix.md, ``mix.py``).
+Rows can hold several bars, split by ``|`` (REQ-BEN-17), a melodic voice can
+play a chord shape on every note (REQ-BEN-18), and a ``syllables`` row makes
+it sing (REQ-BEN-19). A score can mix its voices through strips, sends and
+automation (spec/components/mix.md, ``mix.py``).
 """
 
 from __future__ import annotations
@@ -59,6 +61,11 @@ BAR = "|"  # between the bars of a row that holds several (REQ-BEN-17)
 MAX_CHORD = 8  # notes in one chord shape (REQ-BEN-18)
 CHORD_RANGE = (-24, 36)  # semitones from the note
 RATES = (44100, 48000, 88200, 96000, 176400, 192000)  # a track's own rate (REQ-TRK-06)
+ONSETS = ("", "h", "y", "w", "l", "m", "n", "d", "b")  # a syllable's consonant (REQ-BEN-19)
+VOWELS = ("a", "e", "i", "o", "u")
+HUM = "m"  # a syllable of its own: a hum
+SYLLABLE = re.compile(rf"[{''.join(ONSETS)}]?[{''.join(VOWELS)}]|{HUM}")
+PHRASE_ROWS = frozenset({"gate", "notes", "accent", "slide", "syllables"})  # REQ-TRK-08
 
 
 class ScoreError(ValueError):
@@ -114,6 +121,23 @@ class Clip:
 
 
 @dataclass(frozen=True, slots=True)
+class Phrase:
+    """A written line of a phrase voice, cued like a clip (REQ-TRK-08): a gate,
+    notes and the other melodic rows, a bar or more long."""
+
+    name: str
+    grid: str  # the gate, its bars split by "|"
+    notes: tuple[str, ...]
+    accents: str = ""
+    slides: str = ""
+    syllables: tuple[str, ...] = ()  # REQ-BEN-19
+
+    @property
+    def bars(self) -> int:
+        return len(bars_of(self.grid))
+
+
+@dataclass(frozen=True, slots=True)
 class Section:
     """Bars of an arranged score and the voices that play in them (REQ-TRK-01)."""
 
@@ -147,7 +171,7 @@ class Play:
     plays before it ends or is stopped (REQ-TRK-02)."""
 
     voice: str
-    clip: int  # into the voice's clips, from 0
+    clip: int  # into the voice's clips, or its phrases (REQ-TRK-08), from 0
     bar: int  # of the score, from 1
     bars: int
 
@@ -172,12 +196,14 @@ class Voice:
     clips: tuple[Clip, ...] = ()  # bars of the voice's recording, cued by sections (REQ-TRK-02)
     bar_one_s: float = 0.0  # where the recording's bar 1 starts
     chord: tuple[int, ...] = ()  # semitones above each note, one synth each (REQ-BEN-18)
-    cues: tuple[tuple[int, str], ...] = ()  # (bar, clip) cued inside sections (REQ-TRK-07)
+    cues: tuple[tuple[int, str], ...] = ()  # (bar, clip or phrase) cued in sections (REQ-TRK-07)
     strip: Strip | None = None  # its channel strip in a mix (REQ-MIX-01)
+    syllables: tuple[str, ...] = ()  # one per step: a syllable where a note starts, else "-"
+    phrases: tuple[Phrase, ...] = ()  # lines cued like clips (REQ-TRK-08)
 
     @property
     def melodic(self) -> bool:
-        return bool(self.notes)
+        return bool(self.notes or self.phrases)
 
     @property
     def steps(self) -> int:
@@ -348,6 +374,8 @@ def _voice_shape(voice: Voice) -> dict[str, Any]:
         "chord": not voice.chord,
         "cues": not voice.cues,
         "strip": voice.strip is None,
+        "syllables": not voice.syllables,
+        "phrases": not voice.phrases,
     }
     for key in (k for k, empty in unused.items() if empty):
         shape.pop(key)
@@ -357,6 +385,9 @@ def _voice_shape(voice: Voice) -> dict[str, Any]:
 def clip_start_s(score: Score, voice: Voice, clip: Clip) -> float:
     """Where a clip starts in its recording, in seconds (REQ-TRK-02)."""
     return voice.bar_one_s + (clip.first - 1) * score.bar_s
+
+
+Kind = tuple[int, int, bool, str]  # slice, pitch, accent, syllable
 
 
 @dataclass(frozen=True, slots=True)
@@ -371,11 +402,12 @@ class Event:
     tie: bool = False  # held into the next note, which glides instead of retriggering
     length_s: float = 0.0  # how long a melodic note or a clip plays (0 for hits)
     clip: int = 0  # a clip voice's cue: its clip, from 1 (REQ-TRK-02)
+    syllable: str = ""  # what a sung note sings (REQ-BEN-19)
 
     @property
-    def kind(self) -> tuple[int, int, bool]:
+    def kind(self) -> Kind:
         """What makes two hits of a voice sound alike, for templates."""
-        return self.slice, self.pitch, self.accent
+        return self.slice, self.pitch, self.accent, self.syllable
 
     def sample(self, rate: int) -> int:
         return round(self.time_s * rate)
@@ -604,6 +636,11 @@ def _strip(name: str, raw: dict[str, Any]) -> Strip | None:
         raise ScoreError(str(exc)) from exc
 
 
+def _tokens(text: object) -> tuple[str, ...]:
+    """A row's entries, bar lines left out: notes or syllables."""
+    return tuple(n for n in str(text).split() if n != BAR)
+
+
 def _voice(name: str, raw: dict[str, Any]) -> Voice:
     ramp = raw.get("ramp")
     voice = Voice(
@@ -618,7 +655,7 @@ def _voice(name: str, raw: dict[str, Any]) -> Voice:
         chokes=tuple(str(v) for v in raw.get("chokes", ())),
         seconds=float(raw.get("seconds", 0.0)),
         gain_db=float(raw.get("gain_db", 0.0)),
-        notes=tuple(n for n in str(raw.get("notes", "")).split() if n != BAR),
+        notes=_tokens(raw.get("notes", "")),
         accents=_row(str(raw.get("accent", "")), "X.", name),
         slides=_row(str(raw.get("slide", "")), "S.", name),
         params=_params(raw.get("params", {})),
@@ -627,46 +664,119 @@ def _voice(name: str, raw: dict[str, Any]) -> Voice:
         chord=_chord(name, raw["chord"]) if "chord" in raw else (),
         cues=_voice_cues(name, raw["cues"]) if "cues" in raw else (),
         strip=_strip(name, raw),
+        syllables=_tokens(raw.get("syllables", "")),
+        phrases=_phrases(name, raw["phrases"]) if "phrases" in raw else (),
     )
-    if voice.notes:
-        voice = _melodic_voice(voice, str(raw.get("gate", "")), str(raw["notes"]))
-    elif voice.accents or voice.slides or voice.chord:
-        raise ScoreError(f"voice {name}: accent and slide rows need notes, as chords do")
-    if voice.cues and not voice.clips:
-        raise ScoreError(f"voice {name}: cues cue clips, so the voice needs clips")
-    if sum(bool(x) for x in (voice.grid, voice.pulse, voice.slices, voice.clips)) != 1:
-        raise ScoreError(f"voice {name}: give exactly one of grid, pulse, slices or clips")
+    if voice.phrases:
+        if voice.notes or "gate" in raw or voice.accents or voice.slides or voice.syllables:
+            raise ScoreError(
+                f"voice {name}: a phrase voice writes its gate, notes, accent, slide and "
+                "syllables rows in each of its phrases"
+            )
+    elif voice.notes:
+        rows = _rows(f"voice {name}", str(raw.get("gate", "")), str(raw["notes"]), voice)
+        voice = replace(voice, grid=rows)
+    elif voice.accents or voice.slides or voice.chord or voice.syllables:
+        raise ScoreError(f"voice {name}: accent, slide and syllables rows need notes, as chords do")
+    if voice.cues and not cueable(voice):
+        raise ScoreError(f"voice {name}: cues cue clips or phrases, so the voice needs some")
+    if sum(bool(x) for x in (voice.grid, voice.pulse, voice.slices, cueable(voice))) != 1:
+        raise ScoreError(f"voice {name}: give exactly one of grid, pulse, slices, clips or phrases")
     if voice.grid:
         cells(voice.grid, hold=voice.melodic)
     return _clip_voice(voice) if voice.clips else voice
 
 
-def _melodic_voice(voice: Voice, gate: str, notes: str) -> Voice:
-    """A melodic voice's rows: 16 steps a bar, every row as many bars long
-    (REQ-BEN-17)."""
+def cueable(voice: Voice) -> tuple[Clip | Phrase, ...]:
+    """What a voice's cues name: its clips (REQ-TRK-02) or its phrases (REQ-TRK-08)."""
+    return voice.clips or voice.phrases
+
+
+def _rows(where: str, gate: str, notes: str, voice: Voice) -> str:
+    """A melodic voice's or phrase's rows, checked: 16 steps a bar, every row as
+    many bars long (REQ-BEN-17), a syllable for every note that starts
+    (REQ-BEN-19). Returns the gate."""
     if not gate:
-        raise ScoreError(f"voice {voice.name}: a melodic voice needs a gate row")
+        raise ScoreError(f"{where}: a melodic voice needs a gate row")
     bars = bars_of(gate)
     if any(len(bar) != STEPS for bar in bars):
-        raise ScoreError(f"voice {voice.name}: a melodic gate row needs {STEPS} steps a bar")
+        raise ScoreError(f"{where}: a melodic gate row needs {STEPS} steps a bar")
     if [len(bar) for bar in bars_of(notes)] != [STEPS] * len(bars):
         raise ScoreError(
-            f"voice {voice.name}: notes needs {STEPS} entries a bar, over as many bars as the gate"
+            f"{where}: notes needs {STEPS} entries a bar, over as many bars as the gate"
         )
-    for row in (voice.accents, voice.slides):
+    for row in (" ".join(voice.syllables), voice.accents, voice.slides):
         if row and len(row.split()) != STEPS * len(bars):
-            raise ScoreError(f"voice {voice.name}: accent and slide rows span the gate's bars")
-    _named(voice, cells(gate, hold=True))
-    return replace(voice, grid=gate)
+            raise ScoreError(f"{where}: accent, slide and syllables rows span the gate's bars")
+    symbols = cells(gate, hold=True)
+    _named(where, voice.notes, symbols)
+    _sung(where, symbols, voice.slides.split() or ["."] * len(symbols), voice.syllables)
+    return gate
 
 
-def _named(voice: Voice, symbols: list[str]) -> None:
+def _named(where: str, notes: tuple[str, ...], symbols: list[str]) -> None:
     """The gate plays at least one note, and every note it plays is a real one."""
     if not any(symbol in VELOCITY for symbol in symbols):
-        raise ScoreError(f"voice {voice.name}: a melodic gate row needs at least one note")
-    for note, symbol in zip(voice.notes, symbols, strict=True):
+        raise ScoreError(f"{where}: a melodic gate row needs at least one note")
+    for note, symbol in zip(notes, symbols, strict=True):
         if note != HOLD or symbol in VELOCITY:  # a held or silent step needn't name a note
             midi(note)
+
+
+def slid_into(gate: list[str], slides: list[str], step: int) -> bool:
+    """True when the note on ``step`` is a tie from the note before it, which
+    glides into it instead of a new note starting (BM-BASS-01)."""
+    return (
+        step > 0
+        and gate[step] in VELOCITY
+        and gate[step - 1] in VELOCITY
+        and slides[step - 1] == "S"
+    )
+
+
+def _sung(where: str, gate: list[str], slides: list[str], syllables: tuple[str, ...]) -> None:
+    """Every note that starts has a syllable, and every other step "-" (REQ-BEN-19)."""
+    for step, syllable in enumerate(syllables):
+        starts = gate[step] in VELOCITY and not slid_into(gate, slides, step)
+        place = f"bar {step // STEPS + 1}, step {step % STEPS + 1}"
+        if starts and not SYLLABLE.fullmatch(syllable):
+            raise ScoreError(
+                f"{where}: the note at {place} sings {syllable!r}; a syllable is a vowel "
+                f"({' '.join(VOWELS)}) after a consonant ({' '.join(ONSETS[1:])}) or "
+                f"none, or {HUM} for a hum"
+            )
+        if not starts and syllable != HOLD:
+            raise ScoreError(
+                f"{where}: no note starts at {place}, so its syllable is {HOLD!r}, not {syllable!r}"
+            )
+
+
+def _phrases(name: str, raw: object) -> tuple[Phrase, ...]:
+    """A phrase voice's lines, each a table of melodic rows (REQ-TRK-08)."""
+    if not isinstance(raw, dict) or not raw:
+        raise ScoreError(f"voice {name}: phrases names lines, like [voices.{name}.phrases.hook]")
+    return tuple(_phrase(name, str(key), table) for key, table in raw.items())
+
+
+def _phrase(name: str, key: str, raw: object) -> Phrase:
+    where = f"voice {name}, phrase {key}"
+    if CUE in key:
+        raise ScoreError(f"{where}: a phrase's name can't hold {CUE!r}")
+    if not isinstance(raw, dict) or "notes" not in raw:
+        raise ScoreError(f"{where} needs gate and notes rows")
+    if unknown := set(raw) - PHRASE_ROWS:
+        rows = ", ".join(sorted(PHRASE_ROWS))
+        raise ScoreError(f"{where} takes the rows {rows}, not {', '.join(sorted(unknown))}")
+    line = Voice(
+        name=name,
+        sound=Sound(),
+        notes=_tokens(raw["notes"]),
+        accents=_row(str(raw.get("accent", "")), "X.", f"{name}, phrase {key}"),
+        slides=_row(str(raw.get("slide", "")), "S.", f"{name}, phrase {key}"),
+        syllables=_tokens(raw.get("syllables", "")),
+    )
+    gate = _rows(where, str(raw.get("gate", "")), str(raw["notes"]), line)
+    return Phrase(key, gate, line.notes, line.accents, line.slides, line.syllables)
 
 
 def _sidechain(raw: dict[str, Any], voices: dict[str, Voice]) -> Sidechain:
@@ -728,11 +838,15 @@ def _entry_problem(entry: str, voices: dict[str, Voice]) -> str:
     voice = voices.get(name)
     if voice is None:
         return f"names an unknown voice {name!r}"
-    if cued and not voice.clips:
-        return f"cues {clip!r} on {name}, which plays no clips"
-    if cued and clip not in {c.name for c in voice.clips}:
-        return f"cues {clip!r}, which isn't one of {name}'s clips"
+    if cued and not cueable(voice):
+        return f"cues {clip!r} on {name}, which plays no clips or phrases"
+    if cued and clip not in {c.name for c in cueable(voice)}:
+        return f"cues {clip!r}, which isn't one of {name}'s {_kind_of(voice)}"
     return ""
+
+
+def _kind_of(voice: Voice) -> str:
+    return "clips" if voice.clips else "phrases"
 
 
 def _check_section(section: Section, voices: dict[str, Voice], score_id: str) -> None:
@@ -747,10 +861,13 @@ def _check_section(section: Section, voices: dict[str, Voice], score_id: str) ->
 
 def _arranged(score: Score) -> Score:
     """Sections must run from bar 1 to the last bar, one after another, and
-    only a score with sections can have clip voices (REQ-TRK-01, REQ-TRK-02)."""
+    only a score with sections can have clip or phrase voices (REQ-TRK-01,
+    REQ-TRK-02, REQ-TRK-08)."""
     if not score.sections:
-        if clipped := [v.name for v in score.voices if v.clips]:
-            raise ScoreError(f"{score.id}: sections cue clips, so {clipped[0]} needs sections")
+        if cued := [v for v in score.voices if cueable(v)]:
+            raise ScoreError(
+                f"{score.id}: sections cue {_kind_of(cued[0])}, so {cued[0].name} needs sections"
+            )
         return score
     voices = {v.name: v for v in score.voices}
     expected = 1
@@ -775,16 +892,16 @@ def _section_at(score: Score, bar: int) -> Section:
 
 
 def _check_cues(score: Score, voice: Voice) -> None:
-    """A voice's own cues name its clips, fall in sections that list it, and
-    don't clash with each other or with a section's cue (REQ-TRK-07)."""
-    names = {clip.name for clip in voice.clips}
+    """A voice's own cues name its clips or phrases, fall in sections that list
+    it, and don't clash with each other or with a section's cue (REQ-TRK-07)."""
+    names = {clip.name for clip in cueable(voice)}
     bars = [bar for bar, _ in voice.cues]
     where = f"{score.id}: {voice.name}"
     if len(set(bars)) != len(bars):
-        raise ScoreError(f"{where} cues two clips in one bar")
+        raise ScoreError(f"{where} cues two {_kind_of(voice)} in one bar")
     for bar, clip in voice.cues:
         if clip not in names:
-            raise ScoreError(f"{where} cues {clip!r}, which isn't one of its clips")
+            raise ScoreError(f"{where} cues {clip!r}, which isn't one of its {_kind_of(voice)}")
         if not 1 <= bar <= score.bars:
             raise ScoreError(f"{where} cues {clip!r} at bar {bar}, outside its {score.bars} bars")
         section = _section_at(score, bar)
@@ -944,11 +1061,17 @@ def excerpt(
     voices = {v.name: _within(v, first, last) for v in track.voices}
     for play in (p for p in plays(track) if p.bar < first < p.bar + p.bars):
         voice = voices[play.voice]
-        clip = voice.clips[play.clip]
-        reached = clip.first + first - play.bar
-        carried = Clip(f"{clip.name} from bar {reached}", reached, clip.last)
-        voices[play.voice] = replace(voice, clips=(*voice.clips, carried))
-        sections = (_recue(sections[0], play.voice, carried.name), *sections[1:])
+        if voice.clips:
+            clip = voice.clips[play.clip]
+            reached = clip.first + first - play.bar
+            carried = Clip(f"{clip.name} from bar {reached}", reached, clip.last)
+            voices[play.voice] = replace(voice, clips=(*voice.clips, carried))
+            name = carried.name
+        else:
+            line = _phrase_from(voice.phrases[play.clip], first - play.bar + 1)
+            voices[play.voice] = replace(voice, phrases=(*voice.phrases, line))
+            name = line.name
+        sections = (_recue(sections[0], play.voice, name), *sections[1:])
     return replace(
         track,
         id=id,
@@ -983,16 +1106,45 @@ def _recue(section: Section, voice: str, clip: str) -> Section:
     return replace(section, play=play)
 
 
+def _phrase_from(phrase: Phrase, bar: int) -> Phrase:
+    """A phrase from its ``bar``-th bar on: where an excerpt picks it up
+    (REQ-TRK-08). A note slid into on that bar's first step starts afresh
+    there, on the syllable it was gliding on (REQ-BEN-19)."""
+    skip = (bar - 1) * STEPS
+
+    def cut(row: str) -> str:
+        return " ".join(row.split()[skip:])
+
+    syllables = phrase.syllables[skip:]
+    if syllables and syllables[0] == HOLD and cells(phrase.grid, hold=True)[skip] in VELOCITY:
+        before = [s for s in phrase.syllables[:skip] if s != HOLD]
+        syllables = (before[-1] if before else HOLD, *syllables[1:])
+    return Phrase(
+        f"{phrase.name} from bar {bar}",
+        _bars_text(bars_of(phrase.grid)[bar - 1 :]),
+        phrase.notes[skip:],
+        cut(phrase.accents),
+        cut(phrase.slides),
+        syllables,
+    )
+
+
 def _cued_only(voice: Voice, sections: tuple[Section, ...]) -> Voice:
     """A clip voice with only the clips its sections cue, in the order they are
     first cued, so clips the excerpt doesn't play are neither cut nor hashed.
-    One that cues none keeps its first clip: it stays a clip voice, and rests."""
-    if not voice.clips:
+    One that cues none keeps its first clip: it stays a clip voice, and rests.
+    A phrase voice keeps its first phrase, which its level is measured on,
+    and then the phrases it cues (REQ-TRK-08)."""
+    if not cueable(voice):
         return voice
-    by_name = {clip.name: clip for clip in voice.clips}
     marks = [(s.first, name) for s in sections if (name := s.cue(voice.name))]
     cued = dict.fromkeys(name for _, name in sorted([*marks, *voice.cues]))
-    return replace(voice, clips=tuple(by_name[name] for name in cued) or voice.clips[:1])
+    if voice.phrases:
+        lines = {line.name: line for line in voice.phrases}
+        kept = dict.fromkeys([voice.phrases[0].name, *cued])
+        return replace(voice, phrases=tuple(lines[name] for name in kept))
+    clips = {clip.name: clip for clip in voice.clips}
+    return replace(voice, clips=tuple(clips[name] for name in cued) or voice.clips[:1])
 
 
 def load_text(text: str) -> Score:
@@ -1097,13 +1249,16 @@ def _melodic(score: Score, voice: Voice) -> list[Event]:
     """303 rules: a slid note holds for the whole step and, if the next step
     plays, ties into it so that note glides instead of retriggering. A note
     followed by "-" steps is held through them (a pad, BM-SC-01). Steps count
-    from the start of an excerpt's lead (REQ-TRK-03)."""
+    from the start of an excerpt's lead (REQ-TRK-03). A sung note takes its
+    syllable, and a note slid into keeps the one it glides from (REQ-BEN-19)."""
     gate = cells(voice.grid, hold=True)
     length = len(gate)  # one bar or several (REQ-BEN-17)
     accents = voice.accents.split() or ["."] * length
     slides = voice.slides.split() or ["."] * length
+    syllables = voice.syllables or (HOLD,) * length
     total = (score.lead_bars + score.bars) * STEPS
     found = []
+    sung = ""
     for step in range(total):
         at = step % length
         if gate[at] in (".", HOLD):
@@ -1114,6 +1269,7 @@ def _melodic(score: Score, voice: Voice) -> list[Event]:
         slide = slides[at] == "S" and not held
         following = step + 1 < total and gate[(at + 1) % length] not in (".", HOLD)
         steps = held + 1 if held else (1.0 if slide else NOTE_LENGTH)
+        sung = sung if syllables[at] == HOLD else syllables[at]
         found.append(
             Event(
                 voice.name,
@@ -1124,17 +1280,49 @@ def _melodic(score: Score, voice: Voice) -> list[Event]:
                 accent=accents[at] == "X",
                 tie=slide and following,
                 length_s=steps * score.step_s,
+                syllable=sung,
             )
         )
     return found
 
 
+def sung_line(voice: Voice, phrase: Phrase) -> Voice:
+    """A phrase voice singing one phrase, as a melodic voice (REQ-TRK-08)."""
+    return replace(
+        voice,
+        grid=phrase.grid,
+        notes=phrase.notes,
+        accents=phrase.accents,
+        slides=phrase.slides,
+        syllables=phrase.syllables,
+        phrases=(),
+        cues=(),
+    )
+
+
+def _phrase_events(score: Score, voice: Voice) -> list[Event]:
+    """A phrase voice's notes: each phrase from the bar it is cued on, for the
+    bars it plays (REQ-TRK-08)."""
+    found = []
+    for play in (p for p in plays(score) if p.voice == voice.name):
+        line = sung_line(voice, voice.phrases[play.clip])
+        pattern = replace(score, bars=play.bars, lead_bars=0, sections=())
+        offset = (play.bar - 1) * STEPS
+        found += [
+            replace(e, step=e.step + offset, time_s=step_time(score, line, e.step + offset))
+            for e in _melodic(pattern, line)
+        ]
+    return found
+
+
 def first_note(score: Score, voice: Voice) -> Event:
     """The first note of a melodic voice's pattern, as the pattern plays it from
-    bar 1: its level is measured on it (REQ-BEN-09), so a track and its
-    excerpts match their voices' levels on the same note."""
-    pattern = replace(score, bars=voice.length // STEPS, lead_bars=0, sections=())
-    return _melodic(pattern, voice)[0]
+    bar 1, or of a phrase voice's first phrase (REQ-TRK-08): its level is
+    measured on it (REQ-BEN-09), so a track and its excerpts match their
+    voices' levels on the same note."""
+    line = sung_line(voice, voice.phrases[0]) if voice.phrases else voice
+    pattern = replace(score, bars=line.length // STEPS, lead_bars=0, sections=())
+    return _melodic(pattern, line)[0]
 
 
 def _beats(score: Score, index: int, voice: Voice) -> list[Event]:
@@ -1176,21 +1364,22 @@ def _listed(score: Score, voice: Voice, bar: int) -> bool:
 
 
 def plays(score: Score) -> list[Play]:
-    """Every cue of every clip voice, in order (REQ-TRK-02)."""
-    return [play for voice in score.voices if voice.clips for play in _cues(score, voice)]
+    """Every cue of every clip or phrase voice, in order (REQ-TRK-02, REQ-TRK-08)."""
+    return [play for voice in score.voices if cueable(voice) for play in _cues(score, voice)]
 
 
 def _starts(score: Score, voice: Voice) -> dict[int, int]:
-    """Bar -> the clip cued there: by a section, or by the voice itself (REQ-TRK-07)."""
-    index = {clip.name: n for n, clip in enumerate(voice.clips)}
+    """Bar -> the clip or phrase cued there: by a section, or by the voice
+    itself (REQ-TRK-07)."""
+    index = {clip.name: n for n, clip in enumerate(cueable(voice))}
     found = {s.first: index[cue] for s in score.sections if (cue := s.cue(voice.name))}
     found.update((bar, index[clip]) for bar, clip in voice.cues)
     return found
 
 
 def _cues(score: Score, voice: Voice) -> list[Play]:
-    """A clip plays from its cue until its last bar, another cue, a section
-    that leaves the voice out, or the end of the score."""
+    """A clip or phrase plays from its cue until its last bar, another cue, a
+    section that leaves the voice out, or the end of the score."""
     starts = _starts(score, voice)
     found: list[Play] = []
     playing: Play | None = None
@@ -1201,12 +1390,12 @@ def _cues(score: Score, voice: Voice) -> list[Play]:
             found.append(replace(playing, bars=min(playing.bars, bar - playing.bar)))
             playing = None
         if bar in starts:
-            playing = Play(voice.name, starts[bar], bar, voice.clips[starts[bar]].bars)
+            playing = Play(voice.name, starts[bar], bar, cueable(voice)[starts[bar]].bars)
         elif listed == "" and playing is None and not _cued_in(voice, section):
-            example = f"{voice.name}{CUE}{voice.clips[0].name}"
+            example = f"{voice.name}{CUE}{cueable(voice)[0].name}"
             raise ScoreError(
                 f"{score.id}: section {section.name!r} lets {voice.name} carry on, but none "
-                f"of its clips is playing there; cue one, like {example}"
+                f"of its {_kind_of(voice)} is playing there; cue one, like {example}"
             )
     if playing:
         found.append(replace(playing, bars=min(playing.bars, score.bars + 1 - playing.bar)))
@@ -1219,6 +1408,7 @@ def _cued_in(voice: Voice, section: Section) -> bool:
 
 
 def _clip_events(score: Score) -> list[Event]:
+    clipped = {v.name for v in score.voices if v.clips}
     return [
         Event(
             p.voice,
@@ -1229,6 +1419,7 @@ def _clip_events(score: Score) -> list[Event]:
             clip=p.clip + 1,
         )
         for p in plays(score)
+        if p.voice in clipped
     ]
 
 
@@ -1236,6 +1427,9 @@ def events(score: Score) -> list[Event]:
     found: list[Event] = []
     for index, voice in enumerate(score.voices):
         if voice.clips:
+            continue
+        if voice.phrases:
+            found += _phrase_events(score, voice)
             continue
         own = _melodic(score, voice) if voice.melodic else _beats(score, index, voice)
         found += _in_place(score, voice, own)

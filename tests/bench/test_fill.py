@@ -48,9 +48,9 @@ bars = 1
 [voices.kick]
 grid = "x . . . x . . . x . . . x . . ."
 sound = {{ role = "kick"{words} }}
-[voices.ride]
-grid = ". . x . . . x . . . x . . . x ."
-sound = {{ role = "ride" }}
+[voices.crash]
+grid = "x . . . . . . . . . . . . . . ."
+sound = {{ role = "crash" }}
 [voices.pad]
 notes = "C3 - - - - - - - - - - - - - - -"
 gate  = "x  - - - - - - - - - - - - - - ."
@@ -166,7 +166,7 @@ def test_the_plan_lists_what_the_catalogue_lacks(tmp_path: Path) -> None:
     try:
         bare = fill.plan(loaded, conn, tmp_path / "data")
         assert (bare.voices, bare.synths, bare.covered, bare.missing) == (3, 1, 0, 2)
-        kick, ride = bare.needs
+        crash, kick = bare.needs
         assert (kick.role, kick.form, kick.meanwhile, kick.query) == (
             "kick",
             "oneshot",
@@ -174,12 +174,12 @@ def test_the_plan_lists_what_the_catalogue_lacks(tmp_path: Path) -> None:
             "kick drum",
         )
         assert kick.voices == ("BM-GRV-00 kick",)
-        assert (ride.meanwhile, ride.query) == ("", "ride cymbal")  # no synth stands in
-        assert ride.filters == ("duration:[0 TO 5]",)
+        assert (crash.meanwhile, crash.query) == ("", "crash cymbal")  # no synth stands in
+        assert crash.filters == ("duration:[0 TO 5]",)
         add_sample(conn, tmp_path / "lib", "Kick.wav", [("role", "kick")])
         found = fill.plan(loaded, conn, tmp_path / "data")
-        assert [n.role for n in found.needs] == ["ride"] and found.covered == 1
-        assert json.loads(json.dumps(found.to_dict()))["needs"][0]["query"] == "ride cymbal"
+        assert [n.role for n in found.needs] == ["crash"] and found.covered == 1
+        assert json.loads(json.dumps(found.to_dict()))["needs"][0]["query"] == "crash cymbal"
     finally:
         conn.close()
     assert len(fill.plan(loaded, None, tmp_path).needs) == 2  # no catalogue at all
@@ -191,7 +191,7 @@ def test_deans_examples_need_only_free_sounds_and_his_two_stems(tmp_path: Path) 
     found = fill.plan(every, None, tmp_path)
     assert {r.hash[:12] for r in found.recordings} == {"c2b24168a2cb", "4ed4ea4d21f7"}
     unrenderable = {(n.role, n.form) for n in found.needs if not n.meanwhile}
-    assert unrenderable == {("break", "loop"), ("ride", "oneshot")}
+    assert unrenderable == {("break", "loop")}  # a 909-style synth stands in for the ride
     breaks = next(n for n in found.needs if n.role == "break")
     assert breaks.query == "breakbeat loop" and breaks.filters == ("duration:[1 TO 30]",)
     assert found.voices == found.synths + found.covered + found.missing
@@ -228,7 +228,7 @@ def test_fill_lists_first_and_downloads_nothing_without_yes(
     out = capsys.readouterr().out
     assert "3 voices in 1 benchmarks: 1 are synths on purpose, 0 have a sound" in out
     assert '"kick drum", plays mph_kick meanwhile: BM-GRV-00 kick' in out
-    assert '"ride cymbal", can\'t render: BM-GRV-00 ride' in out
+    assert '"crash cymbal", can\'t render: BM-GRV-00 crash' in out
     assert "no catalogue yet" in out and "add --yes" in out
     db.connect(tmp_path / "data" / db.FILENAME).close()
     assert fill_run(cfg, http=http) == 0
@@ -248,7 +248,7 @@ def test_fill_takes_free_previews_labels_and_analyses_them(
     store = FakeStore(dict(KEYS))  # keys, but no sign-in: previews
     assert fill_run(cfg, "--yes", "--limit", "1", store=store, http=http, analyse=analyse) == 0
     asked = [parse_qs(urlsplit(url).query) for url in http.gets]
-    assert [a["query"][0] for a in asked] == ["kick drum", "ride cymbal"]
+    assert [a["query"][0] for a in asked] == ["crash cymbal", "kick drum"]
     assert all('"Creative Commons 0" OR "Attribution"' in a["filter"][0] for a in asked)
     assert all("duration:[0 TO 5]" in a["filter"][0] for a in asked)
     assert all("type:" not in a["filter"][0] for a in asked)  # previews are all OGG
@@ -257,7 +257,7 @@ def test_fill_takes_free_previews_labels_and_analyses_them(
     conn = db.connect(tmp_path / "data" / db.FILENAME)
     try:
         roles = {r[0] for r in conn.execute("SELECT value FROM tag WHERE name = 'role'")}
-        assert {"kick", "ride"} <= roles  # what it was found for, both times
+        assert {"kick", "crash"} <= roles  # what it was found for, both times
         assert conn.execute("SELECT licence FROM download").fetchone()[0] == "cc0"
     finally:
         conn.close()

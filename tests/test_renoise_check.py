@@ -407,8 +407,11 @@ def test_the_checks_mixed_song_builds_with_the_tool(
         "bass",
         "stab",
         "tone",
+        "vox",
         "Master",
         "echo",
         "hall",
     ]
-    assert built["instruments"] == 5  # the bass's accents get their own
+    # The bass's accents get their own, and the vox one for each syllable (REQ-BEN-19).
+    names = [state["name"] for state in built["instrument_states"]]
+    assert names[4:] == ["vox ye", "bass accent", "vox a", "vox a accent"]

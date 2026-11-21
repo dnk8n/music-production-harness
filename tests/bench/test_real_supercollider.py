@@ -11,9 +11,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from mph.bench import audio, render, sc, score
+from mph.bench import audio, kit, render, sc, score
 from mph.catalogue import db
 from mph.proc import SubprocessRunner
+from tests.bench import test_phrases as phrases
 from tests.bench.test_render import cfg_for
 from tests.bench.test_tracks import add_song, track
 
@@ -336,3 +337,71 @@ def test_clips_play_from_a_recording_at_another_rate_with_real_supercollider(
     assert failures == (
         [] if passes else ["clips: song worst match to the recording (dB left after cancelling)"]
     )
+
+
+# --- the free version of remix 1: a 909 kit, singing and a horn (issue #68) ---------------
+
+KIT_909 = """
+id = "BM-909"
+bpm = 120
+bars = 1
+[voices.kick]
+grid = "x . . . . . . . . . . . . . . ."
+sound = { role = "kick", synth = "mph_kick909" }
+[voices.chh]
+grid = "x . . . . . . . . . . . . . . ."
+sound = { role = "hat", synth = "mph_hat909" }
+[voices.ohh]
+grid = "x . . . . . . . . . . . . . . ."
+sound = { role = "hat_open", synth = "mph_hat909" }
+params = { decay = 0.3 }
+[voices.ride]
+grid = "x . . . . . . . . . . . . . . ."
+sound = { role = "ride", synth = "mph_ride909" }
+[voices.shaker]
+grid = "x . . . . . . . . . . . . . . ."
+sound = { role = "shaker", synth = "mph_beads" }
+"""
+
+
+def _rms_db(signal: np.ndarray, rate: int, at_s: float, span_s: float = 0.005) -> float:
+    piece = signal[round(at_s * rate) : round((at_s + span_s) * rate)]
+    return float(20 * np.log10(np.sqrt(np.mean(piece**2)) + 1e-12))
+
+
+@pytest.mark.req("REQ-BEN-05")
+def test_the_909_kit_hisses_and_its_kick_gets_out_of_the_way(
+    real: SubprocessRunner, tmp_path: Path
+) -> None:
+    loaded = score.load_text(KIT_909)
+    tools = sc.find_tools(real)
+    assert tools is not None
+    defs = sc.compile_synthdefs(real, tools, tmp_path)
+    plan = sc.Plan(loaded, kit.choose(loaded, None, tmp_path), 48000, defs)
+    out = sc.render(real, tools, plan, score.events(loaded), tmp_path / "kit.wav")
+    data, rate = audio.read(out)
+    stems = audio.split(data, [v.name for v in loaded.voices])
+    # The kick is down at least 12 dB 150 ms after it hits, so a duck is heard
+    # after it (spec/tracks/love-train.md, the free version).
+    kick = audio.mono(stems["kick"])
+    loudest = max(_rms_db(kick, rate, n / 1000) for n in range(50))
+    assert _rms_db(kick, rate, 0.15) <= loudest - 12
+    # The hats, ride and shaker hiss, well clear of a whistle.
+    for name in ("chh", "ohh", "ride", "shaker"):
+        assert audio.flatness(stems[name], rate) > 2 * kit.TONAL_FLATNESS, name
+
+
+@pytest.mark.req("REQ-BEN-19")
+@pytest.mark.req("REQ-TRK-08")
+@pytest.mark.parametrize("synth", ["mph_singer", "mph_vocoder", "mph_horn"])
+def test_phrases_sing_and_pass_with_real_supercollider(
+    real: SubprocessRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, synth: str
+) -> None:
+    # A legato line, an accent, a slide and a hum: the aliasing, glide, accent,
+    # slide, timing and determinism checks all hold for each singing synth.
+    text = phrases.TRACK.replace('synth = "mph_singer"', f'synth = "{synth}"')
+    loaded = score.load_text(text)
+    monkeypatch.setattr(render, "load", lambda _: loaded)
+    outcome = render.run("BM-PH", cfg_for(tmp_path), real, None, engine="supercollider")
+    failures = [m for m in outcome.report["measurements"] if not m["passed"]]  # type: ignore[attr-defined]
+    assert failures == []

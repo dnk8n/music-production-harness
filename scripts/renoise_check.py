@@ -10,7 +10,8 @@ tool, then, in one Renoise that mph starts:
 2. A is opened the way "Open in Renoise" opens a render's song, and a second
    job must keep it as a copy in mph's scratch folder before it builds C;
 3. a third job builds M, a song with a mix and sampled synths (REQ-REN-09 to
-   REQ-REN-11): every planned parameter must show what the plan asks for,
+   REQ-REN-11), one of them sung, with an instrument for each syllable
+   (REQ-BEN-19): every planned parameter must show what the plan asks for,
    the duck (the remix's own: 24 dB in 2 ms, back over 430 ms) must pass
    REQ-BEN-12's own checks at every kick on a steady tone and on the bass,
    rendered in a take's order and measured as a render's report measures it,
@@ -88,7 +89,9 @@ ECHO_FLOOR_DB = 20.0  # the echo, at most this much under the thrown note
 # offset can be measured.
 TONE_S, TONE_HZ, TONE_NOISE = 4.5, 1000.0, 0.005
 
-# Every kind of device the mixer uses, and both kinds of synth note (REQ-REN-09 to 11).
+# Every kind of device the mixer uses, and every kind of synth note: plain, accented
+# and sung (REQ-REN-09 to 11, REQ-BEN-19). The sung voice comes last, so the
+# solo renders of the others keep their track numbers.
 MIXED = """
 id = "RC-MIX"
 bpm = 120
@@ -132,6 +135,13 @@ echo = [[1, -inf], [1.5, -inf], [1.5, 0], [1.75, 0], [1.75, -inf]]
 [voices.tone]
 grid = "X . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . ."
 sound = { role = "pad" }
+
+[voices.vox]
+notes     = "-  -  -  -  E4 -  -  -  G4 -  -  -  -  -  -  -"
+gate      = ".  .  .  .  x  .  .  .  x  -  -  -  .  .  .  ."
+accent    = ".  .  .  .  .  .  .  .  X  .  .  .  .  .  .  ."
+syllables = "-  -  -  -  ye -  -  -  a  -  -  -  -  -  -  -"
+sound = { synth = "mph_singer" }
 
 [sends.echo]
 kind = "delay"
@@ -246,24 +256,26 @@ def mixed_song(folder: Path, sample: Path) -> dict[str, luadata.Data]:
     events = score.events(loaded)
 
     def synth(voice: str) -> song_plan.Synth:
-        found = sampling.sounds([e for e in events if e.voice == voice])
-        zones = {
-            accent: tuple(
-                song_plan.Zone(str(sample), song_plan.renoise_note(pitch))
-                for pitch, accented in sorted(found)
-                if accented == accent
-            )
-            for accent in (False, True)
-        }
+        own = [e for e in events if e.voice == voice]
+        sung = list(dict.fromkeys(e.syllable for e in own))
+        zones: dict[tuple[str, bool], list[song_plan.Zone]] = {}
+        for pitch, accent, syllable in sorted(sampling.sounds(own)):
+            zone = song_plan.Zone(str(sample), song_plan.renoise_note(pitch))
+            zones.setdefault((syllable, accent), []).append(zone)
+        families = tuple(
+            song_plan.Family(tuple(zones[key]), key[1], key[0])
+            for key in sorted(zones, key=lambda k: (sung.index(k[0]), k[1]))
+        )
         made = loaded.voice(voice).sound.synth
         release, glide = sampling.release_s(made, {}), sampling.glide_s(made, {})
-        return song_plan.Synth(zones[False], zones[True], release, glide)
+        return song_plan.Synth(families, release, glide)
 
     tracks = [
         song_plan.Track("kick", str(sample), 1.0),
         song_plan.Track("bass", "", 1.0, synth=synth("bass")),
         song_plan.Track("stab", "", 1.0, synth=synth("stab")),
         song_plan.Track("tone", str(tone(folder / "tone.wav")), 1.0),
+        song_plan.Track("vox", "", 1.0, synth=synth("vox")),
     ]
     renders: list[luadata.Data] = [
         {"file": str(folder / "M warm-up.wav")},
@@ -368,7 +380,7 @@ def released_wrong(planned: dict[str, Any], outcome: dict[str, Any]) -> list[str
     for song in outcome.get("shown", []):
         for envelope in song.get("envelopes", []):
             name, text = envelope["instrument"], envelope["release"]
-            wanted = releases[name.removesuffix(" accent")]
+            wanted = releases[name.split()[0]]  # "vox ye accent" is the vox's
             found = shown_number(text, "ms")
             if found is None or abs(found - wanted) > SHOWN_SLACK["ms"] * wanted:
                 wrong.append(f"{name}, its envelope: Release shows {text!r}, not {wanted:g} ms")

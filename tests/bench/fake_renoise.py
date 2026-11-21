@@ -8,8 +8,8 @@ volume times the sample's gain; a later note or a note-off in the same track
 cuts it; slices play from their marker to the next one; a clip voice's note
 plays that clip's sample (REQ-TRK-02); the pitch change resamples the sound.
 A sampled synth (REQ-REN-09) plays the zone its note falls in, from the
-accent instrument for an accented note, transposed from the zone's own
-note; a glide plays on the note before it; a cut or note-off fades over the
+instrument the note names (accented, or for its syllable), transposed from
+the zone's own note; a glide plays on the note before it; a cut or note-off fades over the
 synth's release. A render in the "mix" or "stem" mode ducks each target
 with its Duck's automation (REQ-REN-11); the fake has no other mixer, so a
 mix's master is its ducked tracks' sum. Its result lists one device kind's
@@ -57,7 +57,7 @@ def _synth(track: dict[str, Any], rate: int) -> Callable[[dict[str, Any]], np.nd
     cache: dict[tuple[str, int], np.ndarray] = {}
 
     def piece(note: dict[str, Any]) -> np.ndarray:
-        zones = track["accents"] if note.get("accent") else track["zones"]
+        zones = track["more"][note["sound"] - 1]["zones"] if "sound" in note else track["zones"]
         zone = next(z for z in zones if z["low"] <= note["note"] <= z["high"])
         shift = note["note"] - zone["note"]
         if (zone["file"], shift) not in cache:

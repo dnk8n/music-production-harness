@@ -27,11 +27,19 @@ swells in is found where it starts, not pulled late toward its louder part.
 Each sound is rendered alone held as scored, but for at most 0.75 s, so a
 long pad's release has died away before the next sound of that voice
 starts, 2 s later. The check names the hit that is furthest off.
+A note that starts while the voice's note before it still sounds, held
+into it or in its release (a legato line, or a pad's next chord), isn't
+matched: the note before covers its start, and a steady pitch looks the
+same one period later. A line's first note, and every note after a rest,
+is.
 - **Why:** a quantised groove that drifts sounds sloppy. We need to know the
   pipeline is sample-accurate before blaming the music. On 2026-11-13,
   BM-DRUM-02's fresh take failed at 5 ms with every hit on time. Its kick
   takes 101 ms to reach its loudest. A match on the first 20 ms that
   favoured louder audio slid all 31 later hits to the edge of the search.
+  On 2026-11-21, a legato vocoder line for the free version of remix 1
+  matched one note 3.4 ms late, exactly one period of its D4, and 18% too
+  loud, with every note on time, whatever its attack, release or scoop.
 - **Verify:** measure, test
 
 ### REQ-BEN-02: Every benchmark has a written expectation
@@ -411,6 +419,34 @@ whole chord, and the aliasing probe (BM-BASS-01) plays its first note alone.
   Love Train's two chords that way. One synth per note is how SuperCollider
   users play chords, and it keeps each note's oscillators band-limited.
 - **Verify:** test
+
+### REQ-BEN-19: Sung syllables
+A melodic voice can sing. A `syllables` row gives every note that starts
+its syllable: a vowel (`a`, `e`, `i`, `o` or `u`), after a consonant (`h`,
+`y`, `w`, `l`, `m`, `n`, `d` or `b`) or none, or `m` alone for a hum, with
+`-` on every other step: `syllables = "- - - - o - ye - a - - - la - - -"`.
+A note slid into keeps the syllable it glides from, so its step holds `-`.
+The singing synths (`mph_singer`, a formant voice, and `mph_vocoder`, a
+vocoder whose modulator is that voice) shape each note's vowel and
+consonant from it, and any other synth ignores it. A note on the same pitch
+and accent with another syllable is another sound: it gets a template of
+its own (REQ-BEN-01), and a sample and instrument of its own in Renoise
+(REQ-REN-09).
+
+A note's noise (its breath, a consonant's burst, a waver in its pitch) is
+seeded as a drum hit's is, and every sounding note has a random generator
+of its own, so every note of the same sound is the same and renders stay
+bit-identical (REQ-AUD-05). The probes of BM-BASS-01 turn a singing voice's
+breath, waver, hiss and vibrato off: the aliasing probe measures what is
+between its harmonics, and the glide probe the pitch a slide lands on.
+- **Why:** the free version of remix 1 (issue #68) needs a soulful lead
+  and group answers with no recording, and Dean asked for a formant lead
+  and a vocoder lead (2026-11-15). Vowels are what make a synth line sound
+  sung: a formant synth moves its formants from one to the next, and a
+  consonant marks where a syllable starts. A wordless soul line (oh, yeah,
+  la, ooh, a hum) uses only sounds these synths make clearly, and its
+  vowels carry the soul phrasing without words that a synth would slur.
+- **Verify:** test, measure
 
 ## Drum patterns
 

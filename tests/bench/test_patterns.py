@@ -117,7 +117,7 @@ def test_an_excerpt_plays_the_bar_of_the_pattern_its_track_plays() -> None:
         (" | F1 F1 F2 F1 F1 F1 F2 F1 F1 F1 F2 F1 F1 F1 G1 G1", "", "notes needs 16 entries a bar"),
         (ACCENTS, ACCENTS[:-2], "a row needs 16 symbols a bar from"),
         (BASS_GATE, BASS_GATE[:-2], "a melodic gate row needs 16 steps a bar"),
-        (SLIDES, SLIDES[:31], "accent and slide rows span the gate's bars"),
+        (SLIDES, SLIDES[:31], "accent, slide and syllables rows span the gate's bars"),
     ],
 )
 def test_long_patterns_keep_their_bars_even(old: str, new: str, message: str) -> None:
@@ -163,7 +163,7 @@ def test_a_chord_is_a_short_list_of_semitones(chord: str, message: str) -> None:
 
 @pytest.mark.req("REQ-BEN-18")
 def test_only_a_melodic_voice_plays_chords() -> None:
-    with pytest.raises(score.ScoreError, match="accent and slide rows need notes, as chords do"):
+    with pytest.raises(score.ScoreError, match="slide and syllables rows need notes, as chords do"):
         score.load_text(
             'id = "X"\nbpm = 120\nbars = 1\n[voices.kick]\n'
             'grid = "x . . . x . . . x . . . x . . ."\nchord = [0, 7]\n'

@@ -55,7 +55,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     runner = SubprocessRunner()
     missing = {
         "tools": find_tools(runner) is None and "SuperCollider isn't installed",
-        "lua": lua.interpreter() is None and "no Lua 5.1 (lua5.1, or luajit on a Mac)",
+        "lua": lua.interpreter() is None and "no LuaJIT or Lua 5.1 (luajit, lua5.1)",
     }
     for item in items:
         for marker, reason in missing.items():

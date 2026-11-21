@@ -21,7 +21,8 @@ REQ-REN-03 and REQ-REN-08 to REQ-REN-12):
 
 1. Spec first: the requirement and its Why in `spec/components/renoise.md`.
 2. Change the plan and the Lua together. The tests run the real Lua under
-   Lua 5.1 against `tests/renoise/fake_renoise.lua` (marked `lua`):
+   LuaJIT, Renoise's own Lua (plain Lua 5.1 where LuaJIT is missing), against
+   `tests/renoise/fake_renoise.lua` (marked `lua`):
    `test_mixplan.py` checks the plan, `test_mixer.py`, `test_plan.py` and
    `test_bridge.py` what the tool builds (through `tests/renoise/harness.lua`),
    and `tests/test_renoise_check.py` the real-Renoise check.
@@ -140,6 +141,13 @@ Renoise shows them.
   new loop in the build should call it too, but never inside a `pcall`:
   Lua 5.1 can't yield across one. The harness's `slice=0` makes the build
   pause at every chance.
+- Renoise's Lua is LuaJIT, and one LuaJIT function holds at most 65,536
+  constants: every table literal and value in a job can be one. Written as
+  one table, the whole remix's job held more, and Renoise refused it with
+  "main function has more than 65536 constants" before building anything
+  (2026-11-21). `luadata.document` puts a big table's costliest parts in
+  functions of their own and a long list in groups, and the tests load a
+  job past that limit.
 - Save each song in an idle step of its own, after the step that last
   changed it (REQ-REN-08). Otherwise Renoise asks whether to save, and a
   render waits for a click nobody makes.

@@ -53,7 +53,9 @@ mph deletes each rendered WAV once it has read it.
 The tool builds a song a slice at a time: once a slice has run about 0.2 s,
 it stops and goes on in Renoise's next idle step, so no single call runs
 long enough for Renoise to ask whether the script has stopped responding.
-Every file the tool needs is installed with it.
+Every file the tool needs is installed with it. Renoise's Lua is LuaJIT,
+which won't load a function that holds more than 65,536 constants, so a big
+job is written as functions that each hold fewer.
 mph starts Renoise in the background and waits for the result. If Renoise is
 already open when a render command starts, mph refuses and asks the user to
 save their work and quit Renoise: it only renders in a Renoise it started
@@ -68,7 +70,9 @@ into Renoise's Tools folder, and doctor checks that it's there.
   built in one call, each of the remix's blocks took about 19 s and asked
   every time (2026-11-21). In slices, the longest step took 0.8 s, and the
   blocks rendered with nobody at the Mac. A tool file the installer left out
-  stopped Renoise loading the tool at all.
+  stopped Renoise loading the tool at all. Written as one table, the whole
+  remix's job held more constants than LuaJIT allows, and Renoise refused it
+  before building anything; the blocks' jobs were small enough (2026-11-21).
 - **Verify:** test
 
 ### REQ-REN-04: Laptop keyboard performance

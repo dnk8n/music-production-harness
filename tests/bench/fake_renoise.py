@@ -1,8 +1,8 @@
 """A stand-in for Renoise and the bridge tool, so render tests never run Renoise.
 
 It acts as the clock ``bridge.wait`` sleeps on: the first time mph waits, it
-reads the job mph wrote (through lua5.1, so the job is checked to be valid
-Lua), plays each song the way Renoise would, and writes the result file.
+reads the job mph wrote (through LuaJIT or Lua 5.1, so the job is checked to
+be valid Lua), plays each song the way Renoise would, and writes the result file.
 Playing a song means: every note starts at its line plus delay, at its
 volume times the sample's gain; a later note or a note-off in the same track
 cuts it; slices play from their marker to the next one; a clip voice's note

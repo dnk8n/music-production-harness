@@ -151,7 +151,7 @@ def test_a_match_outside_a_matches_folder_belongs_to_its_own_folder(tmp_path: Pa
 def test_the_synths_controls_come_from_its_synthdef() -> None:
     controls = matchfile.synth_controls("mph_horn")
     assert controls["brass"] == 1300.0 and controls["swell"] == 4.5
-    assert {"far", "gone", "rise", "fade"} <= set(controls)  # the swell's shape (#68)
+    assert {"far", "gone", "rise", "fade", "shine"} <= set(controls)  # for fitting (#68)
 
 
 @pytest.mark.req("REQ-MAT-01")

@@ -90,8 +90,11 @@ What changed since:
 - The matcher is built (`mph match`, spec/components/matching.md), and its
   first match, `matches/horn.toml`, fits the horn's sound to the song's own
   horn. The score keeps its fall, a fourth to stay in the key, and the
-  fall's place on the drop. In the song the horn falls half a second
-  before the groove, as a pickup; here it falls on the drop.
+  fall's place on the drop. The matcher heard the song's horn as one note,
+  not a chord: about 163 Hz (E3, 20 cents flat), swelling for four and a
+  half seconds and falling about three semitones from half a second before
+  the groove, as a pickup. Here the horn plays a chord in the key and falls
+  on the drop.
 - Renoise clipped the vocals' accents as it loaded them (float samples
   above full scale); they are lowered now and given their gain back.
 - The vocals are machine soul: a talk box lead sings verse 1 high and busy

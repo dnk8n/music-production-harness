@@ -627,17 +627,17 @@ write.(SynthDef(\mph_talkbox, { |out = 0, amp = 1, gate = 1, freq = 220, acc = 0
 // growl an octave down, both gone in 0.3 s (growl). The train swells nearer
 // (for swell seconds), passes (at pass seconds) and falls (bend semitones over
 // bend_s seconds, a Doppler fall that moves the bell's resonances with the
-// notes, as a real one does) as it fades away. Distance darkens it, and
-// the ground's reflection arrives a few milliseconds late, more so as the
-// train nears, so a comb sweeps through it as it passes (ground). How loud it
-// is far off (far) and once gone by (gone), and the curves of its swell and
-// its fall (rise and fade), are there for fitting it to a recorded horn
-// (spec/components/matching.md). An accent is louder and brighter. detune 0,
+// notes, as a real one does) as it fades away. Distance darkens it, up to
+// shine Hz near by, and the ground's reflection arrives a few milliseconds
+// late, more so as the train nears, so a comb sweeps through it as it passes
+// (ground). How loud it is far off (far) and once gone by (gone), the curves
+// of its swell and its fall (rise and fade) and how bright it gets (shine)
+// are there for fitting it to a recorded horn (spec/components/matching.md). An accent is louder and brighter. detune 0,
 // air 0, growl 0 and ground 0 leave one steady reed, for the aliasing probe.
 write.(SynthDef(\mph_horn, { |out = 0, amp = 1, gate = 1, freq = 164.81, acc = 0, seed = 1,
     rid = 0, part = 0, swell = 4.5, pass = 5.5, bend = -5, bend_s = 1.2, release = 0.6,
     detune = 7, brass = 1300, accent = 0.5, width = 0.5, air = 0.05, growl = 1, ground = 0.5,
-    far = 0.02, gone = 0.2, rise = 3, fade = -2|
+    far = 0.02, gone = 0.2, rise = 3, fade = -2, shine = 6000|
     var top = ~top.value;
     var accented = acc * accent;
     var near = EnvGen.ar(Env([far, 1, 1, gone], [swell, (pass - swell).max(0.01), bend_s],
@@ -647,7 +647,7 @@ write.(SynthDef(\mph_horn, { |out = 0, amp = 1, gate = 1, freq = 164.81, acc = 0
     var cents = Select.kr(part.clip(0, 4), [0, 5, -4, 3, -6]) * (detune / 7);
     var ratio = (detune / 100).midiratio.sqrt;
     var pitch = freq * doppler * ((cents / 100) - (settle * 0.25)).midiratio;
-    var bright = (near.linexp(0.02, 1, 500, 6000) * (1 + accented)).min(18000);
+    var bright = (near.linexp(0.02, 1, 500, shine) * (1 + accented)).min(18000);
     var reeds, sig, mid, side, level;
     RandID.ir(rid);
     RandSeed.ir(1, seed + (part * 17));

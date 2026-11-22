@@ -1,0 +1,52 @@
+# spec/components/matching.md: fit the free remix's horn (mph_horn, the horn
+# voice of BM-LTFS-05) to the song's own train horn, in Demucs' "other" stem
+# of Dean's FLAC (spec/tracks/love-train.md). The stem is private and stays on
+# Dean's Mac: this file names it by its hash only.
+#
+# In the song the horn swells from bar 10 beat 3 (19 s), falls on bar 12
+# beat 4 (23.5 s) and rings into the groove at bar 13 (24 s), at about
+# 162 Hz, some 30 cents under E3 (docs/research/love-train-remix-practice.md).
+# `mph match analyse` on the Mac checks the span, the note and its timing
+# before the search runs.
+#
+# The fit is for the horn's sound: its brightness, reeds, air, growl, the
+# ground's reflection, and the shapes of its swell and fall. The score keeps
+# its own fall (bend, a fourth to stay in the key) and when the fall starts
+# (pass, on the drop), so those two are turned only to line the candidates
+# up with the song's horn.
+synth = "mph_horn"
+score = "BM-LTFS-05"
+voice = "horn"
+why = "Dean asked for a horn closer to the song's own, not 'video game like' (rating 246)"
+budget = 8400
+seed = 1
+tail_s = 2.0
+keep = ["bend", "pass"]
+
+[reference]
+hash = "4ed4ea4d21f7ca9718a3ee67823eb11f4d762f5023eadcd332b02eca6e44b2c7"
+start_s = 18.0
+end_s = 27.5
+what = "the train horn in Love Train's 'other' stem (Demucs htdemucs_ft), bars 10 to 14"
+licence = "private: from Dean's own copy of the song, never shared or released"
+
+[play]
+notes = [162.0]
+at_s = 1.0
+length_s = 6.5
+
+[knobs]
+swell = [1, 6.5]
+pass = [3, 7]
+bend = [-7, 0]
+bend_s = [0.3, 3]
+release = [0.1, 2]
+detune = [0, 25]
+brass = [300, 3000, "log"]
+air = [0, 0.3]
+growl = [0, 2]
+ground = [0, 1]
+far = [0.002, 0.2, "log"]
+gone = [0.003, 0.5, "log"]
+rise = [-4, 8]
+fade = [-8, 4]

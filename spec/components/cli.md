@@ -10,7 +10,8 @@ wires dependencies, calls one module and renders the result.
 list|set|delete`, `mph prune` (REQ-RET-05), `mph mcp serve|install|call`
 (spec/components/query-channel.md), `mph projects list|copy|fill`
 (spec/components/projects.md), `mph spec check`, `mph catalogue ...`,
-`mph bench ...` and `mph renoise ...`.
+`mph bench ...`, `mph match analyse|check|run` (spec/components/matching.md)
+and `mph renoise ...`.
 - **Why:** one entry point that's discoverable with `--help`.
 - **Verify:** test
 

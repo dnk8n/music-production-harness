@@ -629,16 +629,19 @@ write.(SynthDef(\mph_talkbox, { |out = 0, amp = 1, gate = 1, freq = 220, acc = 0
 // bend_s seconds, a Doppler fall that moves the bell's resonances with the
 // notes, as a real one does) as it fades away. Distance darkens it, and
 // the ground's reflection arrives a few milliseconds late, more so as the
-// train nears, so a comb sweeps through it as it passes (ground). An accent is
-// louder and brighter. detune 0, air 0, growl 0 and ground 0 leave one steady
-// reed, for the aliasing probe.
+// train nears, so a comb sweeps through it as it passes (ground). How loud it
+// is far off (far) and once gone by (gone), and the curves of its swell and
+// its fall (rise and fade), are there for fitting it to a recorded horn
+// (spec/components/matching.md). An accent is louder and brighter. detune 0,
+// air 0, growl 0 and ground 0 leave one steady reed, for the aliasing probe.
 write.(SynthDef(\mph_horn, { |out = 0, amp = 1, gate = 1, freq = 164.81, acc = 0, seed = 1,
     rid = 0, part = 0, swell = 4.5, pass = 5.5, bend = -5, bend_s = 1.2, release = 0.6,
-    detune = 7, brass = 1300, accent = 0.5, width = 0.5, air = 0.05, growl = 1, ground = 0.5|
+    detune = 7, brass = 1300, accent = 0.5, width = 0.5, air = 0.05, growl = 1, ground = 0.5,
+    far = 0.02, gone = 0.2, rise = 3, fade = -2|
     var top = ~top.value;
     var accented = acc * accent;
-    var near = EnvGen.ar(Env([0.02, 1, 1, 0.2], [swell, (pass - swell).max(0.01), bend_s],
-        [3, 0, -2]));
+    var near = EnvGen.ar(Env([far, 1, 1, gone], [swell, (pass - swell).max(0.01), bend_s],
+        [rise, 0, fade]));
     var doppler = EnvGen.kr(Env([0, 0, bend], [pass, bend_s], [0, -2])).midiratio;
     var settle = EnvGen.kr(Env([1, 0], [0.3], [-3])) * growl;
     var cents = Select.kr(part.clip(0, 4), [0, 5, -4, 3, -6]) * (detune / 7);

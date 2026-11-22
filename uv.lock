@@ -762,6 +762,7 @@ dependencies = [
     { name = "librosa" },
     { name = "numpy" },
     { name = "pyloudnorm" },
+    { name = "scipy" },
     { name = "soundfile" },
     { name = "soxr" },
 ]
@@ -781,6 +782,7 @@ requires-dist = [
     { name = "librosa", specifier = ">=1.0.0" },
     { name = "numpy", specifier = ">=2.5.4" },
     { name = "pyloudnorm", specifier = ">=0.2.0" },
+    { name = "scipy", specifier = ">=1.18.1" },
     { name = "soundfile", specifier = ">=0.14.0" },
     { name = "soxr", specifier = ">=1.1.0" },
 ]

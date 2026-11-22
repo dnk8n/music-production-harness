@@ -9,6 +9,7 @@ dependencies = [
     "librosa>=1.0.0",
     "numpy>=2.5.4",
     "pyloudnorm>=0.2.0",
+    "scipy>=1.18.1",
     "soundfile>=0.14.0",
     "soxr>=1.1.0",
 ]
@@ -57,7 +58,7 @@ python_version = "3.12"
 files = ["src", "tests"]
 
 [[tool.mypy.overrides]]
-module = ["pyloudnorm", "pyloudnorm.*", "soundfile", "soxr"]
+module = ["pyloudnorm", "pyloudnorm.*", "scipy", "scipy.*", "soundfile", "soxr"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

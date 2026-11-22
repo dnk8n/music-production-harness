@@ -133,3 +133,43 @@ one table per line, cued like clips. What it taught:
   were 17 dB under their target until their output was raised.
 - A free version with cleared vocal samples (Freesound and other free
   sources) is the next variant of issue #68.
+
+## Fitting a synth to a recorded sound
+
+A synth made by hand can be fitted to a recording, such as the song's own
+horn: `mph match` searches the synth's knobs for the patch that sounds
+closest (ADR-0014, spec/components/matching.md). The first match is
+`examples/projects/love-train-remix-1-free-synthesised/matches/horn.toml`.
+
+1. Write a match file in the project's `matches/` folder: the synth, the
+   score and voice whose `params` are the baseline, the reference by its
+   catalogue hash (never a file in the repo), the span, the notes the
+   reference plays and when, and the knobs with their ranges. A range must
+   hold the score's value (a test checks), and `keep` names what the score
+   decides, such as a fall that stays in the key or a fall placed on the
+   drop: those knobs are turned only to line the candidates up.
+2. On Dean's Mac, from a worktree (the `mac-work` skill), run
+   `uv run mph match analyse FILE`. It prints the span's level and pitch
+   every quarter of a second, and its strongest partials: check the notes,
+   when they start and how long they hold, and fix the file if they're off.
+3. `uv run mph match check FILE` hides a patch and must find it again. Trust
+   a run only once its check passes, and don't pin a knob it says is
+   barely heard: pin that one by ear, or leave it out.
+4. `uv run mph match run FILE` leaves `reference.wav`, `baseline.wav` (the
+   hand-made patch) and up to three candidates, all at one level, in
+   `data_dir/matches/PROJECT/MATCH/TIME/`, and prints the closest one as
+   `params`. Dean listens and decides; the number only shortlists.
+5. Pin what Dean picks in the score voice's `params`, with a comment that
+   names the match file, the run and its distance against the baseline's
+   (REQ-MAT-07). The reference and the search stay out of renders.
+
+What it taught:
+- OSC sends every control as a 32-bit float. A test's made-up reference
+  must go through float32 too, or the same patch doesn't sound the same.
+- The views hear down to 60 dB under the sound's own level. Without that
+  floor, rounding noise counted for two thirds as much as a real change of
+  tone.
+- With the real mph_horn in a cloud copy, a check found 2 knobs exactly in
+  360 renders (12 s) and 6 knobs within 0.1% in 2,376 renders (a minute),
+  at 24 kHz with 2-second notes. A run at the reference's 44.1 kHz with
+  10-second spans costs about ten times as much per render.

@@ -79,15 +79,21 @@ What Dean asked for next (2026-11-22):
 - The vocals aim for machine soul with high energy: talkbox and vocoder
   leads with gospel group shouts, written for energy and owning that they
   are machines, as talkbox funk does.
-- A way to fit a synth to a sound he provides, tuned to the track's key and
-  tempo, that runs on his Mac without cloud credits. It is designed, and
-  comes as its own spec and PR after this one.
+- A way to fit a synth to a given sound, tuned to the track's key and
+  tempo, that runs on Dean's Mac without cloud credits. Dean chose to build
+  it in this PR (#71).
 
 What changed since:
 - The horn is in the key, voiced as a real five-chime horn is, and built as
   an air horn sounds (a bell, air, beating chimes and the ground's
-  reflection). It is built by hand, not yet fitted to the song's horn:
-  that waits for the matcher.
+  reflection). It is built by hand, not yet fitted to the song's horn.
+- The matcher is built (`mph match`, spec/components/matching.md), and its
+  first match, `matches/horn.toml`, fits the horn's sound to the song's own
+  horn. The score keeps its fall, a fourth to stay in the key, and the
+  fall's place on the drop. In the song the horn falls half a second
+  before the groove, as a pickup; here it falls on the drop.
+- Renoise clipped the vocals' accents as it loaded them (float samples
+  above full scale); they are lowered now and given their gain back.
 - The vocals are machine soul: a talk box lead sings verse 1 high and busy
   (D4 to D5, where it was low and close), the vocoder sings the same lines
   in verse 2, and the group shouts on the drops and in the verse's gaps.

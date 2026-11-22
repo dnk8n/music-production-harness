@@ -14,7 +14,7 @@ from tests.fakes import FakeRunner, FakeStore, ScriptedPrompter
 
 
 @pytest.mark.req("REQ-CLI-01")
-@pytest.mark.parametrize("command", ["status", "doctor", "install", "secrets", "spec"])
+@pytest.mark.parametrize("command", ["status", "doctor", "install", "secrets", "spec", "match"])
 def test_commands_exist(command: str) -> None:
     assert f"    {command}" in cli.build_parser().format_help()
 

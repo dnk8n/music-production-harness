@@ -77,6 +77,11 @@ Mac, started from the thread".
   but the next command can't tell it from Dean's and refuses until it's
   quit (REQ-REN-03), so render several takes in one command:
   `uv run mph bench render BM-A BM-B ... --engine renoise --variant renoise`.
+- `uv run mph match analyse|check|run FILE` fits a synth to a recording
+  (the `remix` skill says how). Run it from a worktree, like a render. A run
+  keeps its sounds in `data_dir/matches/PROJECT/MATCH/TIME/` (two to five
+  short WAVs) and, once a newer run finishes, only its `report.json`. A
+  reference may be private: never copy `reference.wav` anywhere.
 - **Disk.** The Mac's disk is nearly full (98 to 100% in November 2026, with
   3.8 GiB free on 2026-11-22). Check `df -h ~` before any long render or
   mac-check, and stop and tell Dean the numbers if a job won't fit. Sizes at

@@ -153,14 +153,31 @@ under a second, so the whole track renders in 5 minutes in a cloud copy.
 
 Dean rated the free remix's first block 1 star: the horn's chord was
 dissonant and "too video game like", and the voices "lethargic and low
-energy". He asked to get that block right in both engines first, chose
+energy". Dean asked to get that block right in both engines first, chose
 machine soul for the vocals (a talk box and a vocoder with gospel group
 shouts, owning that they are machines), asked for the Renoise take to be
 built as a Renoise programmer would, without SuperCollider, and for a way
-to fit a synth to a sound he gives it, running on his Mac. The horn was
+to fit a synth to a given sound, running on Dean's own Mac. The horn was
 rebuilt as an air horn sounds, in the key, and the vocals as machine soul.
 On the way, the whole-mix pump check learned to leave out synth vocals as
 it left out a remix's recorded ones (REQ-BEN-12): sung lines ride on top.
+And Renoise turned out to clip a float sample above full scale as it loads
+it, which had flattened the vocals' accents in the Renoise take: a voice's
+hot samples are now lowered to full scale together, and the gain goes back
+on the sample's volume (REQ-REN-09).
+
+## 2026-11-22: fitting synths to sounds
+
+For that fit, the matcher (`mph match`, ADR-0014) searches a synth's knobs
+by differential evolution: each candidate renders in SuperCollider as the
+track would play it, and five classic views of the sound score it against
+the reference. Reinforcement learning, a trained network, a differentiable
+synth and a local LLM turning knobs were each weighed and set aside, as
+none of them is better at one sound and each would choose the sound
+itself. Known answers come first: with the real horn, a search found six
+hidden knobs to within 0.1% in a minute. The first match fits the free
+remix's horn to the song's own, which stays on Dean's Mac; only the knobs
+Dean picks reach the score.
 
 ## Outside the repo
 

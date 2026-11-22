@@ -78,7 +78,8 @@ GLIDE_MEASURE_S = 0.15  # its last part, once the glide and filter have settled
 GLIDE_SEARCH = 2**0.5  # look for the pitch within half an octave of the target
 # A pad plays its root alone, undetuned, strings without vibrato and an organ
 # without its fifth or chorus, so the energy between harmonics is aliasing.
-# A singing voice (REQ-BEN-19) sings without breath, hiss or a waver in its pitch.
+# A singing voice (REQ-BEN-19) sings without breath, hiss or a waver in its pitch,
+# and a horn without its air, its growl or the ground's reflection.
 PROBE_PARAMS = {
     "cutoff": 8000.0,
     "resonance": 0.9,
@@ -92,6 +93,9 @@ PROBE_PARAMS = {
     "breath": 0.0,
     "hiss": 0.0,
     "waver": 0.0,
+    "air": 0.0,
+    "growl": 0.0,
+    "ground": 0.0,
 }
 STEADY_PARAMS = {"vibrato": 0.0, "waver": 0.0}  # the glide probe's: a pitch that holds still
 DELIVERY_CEILING_DBTP = -1.0  # benchmarks aren't mastered: keep them clear of clipping

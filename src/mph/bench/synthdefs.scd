@@ -571,34 +571,47 @@ write.(SynthDef(\mph_vocoder, { |out = 0, amp = 1, gate = 1, freq = 220, acc = 0
 }));
 
 // A passing train horn (Love Train remix 1's signature sound, synthesised for
-// its free version, issue #68): two reeds per note (a band-limited saw and
-// square) detuned apart, one per side, through a brassy resonance. It swells
-// as the train nears (for swell seconds), passes (at pass seconds) and bends
-// down (bend semitones over bend_s seconds, a Doppler fall) as it fades away
-// darker. A chord is one synth per note, and each note drifts on its own.
-// detune 0 is one steady reed, for the aliasing probe. An accent is louder and
-// brighter.
+// its free version, issue #68), built from what a real air horn does. Each
+// chime is two reeds (a band-limited saw and square) a few cents apart, one per
+// side, through a bell: a high-pass under the note, two brassy resonances and a
+// breath of air (air). A chord is one synth per chime, and each chime is tuned
+// a few cents off the others (by part), as real chimes are, so the chord beats.
+// A note settles in: it starts a quarter of a semitone flat with a rough
+// growl an octave down, both gone in 0.3 s (growl). The train swells nearer
+// (for swell seconds), passes (at pass seconds) and falls (bend semitones over
+// bend_s seconds, a Doppler fall that moves the bell's resonances with the
+// notes, as a real one does) as it fades away. Distance darkens it, and
+// the ground's reflection arrives a few milliseconds late, more so as the
+// train nears, so a comb sweeps through it as it passes (ground). An accent is
+// louder and brighter. detune 0, air 0, growl 0 and ground 0 leave one steady
+// reed, for the aliasing probe.
 write.(SynthDef(\mph_horn, { |out = 0, amp = 1, gate = 1, freq = 164.81, acc = 0, seed = 1,
-    rid = 0, part = 0, swell = 4.5, pass = 5.5, bend = -3, bend_s = 2.0, release = 0.6,
-    detune = 7, brass = 1300, accent = 0.5, width = 0.5|
+    rid = 0, part = 0, swell = 4.5, pass = 5.5, bend = -5, bend_s = 1.2, release = 0.6,
+    detune = 7, brass = 1300, accent = 0.5, width = 0.5, air = 0.05, growl = 1, ground = 0.5|
     var top = ~top.value;
     var accented = acc * accent;
     var near = EnvGen.ar(Env([0.02, 1, 1, 0.2], [swell, (pass - swell).max(0.01), bend_s],
         [3, 0, -2]));
-    var shift = EnvGen.kr(Env([0, 0, bend], [pass, bend_s], [0, -2]));
+    var doppler = EnvGen.kr(Env([0, 0, bend], [pass, bend_s], [0, -2])).midiratio;
+    var settle = EnvGen.kr(Env([1, 0], [0.3], [-3])) * growl;
+    var cents = Select.kr(part.clip(0, 4), [0, 5, -4, 3, -6]) * (detune / 7);
     var ratio = (detune / 100).midiratio.sqrt;
-    var pitch = freq * shift.midiratio;
+    var pitch = freq * doppler * ((cents / 100) - (settle * 0.25)).midiratio;
     var bright = (near.linexp(0.02, 1, 500, 6000) * (1 + accented)).min(18000);
     var reeds, sig, mid, side, level;
     RandID.ir(rid);
     RandSeed.ir(1, seed + (part * 17));
     reeds = [ratio, ratio.reciprocal].collect { |r, i|
         var f = pitch * r * (1 + LFNoise1.kr([4, 3.3][i], 0.0003 * detune));
-        (~saw.(f, 50, top) * 0.55) + (~square.(f, 25, top) * 0.45)
+        var rough = 1 + (SinOsc.ar(f * 0.5) * settle * 0.5);
+        ((~saw.(f, 50, top) * 0.55) + (~square.(f, 25, top) * 0.45)) * rough
     };
     sig = reeds.collect { |reed|
-        LPF.ar((BPF.ar(reed, brass, 0.9) * 2.5) + (BPF.ar(reed, brass * 2.3, 1.2) * 0.8)
-            + (reed * 0.5), bright)
+        var horn = brass * doppler;
+        var bell = HPF.ar((BPF.ar(reed, horn, 0.6) * 3) + (BPF.ar(reed, horn * 2.3, 0.9) * 0.8)
+            + (reed * 0.5), freq * doppler * 0.7);
+        var heard = LPF.ar(bell + BPF.ar(WhiteNoise.ar(air), horn * 1.6, 1.2), bright);
+        heard + (DelayC.ar(heard, 0.012, 0.0004 + (near.squared * 0.0065)) * ground * 0.7)
     };
     mid = (sig[0] + sig[1]) * 0.5;
     side = (sig[0] - sig[1]) * 0.5 * width;

@@ -514,14 +514,20 @@ gate      = "x  -  -  -  -  -  -  -  -  -  -  -  -  -  .  .  | x  -  -  -  -  - 
 notes     = "F3 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | G3 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | F3 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | C4 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
 syllables = "u  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | u  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | u  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | u  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
 
-# The train's horn, synthesised (the source's horn sounds like an E major
-# chord set against the song's harmony): E3, G#3 and B3, from the second beat
-# of an even bar. It swells for two bars and a beat, peaks on the third beat
-# of its third bar, then bends down three semitones across the bar where the
-# section drops.
+# The train's horn, synthesised: five chimes voiced as a real horn's are (the
+# Nathan K5LA's D#4 F#4 G#4 B4 D#5, a B major sixth), a semitone up and an
+# octave down: E3 G3 A3 C4 E4, a C major sixth over E. It shares every note
+# with the strings' chord on the even bars, and over their E minor 7 on the
+# odd bars it adds the A and C of a C major 13th. Dean heard the E major chord
+# it had before as dissonant (rating 246, 2026-11-22): its G# rubbed against
+# the song's G and A. From the second beat of an even bar it swells for two
+# bars and a beat, peaks on the third beat of its third bar, then falls a
+# fourth in 1.2 seconds as the train passes (to B D E G B, a G major sixth,
+# in key at the drop), and fades away there as the section drops.
 [voices.horn]
-sound = { synth = "mph_horn", why = "A passing train horn: two detuned reeds a note through a brassy resonance, swelling as it nears, then bending down and darker as it passes." }
-chord = [0, 4, 7]
+sound = { synth = "mph_horn", why = "A passing train horn as an air horn sounds: five chimes, each two reeds through a bell with a breath of air, tuned a few cents apart so the chord beats. It swells as it nears, with the ground's reflection sweeping through it, then falls a fourth and darkens as it passes." }
+chord = [0, 3, 5, 8, 12]
+params = { bend = -5, bend_s = 1.2 }
 cues = [[34, "horn"], [110, "horn"], [194, "horn"]]
 
 [voices.horn.mix]

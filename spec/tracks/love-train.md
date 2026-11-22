@@ -304,13 +304,26 @@ released over 430 ms).
     breathier) answers every hook line and the vamp's calls, and holds
     "ooh" chords under the ad-libs. Its triads are F major over the F bars,
     and G or C major over the C bars, which keeps every note in the key.
-- **The train's horn**, a synth (`mph_horn`) after the source's horn: an E
-  major chord (E3, G#3 and B3), set against the song's harmony as the
-  source's is, from the second beat of an even bar. It swells for 4.5
-  seconds to its peak on the third beat of its third bar, holds, then
-  bends down three semitones over the next bar (the drop) as it fades and
-  darkens. Cued at bars 34, 110 and 194, as version 2's horns are, each
-  bend lands a section.
+- **The train's horn**, a synth (`mph_horn`) built from what a real air
+  horn does: five chimes, each two reeds a few cents apart through a bell
+  (a high-pass under the note and two brassy resonances) with a breath of
+  air, each chime tuned a few cents off the others so the chord beats. A
+  note settles in, a quarter of a semitone flat with a rough growl, both
+  gone in 0.3 seconds, and as the train nears, the ground's reflection
+  sweeps a comb through it. The chord is a real five-chime horn's voicing
+  (the [Nathan K5LA](https://en.wikipedia.org/wiki/Nathan_Manufacturing)'s
+  D#4 F#4 G#4 B4 D#5, a B major sixth) a semitone up and an octave down:
+  E3 G3 A3 C4 E4, a C major sixth over E, in the key. It shares every note
+  with the strings' chord on the even bars, and over their E minor 7 on the
+  odd bars it adds the A and C of a C major 13th. From the second beat of
+  an even bar it swells for 4.5 seconds to its peak on the third beat of
+  its third bar, holds, then on the drop falls a fourth in 1.2 seconds (to
+  a G major sixth, also in the key) and fades away there, darker. Cued at
+  bars 34, 110 and 194, as version 2's horns are, each fall lands a
+  section. Dean heard the first version, an E major chord set against the
+  harmony as the source's is, as dissonant and "too video game like"
+  (rating 246, 2026-11-22): its G# rubbed against the song's G and A, and
+  two plain reeds through two filters had no air, bell or distance.
 
 | Line | Voice | Cued at bar | Bars | Sings |
 |---|---|---|---|---|
@@ -326,7 +339,7 @@ released over 430 ms).
 | Verse 2, lines 1 to 3 | machine | 130, 134, 138 | 4 each | verse 1's lines |
 | Ad-libs 1 to 3 | singer | 164, 168, 172 | 4 each | high and free, with runs, over the group's held chords |
 | Tag, two lines | machine | 180, 184 | 4 and 2 | in the dub-out, deep in the echo |
-| Horn | horn | 34, 110, 194 | 4 | E major, swelling, then bending across the drop |
+| Horn | horn | 34, 110, 194 | 4 | a C major sixth over E, swelling, then falling a fourth across the drop |
 
 Each benchmark has a `supercollider` take and a `renoise` take (Renoise
 plays each synth's notes as samples SuperCollider made, REQ-REN-09); a

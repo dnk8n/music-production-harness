@@ -37,8 +37,9 @@ remix 1's, so the two versions can be heard side by side.
   group of three voices answers the hooks and holds chords under the
   ad-libs. Every note, syllable, accent and slide is written in
   BM-LTFS-05.toml, so any line can be changed.
-- **The train's horn**, synthesised: an E major chord that swells and bends
-  down across the drops at bars 34, 110 and 194.
+- **The train's horn**, synthesised as an air horn sounds: five chimes in a
+  real horn's voicing, moved into the key (E3 G3 A3 C4 E4), that swell and
+  fall a fourth across the drops at bars 34, 110 and 194.
 
 ## How to hear it
 
@@ -61,4 +62,25 @@ rendered so far passes every measurement.
 
 ## What Dean thought
 
-Not rated yet: the five benchmarks wait for Dean's ears (2026-11-21).
+BM-LTFS-01's SuperCollider take, 1 star (rating 246, 2026-11-22): "The
+chords of the train horn have dissonant notes, and are too video game like.
+I know there is much more potential for more sophisticated sound. The voice
+substitutes don't match, we want high energy, soulful and interesting...
+what we have is lethargic and low energy." Its Renoise take didn't render
+then: a voice that rests in a block broke the song plan (fixed in PR #71).
+
+What Dean asked for next (2026-11-22):
+- Get BM-LTFS-01 right in both engines before the rest of the track.
+- In this project the Renoise take doesn't rely on SuperCollider: it is
+  built as a Renoise programmer would, with chosen plug-ins and Renoise's
+  own effects and features.
+- The vocals aim for machine soul with high energy: talkbox and vocoder
+  leads with gospel group shouts, written for energy and owning that they
+  are machines, as talkbox funk does.
+- A way to fit a synth to a sound he provides, tuned to the track's key and
+  tempo, that runs on his Mac without cloud credits. It is designed, and
+  comes as its own spec and PR after this one.
+
+What changed since: the horn is now in the key, voiced as a real five-chime
+horn is, and built as an air horn sounds (a bell, air, beating chimes and
+the ground's reflection).

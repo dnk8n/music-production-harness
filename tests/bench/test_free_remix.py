@@ -71,16 +71,20 @@ def test_its_lines_are_cued_on_even_bars_and_stay_in_the_key() -> None:
         assert voice.phrases and voice.sound.synth
         assert all(bar % 2 == 0 for bar, _ in voice.cues), name  # on its own chords
     found = score.events(free)
-    for name in SINGERS:
+    for name in (*SINGERS, "horn"):
         chord = free.voice(name).chord or (0,)
         sung = {(e.pitch + k) % 12 for e in own(found, name) for k in chord}
         assert sung <= C_MAJOR, (name, sung - C_MAJOR)
-        assert all(e.syllable for e in own(found, name))
-    # The horn alone is set against the harmony: E major, as the song's horn is.
-    horn = own(found, "horn")
-    assert [(e.pitch, round(e.length_s, 3)) for e in horn] == [(52, 7.5)] * 3
-    assert free.voice("horn").chord == (0, 4, 7)
-    assert [bar for bar, _ in free.voice("horn").cues] == [34, 110, 194]
+    assert all(e.syllable for name in SINGERS for e in own(found, name))
+    # The horn's five chimes are a real horn's voicing moved into the key, a C
+    # major sixth over E (Dean heard its E major chord as dissonant, rating
+    # 246), and its fall of a fourth lands on a G major sixth, also in the key.
+    horn = free.voice("horn")
+    assert [(e.pitch, round(e.length_s, 3)) for e in own(found, "horn")] == [(52, 7.5)] * 3
+    assert horn.chord == (0, 3, 5, 8, 12)
+    bend = round(dict(horn.params)["bend"])
+    assert {(52 + bend + k) % 12 for k in horn.chord} <= C_MAJOR
+    assert [bar for bar, _ in horn.cues] == [34, 110, 194]
 
 
 @pytest.mark.req("REQ-TRK-03")

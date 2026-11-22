@@ -77,9 +77,10 @@ Mac, started from the thread".
   but the next command can't tell it from Dean's and refuses until it's
   quit (REQ-REN-03), so render several takes in one command:
   `uv run mph bench render BM-A BM-B ... --engine renoise --variant renoise`.
-- **Disk.** The Mac's disk is nearly full (about 98% in November 2026, with
-  around 8 GiB free). Check `df -h ~` before any long render or mac-check, and
-  stop and tell Dean the numbers if a job won't fit. Sizes at 96 kHz float:
+- **Disk.** The Mac's disk is nearly full (98 to 100% in November 2026, with
+  3.8 GiB free on 2026-11-22). Check `df -h ~` before any long render or
+  mac-check, and stop and tell Dean the numbers if a job won't fit. Sizes at
+  96 kHz float:
   - a block of about a minute peaks under 1.1 GB;
   - a whole 8-minute track keeps about 0.37 GB per stem plus the master, and
     a SuperCollider take peaks near twice that, with three 10-channel work

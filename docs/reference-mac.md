@@ -12,7 +12,7 @@ difference in your takes might come from. Checked with `mph doctor` and
 | Model | MacBook Pro 14-inch (2021) |
 | Chip and memory | Apple M1 Pro, 16 GB |
 | System | macOS 26.5.2 (build 25F84), arm64 (2026-11-21) |
-| Disk | 460 GiB, nearly full: 6 to 8 GiB free through November 2026 (6.1 GiB on 2026-11-21) |
+| Disk | 460 GiB, nearly full: 4 to 8 GiB free through November 2026 (3.8 GiB on 2026-11-22, after the free remix's Renoise take) |
 | Checkout | `/Users/dean/src/music-production-harness` |
 | Data folder | `~/Library/Application Support/mph`: renders took 13.8 GB on 2026-11-21 |
 | Config | `~/.config/mph/config.toml`, as in [examples/config/dean.toml](../examples/config/dean.toml) |

@@ -39,9 +39,10 @@ unless Dean reorders.
    fine, and two variants. Three PRs, in order:
    1. the fully synthesised variant: a 909 kit, a formant lead, a vocoder
       lead, a group and the horn, all synths, as written phrases
-      (`love-train-remix-1-free-synthesised`, BM-LTFS-01 to 05; PR open
-      2026-11-21, waiting for Dean's ears and the Renoise takes on the
-      Mac);
+      (`love-train-remix-1-free-synthesised`, BM-LTFS-01 to 05; PR #71,
+      waiting for Dean's ears: every take rendered so far passes, the
+      whole track's Renoise take on the Mac too, and the blocks' Renoise
+      takes wait for disk space);
    2. the cleared-samples variant: vocal samples from Freesound and other
       free sources, with a command that fetches them and a track-analysis
       command;

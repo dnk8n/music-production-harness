@@ -55,6 +55,7 @@ up, add it to the spec, skill or doc it belongs to, and list it here.
 |---|---|
 | Agents may take the next best step without asking; stability and quality over speed | CLAUDE.md, docs/roadmap.md |
 | What we learn goes in the repo, not only in an agent's memory | REQ-PRC-07, CLAUDE.md rule 15 |
+| Project memory is only an index; each task reads the context it needs from its issue, PRs and the repo | REQ-PRC-07, CLAUDE.md rule 15 |
 | Plain words, and no gendered pronouns for people whose pronouns aren't stated | CLAUDE.md rule 14 |
 | One branch per PR from the latest main, no stacking; Dean merges | CLAUDE.md rule 4, REQ-PRC-05 |
 | Changes to Dean's checkout need Dean's own go-ahead, typed in the thread and naming the action; mph's data folder may be managed with judgement | the `mac-work` skill |

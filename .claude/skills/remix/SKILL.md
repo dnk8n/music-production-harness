@@ -54,7 +54,9 @@ no placeholder can stand in for.
    sections, the chords and bass per bar, each vocal line's first beat,
    length and range (as bar.beat), and where each signature sound starts,
    peaks and ends. The catalogue's first beat and drift give the grid.
-   Write the map into the spec file.
+   Write the map into the spec file, and keep the raw measurements in mph's
+   data folder under `analysis/<song>/` (Love Train's are in
+   `analysis/love-train/`) for the next remix of the same song.
 4. Write the whole track as one score: its sections, the new parts, the
    vocal lines as clips cued on their own chords (REQ-TRK-02, REQ-TRK-05),
    and the mix: strips, sends, automation and the sidechain. Then cut the

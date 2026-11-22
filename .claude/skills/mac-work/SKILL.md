@@ -19,7 +19,9 @@ Mac, started from the thread".
   start ("switch my checkout to main, pull, and run mph renoise install"): the
   Mac's safety checks want Dean's own typed message, and a tap on a decision
   card was refused there (2026-11-21). Read-only commands from it are fine. Its
-  own `mph` serves the listening page and the MCP tools.
+  own `mph` serves the listening page and the MCP tools, so check which commit
+  it's on first (`git -C <checkout> log -1 --oneline`): it stays where it was
+  after a merge until Dean says to pull.
 - **mph's data folder**, `~/Library/Application Support/mph`, holds the renders,
   the catalogue DB (with Dean's ratings and ideas), the cache (stems included),
   and Renoise's jobs and scratch songs. Dean gave standing permission
@@ -42,7 +44,8 @@ Mac, started from the thread".
   - `scripts/mac-check [REF]`: doctor, every pre-commit hook, then every test,
     those marked `tools` and `macos` too. Any skip fails it (REQ-ENG-08). It
     takes about 5 minutes. Run it before merging anything that touches
-    renders, the Renoise bridge or the Keychain.
+    renders, the Renoise bridge or the Keychain. If Dean merged before it
+    ran, run it on `origin/main`.
   - `scripts/renoise-check [REF]`: the bridge tool in real Renoise, which must be
     closed first. Run it before merging any change under `src/mph/renoise/`.
     Even when a step fails it asks the Renoise it started to quit, and it
@@ -50,7 +53,11 @@ Mac, started from the thread".
     back word for word, apart from the per-parameter device rows when
     nothing failed: the device report lists what Renoise really calls and
     shows, and the duck lines show how Renoise applies automation (the
-    renoise-bridge skill says what to do with both).
+    renoise-bridge skill says what to do with both). Once (2026-11-21), just
+    after a stuck Renoise had been force-quit, it timed out at 300 s though
+    its songs had built, rendered and saved in 2 s, and the reruns passed;
+    if it times out, run it once more before blaming the change, and report
+    both runs.
   - `scripts/kit-diff REF [BASE]`: which takes would pick other sounds, and which
     sounds would change role, tempo, key or form. Run it before merging any
     change to naming rules, search or kit choice, because changed picks void
@@ -95,6 +102,10 @@ Mac, started from the thread".
 - Messages to a running session go through the thread's Remote Control
   instructions, which also wake a session that is waiting; its notes come
   back as messages. Start only one session per thread.
+- A thread starts a session from a message Dean wrote in it (the one it is
+  answering, or an earlier one it names), and the session takes any
+  go-ahead from that message's words. So start a step that needs Dean's
+  approval from the message where Dean typed it.
 - Give each request its own gate: what to run, what to send back word for
   word, and what to do on a pass and on a fail (for example: render only if
   the check passes, otherwise stop with nothing rendered).

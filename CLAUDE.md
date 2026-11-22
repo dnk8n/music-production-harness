@@ -63,8 +63,9 @@ on someone else's Mac, read "Dean" as the person whose Mac and ear it is.
     `mph secrets`. Credential setup asks for every field a service needs and
     says where to find each one.
 13. **Never commit** secrets, audio files, Renoise songs or other binaries
-    (only small images in `docs/images/`, REQ-ENG-10), local config or the
-    catalogue DB. Dean's projects are text in `examples/projects/`
+    (only small images in `docs/images/`, REQ-ENG-10), local config, the
+    catalogue DB, or personal details such as an email address or a time
+    zone. Dean's projects are text in `examples/projects/`
     (REQ-PRJ-02): a new project of Dean's gets a folder there, with a
     README that says what Dean thought, kept current.
 
@@ -83,4 +84,6 @@ on someone else's Mac, read "Dean" as the person whose Mac and ear it is.
     reference Mac); what Dean thought of a project in its README. When a run
     teaches something new, update the skill, spec or doc it belongs to in
     the same PR. The bar: an agent with no memory and only the repo could
-    carry on.
+    carry on. So project memory is only an index: start each task from its
+    issue or PR, and read only the spec, skills and docs it needs (Dean,
+    2026-11-21).

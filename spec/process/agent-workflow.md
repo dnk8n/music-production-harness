@@ -88,13 +88,19 @@ guide that takes a new user from a fresh Mac to a rendered demo. An agent's
 memory and the chat are working notes, not the record: anything in them a
 new session would need is in the repo, so the memory could be deleted and
 nothing would be lost but what is on Dean's Mac (his samples, catalogue,
-ratings and renders) or can be made again. A skill points to the spec items
-it rests on rather than copying them, and a PR that learns something new
-updates the skill, spec or doc it belongs to.
+ratings and renders) or can be made again. Memory keeps only an index of
+where things are and what can't be public, and a session reads only what
+its task needs: the issue or PR, and the spec, skills and docs they name.
+A skill points to the spec items it rests on rather than copying them, and
+a PR that learns something new updates the skill, spec or doc it belongs
+to.
 - **Why:** Dean's rule (2026-11-15): everything learned together must be
   reproducible and available to future users of the repo, who won't have
   this project's memory or chats. On 2026-11-21 he set the bar: a third
   party with a Mac like his can get to a similar state from the repo alone.
+  The same day Dean had the project's memory cut to such an index, since
+  the repo already held nearly all of it, and asked that each task pull in
+  only the context it needs.
 - **Verify:** inspect
 
 ## Labels

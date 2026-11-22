@@ -56,9 +56,14 @@ A take Dean rated a pass keeps its sounds when it renders again
 
 ## Before changing naming rules, search or kit choice
 
-Run `scripts/kit-diff REF [BASE]` on the Mac. It lists the takes that would
-pick other sounds and the sounds whose role, tempo, key or form would
-change. Changed picks void Dean's verdicts on those takes, so say so in the
-PR. A change to the name rules bumps `names.VERSION`, and a change to what
-is read from inside files bumps `embedded.VERSION`: either makes the next
-scan relabel every sound.
+Try a rule on Dean's real paths over Remote Control before writing it, not
+on guesses: a rule written from the cloud broke the Stab Bass pack and
+missed the Loopmasters products, which sit two folders down (#42, fixed in
+#45). Then run `scripts/kit-diff REF [BASE]` on the Mac. It lists the takes
+that would pick other sounds and the sounds whose role, tempo, key or form
+would change. Changed picks void Dean's verdicts on those takes, so say so
+in the PR. A change to the name rules bumps `names.VERSION`, and a change to
+what is read from inside files bumps `embedded.VERSION`: either makes the
+next scan relabel every sound. A names bump does it silently, as the scan's
+summary still counts those files as unchanged, so check a few sounds with
+`mph catalogue sound` afterwards.

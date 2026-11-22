@@ -1,0 +1,57 @@
+# spec/components/matching.md: fit the free remix's horn (mph_horn, the horn
+# voice of BM-LTFS-05) to the song's own train horn, in Demucs' "other" stem
+# of Dean's FLAC (spec/tracks/love-train.md). The stem is private and stays on
+# Dean's Mac: this file names it by its hash only.
+#
+# `mph match analyse` on Dean's Mac (2026-11-22) heard one note, not a chord:
+# about 163 Hz (E3, 20 cents flat), from about 18.75 s. It swells some 30 dB
+# over four and a half seconds, the last 8 dB in a quarter of a second, peaks
+# at 23 to 23.75 s, then falls about three semitones (to 138 Hz by 25.25 s) as
+# it fades, and is gone into the stem's noise by about 26.5 s. Its strongest
+# partials at its loudest are the note (0 dB) and its next four harmonics
+# (-12, -14, -21 and -22 dB). From 24 s the groove's kick and bass bleed into
+# the stem a little (around 50 Hz), which no knob of the horn can match.
+#
+# The fit is for the horn's sound: its brightness, reeds, air, growl, the
+# ground's reflection, and the shapes of its swell and fall. The candidates
+# play the song's one note, and the score plays the fitted horn as its chord.
+# The score keeps its own fall (bend, a fourth to stay in the key) and when
+# the fall starts (pass, on the drop), so those two are turned only to line
+# the candidates up with the song's horn.
+synth = "mph_horn"
+score = "BM-LTFS-05"
+voice = "horn"
+why = "Dean asked for a horn closer to the song's own, not 'video game like' (rating 246)"
+budget = 9000
+seed = 1
+tail_s = 2.0
+keep = ["bend", "pass"]
+
+[reference]
+hash = "4ed4ea4d21f7ca9718a3ee67823eb11f4d762f5023eadcd332b02eca6e44b2c7"
+start_s = 18.5
+end_s = 27.0
+what = "the train horn in Love Train's 'other' stem (Demucs htdemucs_ft), bars 10 to 14"
+licence = "private: from Dean's own copy of the song, never shared or released"
+
+[play]
+notes = [163.0]
+at_s = 0.25
+length_s = 6.5
+
+[knobs]
+swell = [1, 6.5]
+pass = [3, 7]
+bend = [-7, 0]
+bend_s = [0.3, 3]
+release = [0.1, 2]
+detune = [0, 25]
+brass = [300, 3000, "log"]
+air = [0, 0.3]
+growl = [0, 2]
+ground = [0, 1]
+far = [0.002, 0.2, "log"]
+gone = [0.003, 0.5, "log"]
+rise = [-4, 8]
+fade = [-8, 4]
+shine = [800, 8000, "log"]

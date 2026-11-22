@@ -8,6 +8,11 @@ one deterministic pass. A melodic note is a ``/s_new`` with its pitch and
 accent, released by ``/n_set gate 0``; a slide is an ``/n_set`` of the held
 note's pitch, so nothing retriggers (BM-BASS-01).
 
+A sung note (REQ-BEN-19) also gives its vowel and consonant as numbers.
+Every hit and every note seeds its own random generator, so its noise is
+the same wherever it plays: a drum hit takes one of scsynth's first 64, and
+a note takes one of its own above them for as long as it sounds.
+
 A clip (spec/components/tracks.md, REQ-TRK-02) is a ``/s_new`` that plays
 the voice's whole recording from the clip's first frame, for as long as the
 clip plays, with a short fade at each end.
@@ -25,6 +30,7 @@ through ``mph.proc.Runner``.
 from __future__ import annotations
 
 import hashlib
+import heapq
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from importlib import resources
@@ -42,14 +48,16 @@ from mph.bench.scmix import (
     VOICES_GROUP,
     Layout,
 )
-from mph.bench.score import MAX_CHORD, Event, Score, Voice, clip_start_s
+from mph.bench.score import HUM, MAX_CHORD, ONSETS, VOWELS, Event, Score, Voice, clip_start_s
 from mph.components import SC_APP
 from mph.proc import Runner
 
 MAC_SCSYNTH = f"{SC_APP}/Contents/Resources/scsynth"
 MAC_SCLANG = f"{SC_APP}/Contents/MacOS/sclang"
 FIRST_NODE = 1000
-RANDOM_GENERATORS = 64  # scsynth default (-r); concurrent noisy hits stay well under it
+RANDOM_GENERATORS = 64  # the drums' share: concurrent noisy hits stay well under it
+GENERATORS = 1024  # scsynth's -r: the notes' generators are those above the drums'
+NOTE_ROOM_S = 4.0  # a released note keeps its generator this long, for its release
 SLICE_FADE_S = 0.001  # click-free slice edges (BM-DRUM-09)
 CLIP_FADE_S = 0.002  # click-free clip cuts (REQ-TRK-02)
 WIRE_BUFFERS = 1024  # the acid voice's additive saw needs more than the default 64
@@ -167,12 +175,27 @@ def hz(pitch: int) -> float:
     return 440.0 * 2 ** ((pitch - 69) / 12)
 
 
-def _note_args(plan: Plan, index: int, voice: Voice, event: Event, pitch: int) -> list[Arg]:
+def syllable_args(syllable: str) -> list[Arg]:
+    """A sung note's vowel and consonant, as the singing synths number them
+    (REQ-BEN-19): vowels a e i o u and the hum from 0, consonants from 1 (0 is
+    none). A note that sings nothing gives neither."""
+    if not syllable:
+        return []
+    if syllable == HUM:
+        return ["vowel", len(VOWELS), "onset", 0]
+    return ["vowel", VOWELS.index(syllable[-1]), "onset", ONSETS.index(syllable[:-1])]
+
+
+def _note_args(
+    plan: Plan, index: int, event: Event, *, pitch: int, part: int, rid: int
+) -> list[Arg]:
+    voice = plan.score.voices[index]
     gain = plan.gains[index] if plan.gains else 1.0
     args: list[Arg] = ["out", plan.layout.out(index), "amp", event.velocity * gain]
     for name, value in sorted({**plan.choices[index].params, **dict(voice.params)}.items()):
         args += [name, float(value)]
-    return [*args, "freq", hz(pitch), "acc", int(event.accent)]
+    args += ["freq", hz(pitch), "acc", int(event.accent), "seed", index + 1, "rid", rid]
+    return [*args, "part", part, *syllable_args(event.syllable)]
 
 
 def chord_nodes(node: int, size: int) -> tuple[int, ...]:
@@ -180,12 +203,44 @@ def chord_nodes(node: int, size: int) -> tuple[int, ...]:
     return (node, *(CHORD_NODE + node * MAX_CHORD + k for k in range(1, size)))
 
 
+class Generators:
+    """A random generator of its own for every sounding note, above the drums'
+    (REQ-BEN-19, REQ-AUD-05): taken when the note starts, and free again
+    NOTE_ROOM_S after its gate closes, when its release has ended."""
+
+    def __init__(self) -> None:
+        self._free = list(range(RANDOM_GENERATORS, GENERATORS))  # a heap
+        self._later: list[tuple[float, int]] = []  # (free from, generator), a heap
+        self._taken: dict[int, int] = {}  # node -> its generator
+
+    def take(self, node: int, at: float) -> int:
+        while self._later and self._later[0][0] <= at:
+            heapq.heappush(self._free, heapq.heappop(self._later)[1])
+        if not self._free:
+            raise RenderError(
+                f"more than {GENERATORS - RANDOM_GENERATORS} notes sound at once at "
+                f"{at:.2f} s, and each needs a random generator of its own"
+            )
+        self._taken[node] = heapq.heappop(self._free)
+        return self._taken[node]
+
+    def give_back(self, node: int, end: float) -> None:
+        heapq.heappush(self._later, (end + NOTE_ROOM_S, self._taken.pop(node)))
+
+
 def _note(
-    plan: Plan, index: int, event: Event, node: int, held: dict[str, tuple[int, ...]]
+    plan: Plan,
+    index: int,
+    event: Event,
+    node: int,
+    *,
+    held: dict[str, tuple[int, ...]],
+    generators: Generators,
 ) -> tuple[list[Message], list[Bundle]]:
     """A melodic note, or a chord of them (REQ-BEN-18): new synths, or a glide
     on the held ones. Returns the messages for now and a release bundle for
-    later, unless the note ties on."""
+    later, unless the note ties on. Each note of a chord is a part of its
+    own, for synths that sound each part a little differently."""
     voice = plan.score.voices[index]
     shape = voice.chord or (0,)
     if event.voice in held:  # slid into: no retrigger
@@ -197,23 +252,18 @@ def _note(
     else:
         name = plan.choices[index].synthdef
         nodes = chord_nodes(node, len(shape))
-        now = [
-            Message(
-                "/s_new",
-                (
-                    name,
-                    n,
-                    TAIL,
-                    VOICES_GROUP,
-                    *_note_args(plan, index, voice, event, event.pitch + step),
-                ),
-            )
-            for n, step in zip(nodes, shape, strict=True)
-        ]
+        at = event.sample(plan.rate) / plan.rate
+        now = []
+        for part, (n, step) in enumerate(zip(nodes, shape, strict=True)):
+            rid = generators.take(n, at)
+            args = _note_args(plan, index, event, pitch=event.pitch + step, part=part, rid=rid)
+            now.append(Message("/s_new", (name, n, TAIL, VOICES_GROUP, *args)))
     if event.tie:
         held[event.voice] = nodes
         return now, []
     end = round((event.time_s + event.length_s) * plan.rate) / plan.rate
+    for n in nodes:
+        generators.give_back(n, end)
     return now, [Bundle(end, tuple(Message("/n_set", (n, "gate", 0)) for n in nodes))]
 
 
@@ -279,12 +329,13 @@ def build(plan: Plan, events: Sequence[Event]) -> list[Bundle]:
     bundles = [Bundle(0.0, tuple(setup)), *moves]
     latest: dict[str, int] = {}  # voice -> its most recent node, for chokes
     held: dict[str, tuple[int, ...]] = {}  # melodic voice -> the notes sliding into the next
+    generators = Generators()
     for node, event in enumerate(events, start=FIRST_NODE):
         n = index[event.voice]
         voice = plan.score.voices[n]
         at = event.sample(plan.rate) / plan.rate
         if event.pitch:
-            now, later = _note(plan, n, event, node, held)
+            now, later = _note(plan, n, event, node, held=held, generators=generators)
             bundles += [Bundle(at, tuple(now)), *later]
             continue
         messages = [
@@ -312,6 +363,7 @@ def render(runner: Runner, tools: Tools, plan: Plan, events: Sequence[Event], ou
     score_file.write_bytes(encode_score(build(plan, events)))
     memory = scmix.memory_kb(plan.score, plan.rate)
     argv = [tools.scsynth, "-o", str(plan.channels), "-w", str(WIRE_BUFFERS), "-m", str(memory)]
+    argv += ["-r", str(GENERATORS)]
     argv += ["-N", str(score_file), "_", str(out)]
     result = runner.run([*argv, str(plan.rate), "WAV", "float"])
     if not result.ok or not out.is_file():

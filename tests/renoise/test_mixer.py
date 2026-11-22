@@ -112,9 +112,10 @@ def _synth(folder: Path, loaded: score.Score, voice: str) -> song_plan.Synth:
         return song_plan.Zone(str(file), song_plan.renoise_note(pitch))
 
     found = sorted(sampling.sounds(own))
+    plain = song_plan.Family(tuple(zone(p, False) for p, accent, _ in found if not accent))
+    accented = tuple(zone(p, True) for p, accent, _ in found if accent)
     return song_plan.Synth(
-        zones=tuple(zone(p, False) for p, accent in found if not accent),
-        accents=tuple(zone(p, True) for p, accent in found if accent),
+        families=(plain, song_plan.Family(accented, accent=True)) if accented else (plain,),
         release_s=sampling.release_s(synthdef, {}),
         glide_s=sampling.glide_s(synthdef, {}),
     )

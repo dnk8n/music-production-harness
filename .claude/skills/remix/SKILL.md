@@ -38,7 +38,9 @@ no placeholder can stand in for.
   before starting the next.
 - Remixes are for Dean's own listening: every render carries
   `licence:private` (REQ-MST-04). Never quote the lyrics, in the repo or in
-  messages. Name a line by where it sits and how long it lasts.
+  messages. Name a line by where it sits and how long it lasts. A free
+  version that uses nothing of the source is the exception: it is
+  `licence:clear` (below).
 
 ## Steps
 
@@ -85,6 +87,89 @@ no placeholder can stand in for.
 - Dean's production duck is BM-SC-01's exaggerated take: 24 dB in 2 ms,
   released over 430 ms. The parts that hold under the kick take it (bass,
   organ bass, strings); off-beat stabs need none.
-- A free version of a remix, for someone without Dean's samples, is issue
-  #68: fully synthesised parts and cleared vocals with the same character
-  and key.
+
+## A free version: lines written as phrases
+
+A free version is for anyone without Dean's library (issue #68). The first
+is `examples/projects/love-train-remix-1-free-synthesised/` (BM-LTFS-01 to
+05, spec/tracks/love-train.md): remix 1's form, parts and mix, with a 909
+kit, a talk box lead (`mph_talkbox`), a vocoder lead (`mph_vocoder`), a
+group (`mph_singer` with a chord), the group's shouts (`mph_vocoder` with a
+chord) and the horn (`mph_horn`), all synths, so it
+renders the same from any fresh clone. Its vocal lines are phrases
+(REQ-TRK-08): notes with a syllable each (REQ-BEN-19), accents and slides,
+one table per line, cued like clips. What it taught:
+
+- Write the lines the source's way: from beat 2 of an even bar, 2 to 4
+  bars long, in the key over the parts' chords, with a hook that returns
+  and a group that answers it. A group in parallel triads stays in the key
+  only on some roots (F, G and C major over C major's two chords): check
+  every chord tone.
+- Write the rows in aligned columns, a bar between each `|`. Only a
+  one-step note slides, into a note on the very next step, and that note
+  sings `-` (it keeps the syllable it glides from).
+- A voice's level is measured on the first note of its first phrase, so
+  put a line that represents the voice first.
+- A section that lists a phrase voice needs one of its phrases playing in
+  it, in every block too: a block cuts a section at its own bars, so a cue
+  just past the block leaves the voice with nothing to carry on. Split the
+  section where the voice comes in (the free version's dub is two
+  sections). A phrase that runs on into the next section needs that
+  section to list the voice too, or it stops there: a shout on the drop's
+  pickup is cued in the section before the drop.
+- Synth vocals that sing (syllables) ride on top of the pump, as a remix's
+  recorded vocals do: the whole-mix check leaves them out (REQ-BEN-12), so
+  set their level by the balance, not by the pump. The talk box lead sits
+  about level with the music under it in the verse (`gain_db = -4`). A
+  voice is level-matched on the first note of its first phrase, so a line
+  sung much higher than that note comes out louder than its match.
+- Synth vocals should own being machines (Dean, 2026-11-22): a formant
+  singer imitating a soul voice, low and close, was "lethargic and low
+  energy". Write high, busy lines with gaps for the group to shout back,
+  and pick sounds that sound like what they are (a talk box, a vocoder).
+- Check a render's balance bar by bar (each stem's K-weighted loudness
+  against the mix) and each voice's gain in the report: a synth held at
+  +12 dB is too quiet at its source (REQ-BEN-09). The first singing synths
+  were 17 dB under their target until their output was raised.
+- A free version with cleared vocal samples (Freesound and other free
+  sources) is the next variant of issue #68.
+
+## Fitting a synth to a recorded sound
+
+A synth made by hand can be fitted to a recording, such as the song's own
+horn: `mph match` searches the synth's knobs for the patch that sounds
+closest (ADR-0014, spec/components/matching.md). The first match is
+`examples/projects/love-train-remix-1-free-synthesised/matches/horn.toml`.
+
+1. Write a match file in the project's `matches/` folder: the synth, the
+   score and voice whose `params` are the baseline, the reference by its
+   catalogue hash (never a file in the repo), the span, the notes the
+   reference plays and when, and the knobs with their ranges. A range must
+   hold the score's value (a test checks), and `keep` names what the score
+   decides, such as a fall that stays in the key or a fall placed on the
+   drop: those knobs are turned only to line the candidates up.
+2. On Dean's Mac, from a worktree (the `mac-work` skill), run
+   `uv run mph match analyse FILE`. It prints the span's level and pitch
+   every quarter of a second, and its strongest partials: check the notes,
+   when they start and how long they hold, and fix the file if they're off.
+3. `uv run mph match check FILE` hides a patch and must find it again. Trust
+   a run only once its check passes, and don't pin a knob it says is
+   barely heard: pin that one by ear, or leave it out.
+4. `uv run mph match run FILE` leaves `reference.wav`, `baseline.wav` (the
+   hand-made patch) and up to three candidates, all at one level, in
+   `data_dir/matches/PROJECT/MATCH/TIME/`, and prints the closest one as
+   `params`. Dean listens and decides; the number only shortlists.
+5. Pin what Dean picks in the score voice's `params`, with a comment that
+   names the match file, the run and its distance against the baseline's
+   (REQ-MAT-07). The reference and the search stay out of renders.
+
+What it taught:
+- OSC sends every control as a 32-bit float. A test's made-up reference
+  must go through float32 too, or the same patch doesn't sound the same.
+- The views hear down to 60 dB under the sound's own level. Without that
+  floor, rounding noise counted for two thirds as much as a real change of
+  tone.
+- With the real mph_horn in a cloud copy, a check found 2 knobs exactly in
+  360 renders (12 s) and 6 knobs within 0.1% in 2,376 renders (a minute),
+  at 24 kHz with 2-second notes. A run at the reference's 44.1 kHz with
+  10-second spans costs about ten times as much per render.

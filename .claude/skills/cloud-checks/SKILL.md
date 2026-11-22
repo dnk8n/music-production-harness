@@ -48,6 +48,15 @@ mkdir -p "$XDG_RUNTIME_DIR"
 - A test that changes which projects are on gets them put back by the
   autouse fixture in `tests/conftest.py`.
 - Lua tests prefer LuaJIT, Renoise's own Lua, and skip without it.
+- A score made only of synths (the free remix, BM-LTFS-01 to 05) renders
+  here for real: `uv run mph bench render BM-ID --engine supercollider`.
+  With no config it uses built-in defaults and a data folder under
+  `$HOME/Library/Application Support/mph`; point `HOME` at your scratchpad to
+  keep it there. A block takes 1 to 2 minutes and the 8-minute whole track
+  about 5. If one takes far longer, `uv run --with py-spy py-spy dump --pid
+  PID` shows where: per-hit work on a whole stem is the usual cause (the
+  choke check took 17 minutes of a whole track until it cut before mixing
+  to mono).
 
 ## Before pushing
 

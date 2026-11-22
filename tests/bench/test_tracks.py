@@ -925,7 +925,7 @@ def test_a_cue_names_a_clip_in_a_bar_its_voice_plays(cues: str, message: str) ->
 
 @pytest.mark.req("REQ-TRK-07")
 def test_only_clip_voices_take_cues() -> None:
-    with pytest.raises(score.ScoreError, match="cues cue clips, so the voice needs clips"):
+    with pytest.raises(score.ScoreError, match="cue clips or phrases, so the voice needs some"):
         changed("[voices.kick]\n", '[voices.kick]\ncues = [[1, "a"]]\n')
 
 

@@ -33,7 +33,7 @@ import json
 import math
 import shutil
 import sqlite3
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
@@ -44,6 +44,7 @@ from mph import __version__, checkout, retention
 from mph.bench import audio, checks, feedback, kit, levels, rerender, sampling, sc
 from mph.bench.score import (
     Event,
+    Kind,
     Play,
     Score,
     Variant,
@@ -66,6 +67,7 @@ from mph.renoise import plan as song_plan
 
 TEMPLATE_GAP_S = 2.0  # each template hit gets this long to itself
 TEMPLATE_HOLD_S = 0.75  # and is held at most this long, so a pad's release ends before the next
+LEGATO_SLACK_S = 1e-6  # a note that starts as the one before falls silent isn't legato
 NOTE_PART = 0.5  # of a step: how much of each note the accent check compares
 PROBE_PITCH = 72  # C5: high enough that aliasing would show
 PROBE_S = 1.0
@@ -76,6 +78,8 @@ GLIDE_MEASURE_S = 0.15  # its last part, once the glide and filter have settled
 GLIDE_SEARCH = 2**0.5  # look for the pitch within half an octave of the target
 # A pad plays its root alone, undetuned, strings without vibrato and an organ
 # without its fifth or chorus, so the energy between harmonics is aliasing.
+# A singing voice (REQ-BEN-19) sings without breath, hiss or a waver in its pitch,
+# and a horn without its air, its growl or the ground's reflection.
 PROBE_PARAMS = {
     "cutoff": 8000.0,
     "resonance": 0.9,
@@ -86,7 +90,14 @@ PROBE_PARAMS = {
     "vibrato": 0.0,
     "chorus": 0.0,
     "fifth": 0.0,
+    "breath": 0.0,
+    "hiss": 0.0,
+    "waver": 0.0,
+    "air": 0.0,
+    "growl": 0.0,
+    "ground": 0.0,
 }
+STEADY_PARAMS = {"vibrato": 0.0, "waver": 0.0}  # the glide probe's: a pitch that holds still
 DELIVERY_CEILING_DBTP = -1.0  # benchmarks aren't mastered: keep them clear of clipping
 RENDERS = "renders"
 ONESHOT_S = 2.0  # room for a synth voice's one-shot
@@ -102,6 +113,7 @@ CLIP_SEARCH_S = 0.01  # how far either way a cue is looked for
 CLIP_PART = 0.25  # the loudest window in a cue's first and last quarter is checked
 SAMPLE_GAP_S = 0.25  # silence between a synth's samples in the render that makes them
 SAMPLE_MARGIN_S = 0.01  # kept after each sample's release (REQ-REN-09)
+FULL_SCALE = 1.0  # Renoise clips a float sample above this when it loads it (REQ-REN-09)
 RENOISE_DEVICES = "renoise-devices.json"  # what the bridge tool found of Renoise's devices
 
 
@@ -177,11 +189,28 @@ def _onsets(own: Sequence[Event]) -> list[Event]:
     return [e for e in own if not (e.pitch and _slid_into(own, e))]
 
 
+def _timed(own: Sequence[Event], release_s: float) -> list[Event]:
+    """The onsets the timing check matches (REQ-BEN-01): all but notes that
+    start while the voice's note before is still sounding, held or in its
+    release. That note covers their start, and a steady pitch looks the same a
+    period later, so a match there would measure the note before, not the
+    engine."""
+    found = []
+    sounding = -math.inf  # until when the voice's notes so far sound
+    for event in sorted(own, key=lambda e: e.time_s):
+        onset = not (event.pitch and _slid_into(own, event))
+        if onset and (not event.pitch or event.time_s >= sounding - LEGATO_SLACK_S):
+            found.append(event)
+        if event.pitch:
+            sounding = max(sounding, event.time_s + event.length_s + release_s)
+    return found
+
+
 def _kinds(own: Sequence[Event]) -> list[Event]:
     """One event per distinct sound of a voice: one, one per break slice, or one
-    per pitch and accent. Every accented note also gets an unaccented twin, so
-    the accent can be measured against the same note."""
-    seen: dict[tuple[int, int, bool], Event] = {}
+    per pitch, accent and syllable (REQ-BEN-19). Every accented note also gets
+    an unaccented twin, so the accent can be measured against the same note."""
+    seen: dict[Kind, Event] = {}
     for event in _onsets(own):
         seen.setdefault(event.kind, replace(event, tie=False))
     for event in list(seen.values()):
@@ -195,6 +224,16 @@ def _templated(score: Score) -> list[Voice]:
     """The voices measured against templates: all but clip voices, which are
     checked against their recording (REQ-TRK-02)."""
     return [v for v in score.voices if not v.clips]
+
+
+def releases(score: Score, plan: sc.Plan) -> dict[str, float]:
+    """Each melodic voice's release, in seconds: how long a note sounds after
+    its gate closes (spec/components/renoise.md, REQ-REN-09)."""
+    return {
+        voice.name: sampling.release_s(choice.synthdef, {**choice.params, **dict(voice.params)})
+        for voice, choice in zip(score.voices, plan.choices, strict=True)
+        if voice.melodic
+    }
 
 
 def _held(event: Event) -> float:
@@ -243,7 +282,7 @@ def _template(
     stems: dict[str, audio.Audio],
     templates: Sequence[Event],
     voice: str,
-    kind: tuple[int, int, bool],
+    kind: Kind,
     rate: int,
 ) -> audio.Audio:
     hit = next(e for e in templates if e.voice == voice and e.kind == kind)
@@ -263,18 +302,21 @@ def measure(
     templates: Sequence[Event],
     rate: int,
     as_scored: bool = True,
+    releases: Mapping[str, float] | None = None,
 ) -> list[checks.Check]:
+    """The checks on a take's stems. ``releases`` has each melodic voice's
+    release in seconds, for what counts as a legato note (REQ-BEN-01)."""
     matches: dict[str, list[audio.Match]] = {}
     peaks: dict[str, float] = {}
     for voice in _templated(score):
         own = [e for e in found if e.voice == voice.name]
-        onsets = _onsets(own)
+        timed = _timed(own, (releases or {}).get(voice.name, 0.0))
         times = [e.time_s for e in own]
         matches[voice.name] = []
-        for kind in sorted({e.kind for e in onsets}):
+        for kind in sorted({e.kind for e in timed}):
             tpl = _template(reference, templates, voice.name, kind, rate)
             peaks[voice.name] = max(peaks.get(voice.name, 0.0), float(np.abs(tpl).max()))
-            group = [e for e in onsets if e.kind == kind]
+            group = [e for e in timed if e.kind == kind]
             matches[voice.name] += audio.match_hits(
                 stems[voice.name], tpl, group, rate, voice_times=times
             )
@@ -451,10 +493,8 @@ def _ducking(
     for target in targets:
         found += checks.sidechain(chain, target, stems[target], dry[target], hits, rate=plan.rate)
     # The whole mix, ducked and as bypass would have it, weighted as loudness is,
-    # after the hits where a target sounds. Recordings the sidechain leaves alone,
-    # like a remix's vocals, ride on top of the pump, so they're left out.
-    riding = {v.name for v in score.voices if v.clips and v.name not in chain.targets}
-    music = {name: stem for name, stem in stems.items() if name not in riding}
+    # after the hits where a target sounds, without the vocals riding on top.
+    music = {name: stem for name, stem in stems.items() if name not in riding(score)}
     ducked = audio.k_weighted(audio.mixdown(music), plan.rate)
     bypass = audio.k_weighted(audio.mixdown({**music, **dry}), plan.rate)
     heard = audio.mixdown({t: dry[t] for t in targets})
@@ -465,6 +505,14 @@ def _ducking(
         for lo, hi in (checks.MIX_UNDER_KICK_S, checks.MIX_AFTER_KICK_S)
     )
     return found + checks.sidechain_mix(under, after, len(hits))
+
+
+def riding(score: Score) -> set[str]:
+    """The voices left out of the whole-mix pump (REQ-BEN-12): vocals the
+    sidechain leaves alone, recordings like a remix's vocals or synths that
+    sing, ride on top of it."""
+    targets = score.sidechain.targets if score.sidechain else ()
+    return {v.name for v in score.voices if (v.clips or v.sings) and v.name not in targets}
 
 
 def _under(setup: Setup, target: str, hits: Sequence[float]) -> bool:
@@ -492,7 +540,7 @@ def probe(runner: Runner, tools: sc.Tools, plan: sc.Plan, work: Path) -> list[ch
     """Each melodic voice alone, in two short renders: a high, open, resonant
     note, measured for energy between its harmonics (aliasing, REQ-AUD-04);
     and the score's first slide, with the note slid into held until it
-    settles, measured for pitch."""
+    settles, measured for pitch with any vibrato or waver off."""
     found = []
     for voice in (v for v in plan.score.voices if v.melodic):
         opened = replace(  # one note of a chord alone (REQ-BEN-18)
@@ -513,8 +561,11 @@ def probe(runner: Runner, tools: sc.Tools, plan: sc.Plan, work: Path) -> list[ch
             replace(first, step=0, time_s=0.0, velocity=1.0),
             replace(second, step=1, time_s=GLIDE_FROM_S, velocity=1.0, length_s=GLIDE_HOLD_S),
         ]
+        steady = replace(  # one note of a chord, as the aliasing probe plays (REQ-BEN-18)
+            voice, params=tuple(sorted({**dict(voice.params), **STEADY_PARAMS}.items())), chord=()
+        )
         stem = _probe_render(
-            runner, tools, plan, voice, notes=notes, out=work / f"glide-{voice.name}.wav"
+            runner, tools, plan, steady, notes=notes, out=work / f"glide-{voice.name}.wav"
         )
         end = GLIDE_FROM_S + GLIDE_HOLD_S
         settled = stem[round((end - GLIDE_MEASURE_S) * plan.rate) : round(end * plan.rate)]
@@ -561,26 +612,36 @@ def renoise_tracks(
 
 def synth_samples(runner: Runner, tools: sc.Tools, setup: Setup) -> dict[str, song_plan.Synth]:
     """Each melodic voice's sounds sampled from its synth, for Renoise (REQ-REN-09):
-    every pitch it plays, plain and accented, a chord whole at its root, one
-    after another in one SuperCollider render, each held for its longest note
-    plus the synth's release, at full velocity and unit gain. They go in the
-    render folder's ``sounds/<voice>/``."""
+    every pitch it plays, plain and accented, on every syllable it sings
+    (REQ-BEN-19), a chord whole at its root, one after another in one
+    SuperCollider render, each held for its longest note plus the synth's
+    release, at full velocity and unit gain. They go in the render folder's
+    ``sounds/<voice>/``. A voice that plays nothing in this take has nothing
+    to sample, and its track keeps the synth's one-shot."""
     score, plan = setup.score, setup.plan
     notes: list[Event] = []
     windows: dict[str, list[tuple[sampling.Sound, float, float]]] = {}
     timing: dict[str, tuple[float, float]] = {}
+    sung: dict[str, list[str]] = {}  # each voice's syllables, in the order it first sings them
     for voice, choice in zip(score.voices, plan.choices, strict=True):
-        if not voice.melodic:
+        own = [e for e in setup.found if e.voice == voice.name]
+        if not voice.melodic or not own:  # a voice that rests here has nothing to sample
             continue
         params = {**choice.params, **dict(voice.params)}
         release = sampling.release_s(choice.synthdef, params)
         timing[voice.name] = release, sampling.glide_s(choice.synthdef, params)
         at, windows[voice.name] = 0.0, []
-        own = [e for e in setup.found if e.voice == voice.name]
-        for (pitch, accent), held in sorted(sampling.sounds(own).items()):
-            notes.append(Event(voice.name, 0, at, 1.0, pitch=pitch, accent=accent, length_s=held))
+        sung[voice.name] = list(dict.fromkeys(e.syllable for e in own))
+        for sound, held in sorted(sampling.sounds(own).items()):
+            pitch, accent, syllable = sound
+            notes.append(
+                Event(
+                    voice.name, 0, at, 1.0, pitch=pitch, accent=accent, length_s=held,
+                    syllable=syllable,
+                )
+            )  # fmt: skip
             span = held + release + SAMPLE_MARGIN_S
-            windows[voice.name].append(((pitch, accent), at, span))
+            windows[voice.name].append((sound, at, span))
             at += span + SAMPLE_GAP_S
     if not notes:
         return {}
@@ -591,17 +652,40 @@ def synth_samples(runner: Runner, tools: sc.Tools, setup: Setup) -> dict[str, so
         audio.read(sc.render(runner, tools, solo, notes, out))[0], [v.name for v in score.voices]
     )
     out.unlink(missing_ok=True)
-    synths = {}
-    for name, found in windows.items():
-        zones: dict[bool, list[song_plan.Zone]] = {False: [], True: []}
-        for (pitch, accent), at, span in found:
-            first = round(at * plan.rate)
-            path = setup.folder / "sounds" / name / f"{pitch}{'-accent' if accent else ''}.wav"
-            audio.write_float(path, stems[name][first : first + round(span * plan.rate)], plan.rate)
-            zones[accent].append(song_plan.Zone(str(path), song_plan.renoise_note(pitch)))
-        release, glide = timing[name]
-        synths[name] = song_plan.Synth(tuple(zones[False]), tuple(zones[True]), release, glide)
-    return synths
+    return {
+        name: _sampled(setup, name, found, stems[name], order=sung[name], timing=timing[name])
+        for name, found in windows.items()
+    }
+
+
+def _sampled(
+    setup: Setup,
+    name: str,
+    found: Sequence[tuple[sampling.Sound, float, float]],
+    stem: audio.Audio,
+    *,
+    order: Sequence[str],
+    timing: tuple[float, float],
+) -> song_plan.Synth:
+    """One voice's samples, cut from its render into ``sounds/<voice>/``.
+    Renoise clips a float sample above full scale when it loads it, so when
+    any of them peaks above it they are all lowered by the same factor to
+    peak at full scale, and the factor goes back on their volume (REQ-REN-09)."""
+    rate = setup.plan.rate
+    cuts = [stem[round(at * rate) : round(at * rate) + round(span * rate)] for _, at, span in found]
+    boost = max([FULL_SCALE, *(float(np.abs(cut).max(initial=0.0)) for cut in cuts)]) / FULL_SCALE
+    zones: dict[tuple[str, bool], list[song_plan.Zone]] = {}
+    for ((pitch, accent, syllable), _, _), cut in zip(found, cuts, strict=True):
+        label = "".join((f"-{syllable}" if syllable else "", "-accent" if accent else ""))
+        path = setup.folder / "sounds" / name / f"{pitch}{label}.wav"
+        audio.write_float(path, cut / boost, rate)
+        zone = song_plan.Zone(str(path), song_plan.renoise_note(pitch))
+        zones.setdefault((syllable, accent), []).append(zone)
+    families = tuple(
+        song_plan.Family(tuple(zones[key]), key[1], key[0])
+        for key in sorted(zones, key=lambda k: (order.index(k[0]), k[1]))
+    )
+    return song_plan.Synth(families, *timing, boost=boost)
 
 
 def cut_clips(setup: Setup) -> dict[str, list[Path]]:
@@ -784,12 +868,15 @@ def synth_oneshots(runner: Runner, tools: sc.Tools, plan: sc.Plan, folder: Path)
             pitch=melodic[name].pitch,
             # at least a step; a held pad note whole, so its level is measured settled
             length_s=max(score.step_s, melodic[name].length_s),
+            syllable=melodic[name].syllable,  # sung as it is first sung (REQ-BEN-19)
         )
         if name in melodic
         else Event(name, 0, 0.0, 1.0)
         for name in synths
     ]
-    solo = replace(plan, score=replace(template_score(score, hits), tail_s=ONESHOT_S), gains=())
+    # a note longer than the room is rendered whole: a horn swells for seconds
+    tail = max(ONESHOT_S, *(h.length_s for h in hits))
+    solo = replace(plan, score=replace(template_score(score, hits), tail_s=tail), gains=())
     rendered, _ = audio.read(sc.render(runner, tools, solo, hits, folder / "work" / "sounds.wav"))
     stems = audio.split(rendered, [v.name for v in score.voices])
     out = {}
@@ -1024,6 +1111,7 @@ def run(
         templates=rendered.templates,
         rate=rate,
         as_scored=chosen_variant.as_scored,
+        releases=releases(score, setup.plan),
     )
     found_checks += rendered.extra_checks
     found_checks += clip_checks(setup, rendered.stems)

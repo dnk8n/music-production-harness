@@ -14,9 +14,17 @@ SYNTHDEFS = resources.files("mph.bench").joinpath("synthdefs.scd").read_text("ut
 
 
 def note(
-    at: float, pitch: int, length: float = 0.1, *, accent: bool = False, tie: bool = False
+    at: float,
+    pitch: int,
+    length: float = 0.1,
+    *,
+    accent: bool = False,
+    tie: bool = False,
+    syllable: str = "",
 ) -> Event:
-    return Event("bass", 0, at, 1.0, pitch=pitch, accent=accent, tie=tie, length_s=length)
+    return Event(
+        "bass", 0, at, 1.0, pitch=pitch, accent=accent, tie=tie, length_s=length, syllable=syllable
+    )
 
 
 @pytest.mark.req("REQ-REN-09")
@@ -33,14 +41,34 @@ def test_each_sound_is_held_for_its_longest_note() -> None:
         ]
     )
     assert found == {
-        (36, False): pytest.approx(0.3),
-        (43, True): pytest.approx(0.1),
-        (43, False): pytest.approx(0.1),  # every accented pitch has a plain twin
-        (41, False): pytest.approx(0.7),
-        (48, False): pytest.approx(0.1),  # the tied-into C3 isn't a sound of its own
+        (36, False, ""): pytest.approx(0.3),
+        (43, True, ""): pytest.approx(0.1),
+        (43, False, ""): pytest.approx(0.1),  # every accented pitch has a plain twin
+        (41, False, ""): pytest.approx(0.7),
+        (48, False, ""): pytest.approx(0.1),  # the tied-into C3 isn't a sound of its own
     }
     # A tie on the last note has nothing to glide into: it's held as it is.
-    assert sampling.sounds([note(0.0, 36, 0.4, tie=True)]) == {(36, False): pytest.approx(0.4)}
+    assert sampling.sounds([note(0.0, 36, 0.4, tie=True)]) == {(36, False, ""): pytest.approx(0.4)}
+
+
+@pytest.mark.req("REQ-REN-09")
+@pytest.mark.req("REQ-BEN-19")
+def test_each_syllable_is_a_sound_of_its_own() -> None:
+    found = sampling.sounds(
+        [
+            note(0.0, 60, 0.2, syllable="o"),
+            note(0.5, 60, 0.4, syllable="ye"),  # the same pitch, sung on another syllable
+            note(1.0, 60, 0.1, accent=True, syllable="o"),
+            note(1.5, 62, 0.25, tie=True, syllable="la"),  # glides into E4, still on la
+            note(1.75, 64, 0.25, syllable="la"),
+        ]
+    )
+    assert found == {
+        (60, False, "o"): pytest.approx(0.2),
+        (60, False, "ye"): pytest.approx(0.4),
+        (60, True, "o"): pytest.approx(0.1),
+        (62, False, "la"): pytest.approx(0.5),
+    }
 
 
 def _synthdef(name: str) -> tuple[dict[str, float], str]:
@@ -49,7 +77,7 @@ def _synthdef(name: str) -> tuple[dict[str, float], str]:
     body = SYNTHDEFS[start : SYNTHDEFS.index("SynthDef(", start + 1)]
     controls = body[body.index("|") + 1 : body.index("|", body.index("|") + 1)]
     defaults = {k: float(v) for k, v in re.findall(r"(\w+)\s*=\s*(-?[\d.]+)", controls)}
-    level = re.search(r"var level = EnvGen\.ar\(Env\.(asr|adsr)\(([^)]*)\)", body)
+    level = re.search(r"\blevel = EnvGen\.ar\(Env\.(asr|adsr)\(([^)]*)\)", body)
     assert level is not None, name
     args = [a.strip() for a in level.group(2).split(",")]
     return defaults, args[2] if level.group(1) == "asr" else args[3]

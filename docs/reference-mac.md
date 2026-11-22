@@ -12,7 +12,7 @@ difference in your takes might come from. Checked with `mph doctor` and
 | Model | MacBook Pro 14-inch (2021) |
 | Chip and memory | Apple M1 Pro, 16 GB |
 | System | macOS 26.5.2 (build 25F84), arm64 (2026-11-21) |
-| Disk | 460 GiB, nearly full: 6 to 8 GiB free through November 2026 (6.1 GiB on 2026-11-21) |
+| Disk | 460 GiB, nearly full: 4 to 8 GiB free through November 2026 (3.8 GiB on 2026-11-22, after the free remix's Renoise take) |
 | Checkout | `/Users/dean/src/music-production-harness` |
 | Data folder | `~/Library/Application Support/mph`: renders took 13.8 GB on 2026-11-21 |
 | Config | `~/.config/mph/config.toml`, as in [examples/config/dean.toml](../examples/config/dean.toml) |
@@ -82,6 +82,11 @@ What the labels can be trusted for:
 | Four 1-minute remix blocks in Renoise | 735 s in one command | under 1.1 GB each at peak |
 | The 8-minute remix in Renoise | 26.5 minutes | peaks near 3.9 GB, keeps about 3 GB; needs about 6 GB free |
 | The 8-minute remix in SuperCollider | | peaks near 7.7 GB, keeps about 2.2 GB |
+| The 8-minute free remix in Renoise (16 voices) | 12.75 minutes | keeps about 3.1 GB; took 3.2 GiB of free space |
+
+The free remix's time came after the choke check was made faster
+(2026-11-21), which cut about 17 minutes from measuring a whole track in
+a cloud copy; remix 1's 26.5 minutes came before it.
 
 Renders stay in 32-bit float until the one conversion at delivery, at 96 kHz
 unless a track sets its own rate (the remix renders at 48 kHz, REQ-TRK-06),

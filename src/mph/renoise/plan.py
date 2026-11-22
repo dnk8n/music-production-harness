@@ -19,7 +19,8 @@ note; a clip stopped before its last bar gets a note-off (REQ-TRK-02).
 
 A melodic voice plays a sampled synth (REQ-REN-09): one sample per pitch,
 each on its own key with the keys between them sharing the nearest, and a
-second instrument for its accented notes. A note-off ends each note's gate,
+second instrument for its accented notes. A voice that sings (REQ-BEN-19) has
+an instrument for each syllable, plain and accented. A note-off ends each note's gate,
 and a note tied into the next makes that one glide (0Gxx) instead of
 starting again. Every song sets the track headroom to 0 dB (REQ-REN-12) and
 16 ticks a line, Renoise's most, so automation is read as often as Renoise
@@ -65,13 +66,37 @@ class Zone:
 
 
 @dataclass(frozen=True, slots=True)
-class Synth:
-    """A melodic voice's sampled synth (REQ-REN-09)."""
+class Family:
+    """One instrument of a sampled synth (REQ-REN-09): its plain or accented
+    notes, sung on one syllable or on none (REQ-BEN-19)."""
 
-    zones: tuple[Zone, ...]  # plain notes
-    accents: tuple[Zone, ...] = ()  # accented notes, a second instrument
+    zones: tuple[Zone, ...]
+    accent: bool = False
+    syllable: str = ""
+
+    def name(self, voice: str) -> str:
+        """The instrument's name: the voice's, then its syllable, then "accent"."""
+        return " ".join(p for p in (voice, self.syllable, "accent" if self.accent else "") if p)
+
+
+@dataclass(frozen=True, slots=True)
+class Synth:
+    """A melodic voice's sampled synth (REQ-REN-09): its first family is its
+    track's instrument, and each of the others an instrument of its own."""
+
+    families: tuple[Family, ...]
     release_s: float = 0.0  # the synth's release after a note-off
     glide_s: float = 0.0  # how long a slide takes; 0 is at once
+    # Renoise clips a float sample above full scale when it loads it, so samples
+    # that peak above 1.0 are lowered by this to peak at 1.0, and it goes back on
+    # their volume.
+    boost: float = 1.0
+
+    def family(self, event: Event) -> int:
+        """The instrument a note plays: the one for its syllable and accent, or
+        for its syllable plain when the synth has no accented samples."""
+        found = {(f.syllable, f.accent): n for n, f in enumerate(self.families)}
+        return found.get((event.syllable, event.accent), found.get((event.syllable, False), 0))
 
 
 @dataclass(frozen=True, slots=True)
@@ -213,8 +238,9 @@ def _gate_offs(own: Sequence[Event]) -> list[float]:
 
 
 def melodic_notes(score: Score, events: Sequence[Event], track: Track) -> list[dict[str, Data]]:
-    """A melodic voice's notes: each pitch, its velocity and whether it's
-    accented; a tied note's successor glides; note-offs end the gates."""
+    """A melodic voice's notes: each pitch, its velocity and which instrument
+    it plays (accented, or for its syllable); a tied note's successor glides;
+    note-offs end the gates."""
     synth = track.synth
     assert synth is not None  # noqa: S101 - only melodic tracks come here
     line_s = seconds_per_line(score)
@@ -229,7 +255,8 @@ def melodic_notes(score: Score, events: Sequence[Event], track: Track) -> list[d
             note["glide"] = glide_speed(interval, synth.glide_s, line_s)
         else:
             note["volume"] = volume(event.velocity)
-            note["accent"] = event.accent and bool(synth.accents)
+            if family := synth.family(event):
+                note["sound"] = family  # into the track's other instruments, from 1
         placed.append((line, delay, note))
         taken.add(line)
     for time_s in _gate_offs(own):
@@ -303,7 +330,7 @@ def _track_plan(score: Score, events: Sequence[Event], track: Track) -> dict[str
     found: dict[str, Data] = {
         "name": track.name,
         "sample": track.sample,
-        "volume": round(track.gain, 6),
+        "volume": round(track.gain * (track.synth.boost if track.synth else 1.0), 6),
         "transpose": transpose,
         "fine_tune": fine_tune,
         "slices": list(track.slices),
@@ -313,23 +340,30 @@ def _track_plan(score: Score, events: Sequence[Event], track: Track) -> dict[str
     if track.synth is None:
         found["notes"] = notes(score, events, track.name)
         return found
-    found["zones"] = _zones(track.synth.zones)
-    if track.synth.accents:
-        found["accents"] = _zones(track.synth.accents)
+    own = track.synth.families[0]
+    found["label"] = own.name(track.name)
+    found["zones"] = _zones(own.zones)
     found["release"] = round(track.synth.release_s, 6)
     found["notes"] = melodic_notes(score, events, track)
     return found
 
 
-def _instruments(plans: Sequence[dict[str, Data]]) -> int:
-    """Gives each track its instrument, after them each accent instrument in
-    track order, and returns how many there are."""
+def _instruments(plans: Sequence[dict[str, Data]], tracks: Sequence[Track]) -> int:
+    """Gives each track its instrument, after them each of a sampled synth's
+    other instruments (accented, or for a syllable) in track order, and
+    returns how many there are."""
     count = len(plans)
-    for index, found in enumerate(plans, start=1):
+    for index, (found, track) in enumerate(zip(plans, tracks, strict=True), start=1):
         found["instrument"] = index
-        if "accents" in found:
+        more: list[Data] = []
+        for family in track.synth.families[1:] if track.synth else ():
             count += 1
-            found["accent_instrument"] = count
+            entry: dict[str, Data] = {"name": family.name(track.name)}
+            entry["zones"] = _zones(family.zones)
+            entry["instrument"] = count
+            more.append(entry)
+        if more:
+            found["more"] = more
     return count
 
 
@@ -358,7 +392,7 @@ def song(
         "lines": lines,
         "rate": rate,
         "save": save,
-        "instruments": _instruments(plans),
+        "instruments": _instruments(plans, tracks),
         "tracks": plans,
         "renders": list(renders),
     }

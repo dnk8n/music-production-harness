@@ -236,30 +236,32 @@ def test_a_glide_covers_its_interval_in_the_synths_glide_time() -> None:
 def test_melodic_notes_carry_accents_glides_and_note_offs() -> None:
     loaded = score.load_text(ACID)
     assert (song_plan.lpb(loaded), song_plan.seconds_per_line(loaded)) == (8, 0.0625)
-    synth = song_plan.Synth(
-        (song_plan.Zone("c2.wav", 24),), (song_plan.Zone("c3.wav", 36),), 0.02, 0.05
+    families = (
+        song_plan.Family((song_plan.Zone("c2.wav", 24),)),
+        song_plan.Family((song_plan.Zone("c3.wav", 36),), accent=True),
     )
+    synth = song_plan.Synth(families, 0.02, 0.05)
     found = song_plan.melodic_notes(
         loaded, score.events(loaded), song_plan.Track("bass", "", 1.0, synth=synth)
     )
     shown = [
-        (n["line"], n.get("note", "off" if n.get("off") else None), n.get("accent"), n.get("glide"))
+        (n["line"], n.get("note", "off" if n.get("off") else None), n.get("sound"), n.get("glide"))
         for n in found
     ]
     assert shown == [
-        (0, 24, False, None),
+        (0, 24, None, None),
         (1, "off", None, None),  # a plain note's gate: half a sixteenth
-        (4, 36, True, None),  # accented, and held through "-": the next note ends it
-        (8, 17, False, None),
+        (4, 36, 1, None),  # accented, and held through "-": the next note ends it
+        (8, 17, None, None),
         (9, "off", None, None),
-        (16, 19, False, None),  # slid: held its whole step, tied into the next
+        (16, 19, None, None),  # slid: held its whole step, tied into the next
         (18, 21, None, song_plan.glide_speed(2, 0.05, 0.0625)),  # glides, no new note
         (19, "off", None, None),
     ]
     # A synth with no accent samples plays every note from its one instrument.
-    plain = song_plan.Track("bass", "", 1.0, synth=replace(synth, accents=()))
+    plain = song_plan.Track("bass", "", 1.0, synth=replace(synth, families=families[:1]))
     notes = song_plan.melodic_notes(loaded, score.events(loaded), plain)
-    assert not any(n.get("accent") for n in notes)
+    assert not any(n.get("sound") for n in notes)
 
 
 LEAD = """
@@ -274,16 +276,35 @@ sound = { synth = "mph_acid" }
 @pytest.mark.req("REQ-REN-09")
 def test_accent_instruments_come_after_every_track() -> None:
     loaded = score.load_text(ACID + LEAD)
-    synth = song_plan.Synth((song_plan.Zone("a.wav", 24),), (song_plan.Zone("b.wav", 36),))
+    synth = song_plan.Synth(
+        (
+            song_plan.Family((song_plan.Zone("a.wav", 24),)),
+            song_plan.Family((song_plan.Zone("b.wav", 36),), accent=True),
+        )
+    )
     tracks = [
         song_plan.Track("bass", "", 1.0, synth=synth),
         song_plan.Track("lead", "", 1.0, synth=synth),
     ]
     song = song_plan.song(loaded, score.events(loaded), tracks, rate=48000, save="x", renders=[])
     found = cast("list[dict[str, Any]]", song["tracks"])
-    planned = [(t["instrument"], t.get("accent_instrument")) for t in found]
-    assert (planned, song["instruments"]) == ([(1, 3), (2, 4)], 4)
+    planned = [(t["instrument"], [m["instrument"] for m in t.get("more", [])]) for t in found]
+    assert (planned, song["instruments"]) == ([(1, [3]), (2, [4])], 4)
+    assert [t["more"][0]["name"] for t in found] == ["bass accent", "lead accent"]
     assert "mix" not in song  # no mix and no sidechain: no mixer to build
+
+
+@pytest.mark.req("REQ-REN-09")
+def test_samples_lowered_to_full_scale_get_their_gain_back_on_their_volume() -> None:
+    loaded = score.load_text(ACID + LEAD)
+    zones = (song_plan.Family((song_plan.Zone("a.wav", 24),)),)
+    tracks = [
+        song_plan.Track("bass", "", 0.25, synth=song_plan.Synth(zones, boost=7.5)),
+        song_plan.Track("lead", "", 0.25, synth=song_plan.Synth(zones)),
+    ]
+    song = song_plan.song(loaded, score.events(loaded), tracks, rate=48000, save="x", renders=[])
+    found = cast("list[dict[str, Any]]", song["tracks"])
+    assert [t["volume"] for t in found] == [1.875, 0.25]  # 0.25 x 7.5, and 0.25 as it was
 
 
 @pytest.mark.lua

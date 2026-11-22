@@ -19,6 +19,7 @@ from mph.bench import project_commands, projects
 from mph.catalogue import commands as catalogue_commands
 from mph.catalogue import provenance
 from mph.components import Context, Stage
+from mph.match import commands as match_commands
 from mph.platform_info import current_host
 from mph.proc import SubprocessRunner
 from mph.query import commands as query_commands
@@ -99,6 +100,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_search(cat_sub)
     _add_provenance(cat_sub)
     _add_bench(sub)
+    _add_match(sub)
     _add_projects(sub)
     _add_mcp(sub)
     renoise = sub.add_parser("renoise", help="the Renoise bridge tool")
@@ -221,6 +223,32 @@ def _add_bench(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None
     serve.add_argument("--no-open", action="store_true", help="just print the address")
 
 
+def _add_match(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    found = sub.add_parser(
+        "match",
+        help="fit a synth's knobs to a reference sound, such as a recorded horn",
+        description="A match is a TOML file in a project's matches/ folder "
+        "(spec/components/matching.md). Check a match before you run it.",
+    )
+    found_sub = found.add_subparsers(dest="action", required=True)
+    found_sub.add_parser(
+        "analyse", help="the reference's level and pitch over time, and its strongest partials"
+    ).add_argument("file", type=Path, help="the match file")
+    for action, text in (
+        ("check", "hide a patch of the synth and search for it: is the search good enough?"),
+        ("run", "search for the patch closest to the reference, and keep 3 to listen to"),
+    ):
+        one = found_sub.add_parser(action, help=text)
+        one.add_argument("file", type=Path, help="the match file")
+        one.add_argument(
+            "--workers",
+            type=int,
+            default=0,
+            metavar="N",
+            help="SuperCollider runs at once (default: the computer's cores less one)",
+        )
+
+
 def _add_projects(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     found = sub.add_parser(
         "projects",
@@ -270,7 +298,7 @@ def _add_mcp(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
 
 
 def _timeout_s(args: argparse.Namespace) -> float:
-    if args.command == "bench":
+    if args.command in ("bench", "match"):
         return RENDER_TIMEOUT_S
     if args.command == "catalogue" and args.action in ("derive", "refresh"):
         return RECIPE_TIMEOUT_S
@@ -309,7 +337,7 @@ def dispatch(
             return cmd_install(components.by_id(args.component), ctx, run=args.yes)
         case "catalogue" | "mcp" | "projects":
             return _library_commands(args, cfg, ctx, store)
-        case "bench" | "renoise" | "prune":
+        case "bench" | "match" | "renoise" | "prune":
             return _audio_commands(args, cfg, ctx)
         case _:
             return cmd_secrets(store, args.action, getattr(args, "name", None))
@@ -332,6 +360,8 @@ def _audio_commands(args: argparse.Namespace, cfg: config.Config, ctx: Context) 
         return cmd_prune(cfg, keep=args.keep, delete=args.yes, show_all=args.list)
     if args.command == "renoise":
         return renoise_commands.dispatch(args, cfg, ctx.host.home)
+    if args.command == "match":
+        return match_commands.dispatch(args, cfg, ctx.runner)
     return bench_commands.dispatch(args, cfg, ctx.runner, ctx.host.home)
 
 

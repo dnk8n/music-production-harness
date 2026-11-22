@@ -1,0 +1,7 @@
+# spec/tracks/love-train.md#bm-ltfs-02: bars 53-80 of the free remix 1 (BM-LTFS-05):
+# the pre-chorus, the hook and the vamp.
+id = "BM-LTFS-02"
+title = "Remix 1 for everyone, bars 53-80: pre-chorus and hook"
+hear = "the pre-chorus climbing in long notes over the groove as the strings swell in, then the hook with the Jersey splash: the organ bass and the shaker take over, the strings hold Cmaj9 and Fmaj9, and the group answers each hook line. The vamp, call and answer, runs into the end of the block."
+project = "Love Train remix 1, free: synthesised"
+excerpt = { of = "BM-LTFS-05", bars = [53, 80] }

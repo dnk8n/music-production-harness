@@ -144,15 +144,20 @@ they are an hour old (REQ-RET-05).
 A melodic voice (REQ-BEN-17, REQ-BEN-18) plays from a Renoise instrument
 sampled from its SuperCollider synth, the way a sampler holds a synth patch:
 - SuperCollider renders one sample for each sound the voice makes: each
-  pitch it plays, plain and accented, with a chord sampled whole at its root
-  (chord memory). Each is held for the longest note of its pitch (notes
-  tied together count as one) plus the synth's release, at the production
-  rate, full velocity and unit gain.
+  pitch it plays, plain and accented, on each syllable it sings
+  (REQ-BEN-19), with a chord sampled whole at its root (chord memory). Each
+  is held for the longest note of that sound (notes tied together count as
+  one) plus the synth's release, at the production rate, full velocity and
+  unit gain.
 - Each sample sits on its own key, and the keys between sampled notes play
   the nearest one transposed, so any note Dean types sounds. A voice with
   accents has a second instrument, named after it with "accent", that holds
-  its accented samples: an accented note plays that instrument. Velocity
-  stays in the volume column for both.
+  its accented samples: an accented note plays that instrument. A voice
+  that sings has an instrument for each syllable, plain and accented, named
+  after the voice and the syllable ("lead ye", "lead ye accent"), and each
+  note plays the one for its syllable. The voice's track instrument is the
+  plain one for the first syllable it sings. Velocity stays in the volume
+  column for all of them.
 - An AHDSR on volume ends notes as the synth does: a note-off at the end of
   a note's gate releases it over the synth's release time, and a new note
   in the column releases the one before it.
@@ -167,7 +172,13 @@ sampled from its SuperCollider synth, the way a sampler holds a synth patch:
   interval in the synth's glide time, and the sample that is playing bends
   to the new pitch.
 - Each sample's volume holds its voice's level-matching gain (REQ-BEN-09,
-  REQ-REN-06).
+  REQ-REN-06). Renoise clips a float sample above full scale when it loads
+  it, so when any of a voice's samples peaks above 1.0, all of them are
+  lowered by the same factor to peak at 1.0, and the factor goes back on
+  their volume.
+- A melodic voice that plays nothing in a take, as the group in the free
+  remix's first block (BM-LTFS-01), has nothing to sample: its track keeps
+  the synth's one-shot as a plain instrument and has no notes.
 - **Why:** Dean's rule (2026-11-11): each take is built the way its
   software's users would build it. Renoise users play synth sounds from
   sampled instruments, which Renoise makes itself from a plug-in ("render
@@ -175,10 +186,19 @@ sampled from its SuperCollider synth, the way a sampler holds a synth patch:
   once and played from one key (#40). The notes stay notes, so Dean can
   move, re-pitch and lengthen them in the pattern. A sampler bends a glided
   note's sample rather than keep the synth running, and a glided note keeps
-  the first note's accent. A native Renoise patch for the acid line is
-  #30's job. At 4 lines per beat a plain note's note-off would fall on
-  its own note's line and be lost, so every note would ring on until the
-  next one; Renoise users raise the lines per beat for short gates.
+  the first note's accent. A sampled choir holds a patch for each vowel
+  ("aah", "ooh"), and an instrument for each syllable does the same, with
+  the syllable on the note where Dean can see and change it. A native
+  Renoise patch for the acid line is #30's job. At 4 lines per beat a
+  plain note's note-off would fall on its own note's line and be lost, so
+  every note would ring on until the next one; Renoise users raise the
+  lines per beat for short gates. A synth renders at unit gain, so a hot
+  one's samples go past full scale: the free remix's talk box lead peaked
+  up to 7.4 times it, and Renoise played it flat-topped, 6.7 dB quieter
+  than SuperCollider did, with its accents 1.15 dB louder than its plain
+  notes instead of 2.68 (BM-LTFS-01, 2026-11-22). Lowering all of a
+  voice's samples together keeps their accents and pitches level with
+  each other.
 - **Verify:** test, with the fake Renoise; measure, with the checks the
   SuperCollider take passes
 

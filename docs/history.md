@@ -134,6 +134,51 @@ sounds from free sources, and all the context that had lived only in the
 agents' memory and chats. That is this page, the rest of `docs/`, and
 `examples/` (spec/components/projects.md).
 
+## 2026-11-21: remix 1 for everyone
+
+The first variant of issue #68: remix 1 with nothing from the song and no
+samples, so a fresh clone renders it the same anywhere and every render is
+`licence:clear`. Version 2's form, parts and mix stay; a 909 kit, a soul
+singer (formant), a machine (vocoder), a group and the train's horn are new
+synths, singing wordless lines written as phrases (REQ-TRK-08) with a
+syllable per note (REQ-BEN-19). Two things learned on the way, now in the
+spec: a legato note can't be timed against its template, because the note
+before still sounds over its start (REQ-BEN-01); and the first singing
+synths were so quiet that level matching held them at +12 dB, 17 dB under
+their target, until they were made louder at the source (REQ-BEN-09). On
+the way, measuring a whole track's hi-hat chokes went from 17 minutes to
+under a second, so the whole track renders in 5 minutes in a cloud copy.
+
+## 2026-11-22: machine soul
+
+Dean rated the free remix's first block 1 star: the horn's chord was
+dissonant and "too video game like", and the voices "lethargic and low
+energy". Dean asked to get that block right in both engines first, chose
+machine soul for the vocals (a talk box and a vocoder with gospel group
+shouts, owning that they are machines), asked for the Renoise take to be
+built as a Renoise programmer would, without SuperCollider, and for a way
+to fit a synth to a given sound, running on Dean's own Mac. The horn was
+rebuilt as an air horn sounds, in the key, and the vocals as machine soul.
+On the way, the whole-mix pump check learned to leave out synth vocals as
+it left out a remix's recorded ones (REQ-BEN-12): sung lines ride on top.
+And Renoise turned out to clip a float sample above full scale as it loads
+it, which had flattened the vocals' accents in the Renoise take: a voice's
+hot samples are now lowered to full scale together, and the gain goes back
+on the sample's volume (REQ-REN-09).
+
+## 2026-11-22: fitting synths to sounds
+
+For that fit, the matcher (`mph match`, ADR-0014) searches a synth's knobs
+by differential evolution: each candidate renders in SuperCollider as the
+track would play it, and five classic views of the sound score it against
+the reference. Reinforcement learning, a trained network, a differentiable
+synth and a local LLM turning knobs were each weighed and set aside, as
+none of them is better at one sound and each would choose the sound
+itself. Known answers come first: with the real horn, a search found six
+hidden knobs to within 0.1% in a minute. The first match fits the free
+remix's horn to the song's own, which stays on Dean's Mac; only the knobs
+Dean picks reach the score.
+
 ## Outside the repo
 
 Some things are kept on Dean's Mac, on purpose:

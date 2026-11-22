@@ -2,12 +2,12 @@
 
 A Renoise take plays each melodic voice from samples of its SuperCollider
 synth: one sample for each sound the voice makes, a pitch plain or
-accented, held for the longest note of that sound, with notes tied together
-counted as one, since the first note's sample bends through the rest. Every
-accented pitch also gets a plain sample, so the plain instrument has every
-pitch. The sampler's release and glide follow the synth's: these tables
-hold the times that synthdefs.scd fixes, or the defaults of the controls a
-score can set.
+accented and sung on its syllable (REQ-BEN-19), held for the longest note of
+that sound, with notes tied together counted as one, since the first note's
+sample bends through the rest. Every accented sound also gets a plain
+sample, so the plain instrument of each syllable has every pitch. The
+sampler's release and glide follow the synth's: these tables hold the times
+that synthdefs.scd fixes, or the defaults of the controls a score can set.
 """
 
 from __future__ import annotations
@@ -17,11 +17,26 @@ from collections.abc import Mapping, Sequence
 from mph.bench.score import Event
 
 FIXED_RELEASE_S = {"mph_acid": 0.008, "mph_bass": 0.02, "mph_organ": 0.03}  # in the synth's Env
-RELEASE_DEFAULT_S = {"mph_pad": 0.06, "mph_stab": 0.12, "mph_strings": 1.1}  # `release` control
-GLIDE_DEFAULT_S = {"mph_acid": 0.06, "mph_bass": 0.05, "mph_organ": 0.0}  # `glide` control
+RELEASE_DEFAULT_S = {  # the `release` control
+    "mph_pad": 0.06,
+    "mph_stab": 0.12,
+    "mph_strings": 1.1,
+    "mph_singer": 0.18,
+    "mph_vocoder": 0.15,
+    "mph_talkbox": 0.12,
+    "mph_horn": 0.6,
+}
+GLIDE_DEFAULT_S = {  # the `glide` control
+    "mph_acid": 0.06,
+    "mph_bass": 0.05,
+    "mph_organ": 0.0,
+    "mph_singer": 0.07,
+    "mph_vocoder": 0.04,
+    "mph_talkbox": 0.06,
+}
 OTHER_RELEASE_S = 0.1  # a synth not listed here
 
-Sound = tuple[int, bool]  # pitch, accented
+Sound = tuple[int, bool, str]  # pitch, accented, syllable
 
 
 def release_s(synthdef: str, params: Mapping[str, float]) -> float:
@@ -46,10 +61,11 @@ def sounds(own: Sequence[Event]) -> dict[Sound, float]:
         first = first or event
         if event.tie and n + 1 < len(ordered):
             continue
-        sound = (first.pitch, first.accent)
+        sound = (first.pitch, first.accent, first.syllable)
         found[sound] = max(found.get(sound, 0.0), event.time_s + event.length_s - first.time_s)
         first = None
-    for (pitch, accent), held in list(found.items()):
+    for (pitch, accent, syllable), held in list(found.items()):
         if accent:
-            found[(pitch, False)] = max(found.get((pitch, False), 0.0), held)
+            plain = (pitch, False, syllable)
+            found[plain] = max(found.get(plain, 0.0), held)
     return found

@@ -1,14 +1,17 @@
 # Tracks
 
 **Status:** draft (arranged scores for the Love Train remixes, 2026-11-14;
-stems' tempo, a track's rate and cues inside sections for remix 1, version 2)
+stems' tempo, a track's rate and cues inside sections for remix 1, version 2;
+phrases for the free version of remix 1, 2026-11-21)
 
 A track is a long score in a project of its own, such as a remix. It is the
-same TOML as a benchmark (REQ-BEN-04), with three additions. Sections say
+same TOML as a benchmark (REQ-BEN-04), with four additions. Sections say
 which voices play in which bars. A clip voice plays whole bars of a
 recording, such as a full track or one of its stems (REQ-CAT-10,
-REQ-CAT-11). And an excerpt is a block of a track's bars that renders and is
-rated on its own, so Dean can judge a track in pieces before it is finished.
+REQ-CAT-11). A phrase voice plays written lines, such as a sung part, cued
+the way clips are. And an excerpt is a block of a track's bars that renders
+and is rated on its own, so Dean can judge a track in pieces before it is
+finished.
 
 Tracks render the way benchmarks do (REQ-BEN-06, REQ-BEN-10): a Renoise song
 or a SuperCollider pass for each take, stems, the checks, and the 48 kHz /
@@ -157,4 +160,32 @@ of the voice's cues falls inside it. An excerpt keeps the cues in its bars.
   pickups into phrases that start on odd bars. Cueing them inside sections
   keeps the sections, and the Renoise patterns made from them
   (REQ-TRK-04), lined up with the phrases.
+- **Verify:** test
+
+### REQ-TRK-08: Phrases
+A melodic voice in a track can hold `phrases` instead of one pattern: named
+lines of a bar or more, each written in the rows a melodic voice uses
+(`gate`, `notes`, `accent`, `slide` and `syllables`; REQ-BEN-17, REQ-BEN-19),
+as in `[voices.lead.phrases.hook-a]`. Phrases are cued the way clips are
+(REQ-TRK-02, REQ-TRK-07): a section names one after the voice
+(`"lead:hook-a"`), or the voice cues one in any bar (`cues = [[60,
+"hook-a"]]`). A phrase plays once, from its first bar, and stops at its own
+last bar, at the voice's next cue, in a section that leaves the voice out,
+or at the end of the score. A note still held when it stops ends there.
+Between phrases the voice rests. The voice's synth, controls, chord
+(REQ-BEN-18) and mix are the same for all its phrases.
+
+Its level (REQ-BEN-09) is measured on the first note of its first phrase.
+An excerpt keeps that phrase and the phrases it cues, and leaves out the
+rest, so changing a phrase outside its bars doesn't make it render again.
+An excerpt that starts inside a phrase cues the phrase again from the bar
+it has reached, and a note held into the excerpt's first bar is left out,
+as a pattern's is (REQ-TRK-03).
+- **Why:** the free version of remix 1 (issue #68) needs vocal lines that
+  no recording holds. A sung line starts where it fits the song and is
+  sung once, like a clip, but it is written as notes, so a synth sings it
+  and Dean can change any note. A pattern repeats in every bar it plays,
+  which a sung line never does, and writing a line out over the whole
+  track would bury it in rests. Measuring the level on one fixed note keeps
+  a track and its blocks at the same level.
 - **Verify:** test

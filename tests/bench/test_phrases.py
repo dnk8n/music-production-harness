@@ -332,3 +332,36 @@ def test_renoise_plays_the_phrases_from_an_instrument_per_syllable(
         "lead m",
         "lead u",
     ]
+
+
+WITH_BASS = (
+    TRACK.replace('play = ["kick"] }', 'play = ["kick", "bass"] }')
+    + """
+[voices.bass]
+notes = "C2 -  -  -  -  -  -  -  G1 -  -  -  -  -  -  -"
+gate  = "x  -  -  -  .  .  .  .  x  -  -  -  .  .  .  ."
+sound = { synth = "mph_bass" }
+"""
+)
+
+
+@pytest.mark.req("REQ-REN-09")
+def test_renoise_builds_a_block_where_a_singing_voice_rests(
+    conn: sqlite3.Connection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A melodic voice that sings nothing in a block has nothing to sample, so
+    its track is a plain, silent one, and the song still builds while another
+    melodic voice plays (the group in the free remix's first block)."""
+    whole = track(WITH_BASS)
+    intro = score.excerpt(whole, 1, 2, id="BM-PH-I")  # the bass plays, the lead rests
+    monkeypatch.setattr(render, "load", {"BM-PH-I": intro}.__getitem__)
+    cfg = cfg_for(tmp_path)
+    home = renoise_ready(tmp_path, cfg)
+    fake = FakeRenoise(bridge.jobs_dir(cfg))
+    outcome = render.run("BM-PH-I", cfg, runner(), conn, home=home, clock=fake.clock())
+    assert outcome.report["engine"] == "renoise"
+    assert _failures(outcome.report) == []
+    tracks = {t["name"]: t for t in fake.performed[0]["songs"][0]["tracks"]}
+    assert tracks["bass"]["zones"] and tracks["bass"]["notes"]
+    assert tracks["lead"]["notes"] == []
+    assert tracks["lead"]["sample"] and "zones" not in tracks["lead"]

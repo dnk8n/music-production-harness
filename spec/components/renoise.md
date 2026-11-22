@@ -173,6 +173,9 @@ sampled from its SuperCollider synth, the way a sampler holds a synth patch:
   to the new pitch.
 - Each sample's volume holds its voice's level-matching gain (REQ-BEN-09,
   REQ-REN-06).
+- A melodic voice that plays nothing in a take, as the group in the free
+  remix's first block (BM-LTFS-01), has nothing to sample: its track keeps
+  the synth's one-shot as a plain instrument and has no notes.
 - **Why:** Dean's rule (2026-11-11): each take is built the way its
   software's users would build it. Renoise users play synth sounds from
   sampled instruments, which Renoise makes itself from a plug-in ("render

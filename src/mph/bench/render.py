@@ -605,20 +605,21 @@ def synth_samples(runner: Runner, tools: sc.Tools, setup: Setup) -> dict[str, so
     (REQ-BEN-19), a chord whole at its root, one after another in one
     SuperCollider render, each held for its longest note plus the synth's
     release, at full velocity and unit gain. They go in the render folder's
-    ``sounds/<voice>/``."""
+    ``sounds/<voice>/``. A voice that plays nothing in this take has nothing
+    to sample, and its track keeps the synth's one-shot."""
     score, plan = setup.score, setup.plan
     notes: list[Event] = []
     windows: dict[str, list[tuple[sampling.Sound, float, float]]] = {}
     timing: dict[str, tuple[float, float]] = {}
     sung: dict[str, list[str]] = {}  # each voice's syllables, in the order it first sings them
     for voice, choice in zip(score.voices, plan.choices, strict=True):
-        if not voice.melodic:
+        own = [e for e in setup.found if e.voice == voice.name]
+        if not voice.melodic or not own:  # a voice that rests here has nothing to sample
             continue
         params = {**choice.params, **dict(voice.params)}
         release = sampling.release_s(choice.synthdef, params)
         timing[voice.name] = release, sampling.glide_s(choice.synthdef, params)
         at, windows[voice.name] = 0.0, []
-        own = [e for e in setup.found if e.voice == voice.name]
         sung[voice.name] = list(dict.fromkeys(e.syllable for e in own))
         for sound, held in sorted(sampling.sounds(own).items()):
             pitch, accent, syllable = sound

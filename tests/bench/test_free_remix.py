@@ -22,7 +22,7 @@ BLOCKS = {  # the same bars as remix 1's blocks (BM-LTDJ-01 to 04)
     "BM-LTFS-03": (97, 128),
     "BM-LTFS-04": (173, 204),
 }
-SINGERS = ("lead", "robot", "choir")
+SINGERS = ("lead", "robot", "choir", "shouts")
 C_MAJOR = {0, 2, 4, 5, 7, 9, 11}  # pitch classes of C major and A minor
 
 

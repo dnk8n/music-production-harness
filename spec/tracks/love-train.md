@@ -288,22 +288,39 @@ released over 430 ms).
   flatness is more than twice the tonal limit (REQ-BEN-05). The ride's hits
   fade before the next one, like a 909's.
 - **Vocals**, new wordless soul lines (oh, yeah, la, ooh, a hum; REQ-BEN-19)
-  in C major and A minor, over the parts' Cmaj9 and Fmaj9. Each line is a
-  phrase (REQ-TRK-08) cued on an even bar and sung from its second beat, as
-  the song's lines are, so it stays on its chords, and the last word of
-  each line is thrown into the echo. Three voices sing them:
-  - the **singer**, a soulful lead (`mph_singer`, a formant voice), sings
-    verse 1, the pre-choruses, the hooks, the vamp and the ad-libs, between
-    E3 and E4 (G4 at the top of an ad-lib), where the song's voice sits;
-  - the **machine**, a vocoder lead (`mph_vocoder`), teases the hook in the
-    intro and the build, sings the bridge in the dub, sings verse 2, sings
-    the hook with the singer at the peak, a third below, and sings the tag
-    in the dub-out. Dean asked for both a formant lead and a vocoder lead,
-    so both sing in the one track, as the song's leads would trade lines;
+  in C major and A minor, over the parts' Cmaj9 and Fmaj9, and the group's
+  shouts (ho, hey). Each line is a phrase (REQ-TRK-08) cued on an even bar
+  and sung from its second beat, as the song's lines are, so it stays on
+  its chords, and the last word of each line is thrown into the echo. They
+  are machine soul, Dean's choice (2026-11-22): a talk box lead and a
+  vocoder lead with gospel group shouts, written for energy and owning
+  that they are machines, as talkbox funk does. Dean heard the first lead,
+  a formant singer low and close, as "lethargic and low energy" when he
+  wanted "high energy, soulful and interesting" (rating 246). Four voices
+  sing them:
+  - the **talk box** (`mph_talkbox`), the lead: two detuned saws and a
+    square through a mouth that opens into each vowel, gliding between
+    notes and scooping up into them, with a quick vibrato late in held
+    notes. It sings verse 1, the pre-choruses, the hooks, the vamp and the
+    ad-libs. Verse 1 is high and busy, from D4 up to D5, with gaps for the
+    shouts. The rest still sits between E3 and E4 (G4 at the top of an
+    ad-lib), where the song's voice sits, until Dean has heard the verse;
+  - the **vocoder** (`mph_vocoder`) teases the hook in the intro and the
+    build, sings the bridge in the dub, sings verse 2, sings the hook with
+    the talk box at the peak, a third below, and sings the tag in the
+    dub-out. Dean asked for both a formant lead and a vocoder lead
+    (2026-11-15), so both sing in the one track, as the song's leads would
+    trade lines; the talk box is the formant lead, its formants shaping a
+    synth instead of a voice;
   - the **group** (`mph_singer` in parallel major triads, softer and
     breathier) answers every hook line and the vamp's calls, and holds
     "ooh" chords under the ad-libs. Its triads are F major over the F bars,
-    and G or C major over the C bars, which keeps every note in the key.
+    and G or C major over the C bars, which keeps every note in the key;
+  - the **shouts**, the group as machines (`mph_vocoder` in major triads,
+    short and breathy, scooping up into each shout), shout "ho, hey!" on
+    each drop as the horn's fall lands it, and "hey, hey!" and "ho, ho,
+    hey!" in the gaps of every verse line, answering the lead. Their triads
+    are C and G major, which keeps every note in the key.
 - **The train's horn**, a synth (`mph_horn`) built from what a real air
   horn does: five chimes, each two reeds a few cents apart through a bell
   (a high-pass under the note and two brassy resonances) with a breath of
@@ -327,18 +344,20 @@ released over 430 ms).
 
 | Line | Voice | Cued at bar | Bars | Sings |
 |---|---|---|---|---|
-| Teaser | machine | 14, 28 | 2 | the hook's first two bars, filtered thin |
-| Verse 1, lines 1 to 3 | singer | 40, 44, 48 | 4 each | low and close, for about 13 beats each |
-| Pre-chorus, two lines | singer | 52 and 56, 96 and 100, 144 and 148 | 4 each | long notes climbing from A3 to E4, holding D4 into the hook |
-| Hook | singer | 60, 68, 104, 116, 124, 152, 160, 200 | 3 | up to C4, a turn, down from E4 and up to C4 again |
-| Hook, reaching up | singer | 64, 120, 156 | 3 | the hook, ending on E4 |
+| Teaser | vocoder | 14, 28 | 2 | the hook's first two bars, filtered thin |
+| Drop shout | shouts | 36, 112, 196 | 2 | "ho, hey!", landing each drop with the horn's fall |
+| Verse 1, lines 1 to 3 | talk box | 40, 44, 48 | 4 each | high and busy, from D4 up to D5, for about 13 beats each, with gaps in their second and fourth bars |
+| Shouts | shouts | 40, 44, 48, 130, 134, 138 | 4 each | "hey, hey!" and "ho, ho, hey!" in each verse line's gaps |
+| Pre-chorus, two lines | talk box | 52 and 56, 96 and 100, 144 and 148 | 4 each | long notes climbing from A3 to E4, holding D4 into the hook |
+| Hook | talk box | 60, 68, 104, 116, 124, 152, 160, 200 | 3 | up to C4, a turn, down from E4 and up to C4 again |
+| Hook, reaching up | talk box | 64, 120, 156 | 3 | the hook, ending on E4 |
 | Answer | group | two bars after each hook | 2 | F major, then G and C major |
-| Vamp | singer and group | 72, 76, and its end at 80 | 4, 4, 2 | calls, and the group's answers between them |
-| Bridge, two lines | machine | 84, 88 | 4 each | straight eighths, a machine's line |
-| Hook, a third below | machine | 116, 120, 124 | 2 | the hook's first two bars, under the singer |
-| Verse 2, lines 1 to 3 | machine | 130, 134, 138 | 4 each | verse 1's lines |
-| Ad-libs 1 to 3 | singer | 164, 168, 172 | 4 each | high and free, with runs, over the group's held chords |
-| Tag, two lines | machine | 180, 184 | 4 and 2 | in the dub-out, deep in the echo |
+| Vamp | talk box and group | 72, 76, and its end at 80 | 4, 4, 2 | calls, and the group's answers between them |
+| Bridge, two lines | vocoder | 84, 88 | 4 each | straight eighths, a machine's line |
+| Hook, a third below | vocoder | 116, 120, 124 | 2 | the hook's first two bars, under the talk box |
+| Verse 2, lines 1 to 3 | vocoder | 130, 134, 138 | 4 each | verse 1's lines |
+| Ad-libs 1 to 3 | talk box | 164, 168, 172 | 4 each | high and free, with runs, over the group's held chords |
+| Tag, two lines | vocoder | 180, 184 | 4 and 2 | in the dub-out, deep in the echo |
 | Horn | horn | 34, 110, 194 | 4 | a C major sixth over E, swelling, then falling a fourth across the drop |
 
 Each benchmark has a `supercollider` take and a `renoise` take (Renoise
@@ -353,39 +372,40 @@ fresh clones render the same audio (REQ-AUD-05).
 | Bars | Section | What plays | Vocals and horn |
 |---|---|---|---|
 | 1-8 | Intro | kick, closed hats, rim | |
-| 9-16 | Intro | the ride joins | at 14, the machine's teaser, filtered thin and thrown into the echo |
+| 9-16 | Intro | the ride joins | at 14, the vocoder's teaser, filtered thin and thrown into the echo |
 | 17-24 | Build | open hats and the bass join, the bass's filter opening | |
 | 25-32 | Build | the clap and dark stabs join | the teaser again at 28 |
-| 33-36 | Departure | the drums and bass stop; the strings swell and the shaker chugs | the horn swells from 34 and bends across the drop |
-| 37-52 | Groove A | the whole kit, the bass, the stabs opening up | the singer's verse 1, lines at 40, 44 and 48; the pre-chorus from 52 |
+| 33-36 | Departure | the drums and bass stop; the strings swell and the shaker chugs | the horn swells from 34 and falls across the drop, where the group shouts "ho, hey!" |
+| 37-52 | Groove A | the whole kit, the bass, the stabs opening up | the talk box's verse 1, lines at 40, 44 and 48, with the group's shouts in their gaps; the pre-chorus from 52 |
 | 53-60 | Pre-chorus | the strings join; the rim stops | |
 | 61-76 | Hook | the shaker and the organ bass take over from the ride, rim and bass | the hook at 60, 64 and 68, each answered by the group; the vamp from 72 |
 | 77-83 | Dub | kick, rim, ride, closed hats, bass, stabs deep in the echo | the vamp ends at 81 |
-| 84-92 | Dub | the same | the machine's bridge at 84 and 88 |
+| 84-92 | Dub | the same | the vocoder's bridge at 84 and 88 |
 | 93-96 | Break | the stabs and the ride | the pre-chorus again from 96 |
 | 97-108 | Breakdown | strings, stabs, shaker | the hook at 104, and the group's answer |
-| 109-112 | Departure II | strings, the closed hats rising | the horn swells from 110 and bends across the drop |
-| 113-128 | Peak | the whole kit, the bass, stabs wide open, strings | the hook at 116, 120 and 124, the machine a third below the singer, the group answering |
-| 129-144 | Groove B | the kit, the bass, the stabs | the machine's verse 2, lines at 130, 134 and 138; the pre-chorus from 144 |
+| 109-112 | Departure II | strings, the closed hats rising | the horn swells from 110 and falls across the drop, with the group's shout |
+| 113-128 | Peak | the whole kit, the bass, stabs wide open, strings | the hook at 116, 120 and 124, the vocoder a third below the talk box, the group answering |
+| 129-144 | Groove B | the kit, the bass, the stabs | the vocoder's verse 2, lines at 130, 134 and 138, with the group's shouts in their gaps; the pre-chorus from 144 |
 | 145-152 | Pre-chorus 2 | the strings join; the rim stops | |
 | 153-168 | Hook 2 | shaker and organ bass again | the hook at 152, 156 and 160, answered; ad-libs at 164 and 168 over the group's chords |
 | 169-176 | Ad-libs | kick, clap, hats, shaker, organ, stabs | the last ad-lib at 172 |
-| 177-192 | Dub-out | kick, rim, ride, the bass closing down, stabs in the echo, strings | the machine's tag at 180 and 184 |
-| 193-196 | Last train | strings and the shaker's chug | the horn swells from 194 and bends across the drop |
+| 177-192 | Dub-out | kick, rim, ride, the bass closing down, stabs in the echo, strings | the vocoder's tag at 180 and 184 |
+| 193-196 | Last train | strings and the shaker's chug | the horn swells from 194 and falls across the drop, with the group's shout |
 | 197-208 | Outro | the kit, the bass, the stabs | the hook at 200, filtered thin and riding the echo, and the group's answer |
 | 209-224 | Outro | kick, hats, ride, rim, bass | |
 | 225-240 | DJ outro | kick, closed hats, rim | |
 
-Hear: a Detroit techno track sung by a soul singer, a machine and a group,
-with nothing recorded. A dry 909 groove builds with a rolling bass, and the
-machine teases the hook through the echo. Everything drops away for the
-train's horn, whose bend lands the groove. The singer's verse comes in line
-by line, each last word echoing into the gap, with the stabs answering in
-between. In the hooks the group answers every line, and the organ bass, the
-shaker and the swelling strings lift it into Jersey. The machine takes the
-bridge in the dub and sings the second verse, and at the peak it sings the
-hook with the singer, a third below. The horn drops the peak and, at the
-end, the outro.
+Hear: a Detroit techno track sung by machines with soul, a talk box, a
+vocoder and a group, with nothing recorded. A dry 909 groove builds with a
+rolling bass, and the vocoder teases the hook through the echo. Everything
+drops away for the train's horn, whose fall lands the groove with the
+group's shout. The talk box's verse comes in high and busy, line by line,
+the group shouting back in the gaps and each last word echoing away, with
+the stabs answering in between. In the hooks the group answers every line,
+and the organ bass, the shaker and the swelling strings lift it into
+Jersey. The vocoder takes the bridge in the dub and sings the second verse,
+and at the peak it sings the hook with the talk box, a third below. The
+horn drops the peak and, at the end, the outro.
 - **Why:** issue #68: a version of remix 1 anyone can render, learn from
   and share, with the same characteristics as Dean's: the form, the parts,
   the mix, a soulful lead with group answers, lines of two to four bars on
@@ -397,14 +417,15 @@ end, the outro.
 ### BM-LTFS-01: Remix 1 for everyone, bars 25-52: build, departure and verse 1
 120 BPM, 16th swing 55%. Bars 25-52 of BM-LTFS-05.
 
-Hear: eight bars of 909 groove with dark, echoing stabs, and the machine
+Hear: eight bars of 909 groove with dark, echoing stabs, and the vocoder
 teasing the hook through the echo. Then the drums and bass stop, the
-strings swell and the train's horn rises over a chugging shaker. Its bend
-drops the groove on bar 13 of the block, and the singer's first verse comes
-in line by line, each last word echoing away.
+strings swell and the train's horn rises over a chugging shaker. Its fall
+drops the groove on bar 13 of the block with the group's shout, and the
+talk box's first verse comes in high and busy, line by line, the group
+shouting back in every gap and each last word echoing away.
 - **Why:** the first thing to judge: does the synthesised kit carry the
-  groove, does the singer sound sung, and does the synthesised horn land
-  the drop?
+  groove, does the talk box sing with soul and energy, and does the
+  synthesised horn land the drop?
 - **Verify:** measure, listen
 
 ### BM-LTFS-02: Remix 1 for everyone, bars 53-80: pre-chorus and hook
@@ -423,9 +444,9 @@ each hook line. The vamp, call and answer, runs into the end of the block.
 
 Hear: the second pre-chorus over floating strings and stabs, with no kick,
 then a hook line and the group's answer. The second horn rises over rising
-hats and bends into the peak on bar 17 of the block, where everything plays
-at once and the machine sings each hook line with the singer, a third
-below.
+hats and falls into the peak on bar 17 of the block with the group's shout,
+where everything plays at once and the vocoder sings each hook line with
+the talk box, a third below.
 - **Why:** the breakdown has to hold without drums, and the peak is where
   both leads sing together. The block starts inside a phrase, so it also
   tests an excerpt picking up a sung line (REQ-TRK-08).
@@ -435,9 +456,10 @@ below.
 120 BPM, 16th swing 55%. Bars 173-204 of BM-LTFS-05.
 
 Hear: the last ad-lib over the group's held chords, then the dub-out: kick,
-rim and ride with the bass closing down, and the stabs and the machine's
-tag deep in the echo. The last horn bends into the outro, where the hook
-returns filtered thin and riding the echo, with the group's answer.
+rim and ride with the bass closing down, and the stabs and the vocoder's
+tag deep in the echo. The last horn falls into the outro with the group's
+shout, where the hook returns filtered thin and riding the echo, with the
+group's answer.
 - **Why:** the ending has to wind the track down without losing it, with
-  the machine's voice in the dub and the singer's hook as an echo.
+  the vocoder's voice in the dub and the talk box's hook as an echo.
 - **Verify:** measure, listen

@@ -492,10 +492,8 @@ def _ducking(
     for target in targets:
         found += checks.sidechain(chain, target, stems[target], dry[target], hits, rate=plan.rate)
     # The whole mix, ducked and as bypass would have it, weighted as loudness is,
-    # after the hits where a target sounds. Recordings the sidechain leaves alone,
-    # like a remix's vocals, ride on top of the pump, so they're left out.
-    riding = {v.name for v in score.voices if v.clips and v.name not in chain.targets}
-    music = {name: stem for name, stem in stems.items() if name not in riding}
+    # after the hits where a target sounds, without the vocals riding on top.
+    music = {name: stem for name, stem in stems.items() if name not in riding(score)}
     ducked = audio.k_weighted(audio.mixdown(music), plan.rate)
     bypass = audio.k_weighted(audio.mixdown({**music, **dry}), plan.rate)
     heard = audio.mixdown({t: dry[t] for t in targets})
@@ -506,6 +504,14 @@ def _ducking(
         for lo, hi in (checks.MIX_UNDER_KICK_S, checks.MIX_AFTER_KICK_S)
     )
     return found + checks.sidechain_mix(under, after, len(hits))
+
+
+def riding(score: Score) -> set[str]:
+    """The voices left out of the whole-mix pump (REQ-BEN-12): vocals the
+    sidechain leaves alone, recordings like a remix's vocals or synths that
+    sing, ride on top of it."""
+    targets = score.sidechain.targets if score.sidechain else ()
+    return {v.name for v in score.voices if (v.clips or v.sings) and v.name not in targets}
 
 
 def _under(setup: Setup, target: str, hits: Sequence[float]) -> bool:

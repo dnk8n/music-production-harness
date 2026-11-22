@@ -570,6 +570,53 @@ write.(SynthDef(\mph_vocoder, { |out = 0, amp = 1, gate = 1, freq = 220, acc = 0
     OffsetOut.ar(out, [mid + side, mid - side] * level);
 }));
 
+// A talk box lead (machine soul: the free remix's lead, Dean's choice on
+// 2026-11-22): a synth played through a mouth. The carrier is two band-limited
+// saws a few cents apart, one per side, with a square under them, at the
+// note's pitch. The mouth is the voice's five formants (a tenor's, moving from
+// each consonant to its vowel), a little wider than a singer's, as a mouth
+// around a tube makes them, and each note opens from nearly closed into its
+// vowel over wah seconds, the "wow" a talk box player shapes. A little of the
+// carrier's top leaks past the mouth (presence). No breath: all of it is
+// synth. It glides between notes, scoops up into each note (more on an
+// accent) and gets a quick vibrato late in a held note, as a mod wheel gives.
+// An accent is louder, brighter and opens wider. detune 0, vibrato 0 and
+// waver 0 leave one steady pitch, for the aliasing probe.
+write.(SynthDef(\mph_talkbox, { |out = 0, amp = 1, gate = 1, freq = 220, acc = 0, seed = 1,
+    rid = 0, part = 0, vowel = 0, onset = 0, attack = 0.008, release = 0.12, glide = 0.06,
+    scoop = 0.4, vibrato = 0.3, rate = 6.2, vdelay = 0.32, detune = 8, square = 0.5,
+    wah = 0.08, open = 0.55, bw = 1.3, bright = 4, presence = 0.06, accent = 0.6,
+    width = 0.6, waver = 1|
+    var top = ~top.value;
+    var accented = acc * accent;
+    var formants = ~formants.(vowel, onset);
+    var vib = SinOsc.kr(rate * (1 + (part * 0.03)), part)
+        * EnvGen.kr(Env([0, 0, 1], [vdelay, 0.2], [0, 2])) * vibrato;
+    var bend = EnvGen.kr(Env([1, 0], [0.07], -3)) * scoop * (1 + accented);
+    var pitch = Lag.kr(freq, glide) * (vib - bend + LFNoise1.kr(2, 0.03 * waver)).midiratio;
+    var ratio = (detune / 100).midiratio.sqrt;
+    var mouth = EnvGen.kr(Env([open + (accented * 0.15), 1], [wah], [-2]));
+    var sides, mid, side, level;
+    RandID.ir(rid);
+    RandSeed.ir(1, seed + (part * 17));
+    sides = [pitch * ratio, pitch / ratio].collect { |f|
+        var carrier = (~saw.(f, 60, top) * 0.8) + (~square.(f, 30, top) * square);
+        var shaped = Mix.fill(5, { |k|
+            var centre = formants[0][k] * mouth.pow(if(k < 2) { 1 } { 0.3 })
+                * (1 + LFNoise1.kr(0.5 + (k * 0.17), 0.01 * waver));
+            var gain = (formants[1][k] + if(k >= 1) { bright + (accented * 6) } { 0 }).dbamp;
+            BPF.ar(carrier, centre.clip(80, 12000),
+                (formants[2][k] * bw / formants[0][k]).clip(0.005, 2)) * gain
+        });
+        (BLowPass4.ar(shaped, 7000, 1) * 6) + (HPF.ar(HPF.ar(carrier, 2500), 2500) * presence)
+    };
+    mid = (sides[0] + sides[1]) * 0.5;
+    side = (sides[0] - sides[1]) * 0.5 * width;
+    level = EnvGen.ar(Env.asr(attack, 1, release, [2, -3]), gate, doneAction: 2)
+        * (0.75 + (accented * 0.8)) * amp;
+    OffsetOut.ar(out, [mid + side, mid - side] * level);
+}));
+
 // A passing train horn (Love Train remix 1's signature sound, synthesised for
 // its free version, issue #68), built from what a real air horn does. Each
 // chime is two reeds (a band-limited saw and square) a few cents apart, one per

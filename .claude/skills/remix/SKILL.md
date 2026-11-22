@@ -93,8 +93,9 @@ no placeholder can stand in for.
 A free version is for anyone without Dean's library (issue #68). The first
 is `examples/projects/love-train-remix-1-free-synthesised/` (BM-LTFS-01 to
 05, spec/tracks/love-train.md): remix 1's form, parts and mix, with a 909
-kit, a soul singer (`mph_singer`), a machine (`mph_vocoder`), a group
-(`mph_singer` with a chord) and the horn (`mph_horn`), all synths, so it
+kit, a talk box lead (`mph_talkbox`), a vocoder lead (`mph_vocoder`), a
+group (`mph_singer` with a chord), the group's shouts (`mph_vocoder` with a
+chord) and the horn (`mph_horn`), all synths, so it
 renders the same from any fresh clone. Its vocal lines are phrases
 (REQ-TRK-08): notes with a syllable each (REQ-BEN-19), accents and slides,
 one table per line, cued like clips. What it taught:
@@ -113,10 +114,19 @@ one table per line, cued like clips. What it taught:
   it, in every block too: a block cuts a section at its own bars, so a cue
   just past the block leaves the voice with nothing to carry on. Split the
   section where the voice comes in (the free version's dub is two
-  sections).
-- Lines that aren't ducked thin the duck in the whole mix. The free
-  version's sit 5 dB under their matched level (`gain_db = -5`), which keeps
-  the whole-mix pump below -2 dB in every block.
+  sections). A phrase that runs on into the next section needs that
+  section to list the voice too, or it stops there: a shout on the drop's
+  pickup is cued in the section before the drop.
+- Synth vocals that sing (syllables) ride on top of the pump, as a remix's
+  recorded vocals do: the whole-mix check leaves them out (REQ-BEN-12), so
+  set their level by the balance, not by the pump. The talk box lead sits
+  about level with the music under it in the verse (`gain_db = -4`). A
+  voice is level-matched on the first note of its first phrase, so a line
+  sung much higher than that note comes out louder than its match.
+- Synth vocals should own being machines (Dean, 2026-11-22): a formant
+  singer imitating a soul voice, low and close, was "lethargic and low
+  energy". Write high, busy lines with gaps for the group to shout back,
+  and pick sounds that sound like what they are (a talk box, a vocoder).
 - Check a render's balance bar by bar (each stem's K-weighted loudness
   against the mix) and each voice's gain in the report: a synth held at
   +12 dB is too quiet at its source (REQ-BEN-09). The first singing synths

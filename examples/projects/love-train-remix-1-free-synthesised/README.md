@@ -30,12 +30,14 @@ remix 1's, so the two versions can be heard side by side.
 - **A 909-style kit**, synthesised: kick, clap, closed and open hats, ride,
   rim shot and a garage shaker, playing remix 1's patterns.
 - **New vocal lines**, wordless soul phrases (oh, yeah, la, ooh, a hum) in
-  C major and A minor, each cued on an even bar as the song's lines are.
-  A soul singer (a formant synth) sings verse 1, the pre-choruses, the
-  hooks and the ad-libs; a machine (a vocoder) teases the hook, sings the
-  bridge and verse 2, joins the hook at the peak and sings the tag; and a
-  group of three voices answers the hooks and holds chords under the
-  ad-libs. Every note, syllable, accent and slide is written in
+  C major and A minor, each cued on an even bar as the song's lines are,
+  sung by machines with soul. A talk box (a synth through a mouth) sings
+  verse 1, high and busy, the pre-choruses, the hooks and the ad-libs; a
+  vocoder teases the hook, sings the bridge and verse 2, joins the hook at
+  the peak and sings the tag; a group of three voices answers the hooks and
+  holds chords under the ad-libs; and the group, as vocoders, shouts "ho,
+  hey!" on each drop and back at the talk box in the gaps of every verse
+  line. Every note, syllable, accent and slide is written in
   BM-LTFS-05.toml, so any line can be changed.
 - **The train's horn**, synthesised as an air horn sounds: five chimes in a
   real horn's voicing, moved into the key (E3 G3 A3 C4 E4), that swell and
@@ -81,6 +83,13 @@ What Dean asked for next (2026-11-22):
   tempo, that runs on his Mac without cloud credits. It is designed, and
   comes as its own spec and PR after this one.
 
-What changed since: the horn is now in the key, voiced as a real five-chime
-horn is, and built as an air horn sounds (a bell, air, beating chimes and
-the ground's reflection).
+What changed since:
+- The horn is in the key, voiced as a real five-chime horn is, and built as
+  an air horn sounds (a bell, air, beating chimes and the ground's
+  reflection). It is built by hand, not yet fitted to the song's horn:
+  that waits for the matcher.
+- The vocals are machine soul: a talk box lead sings verse 1 high and busy
+  (D4 to D5, where it was low and close), the vocoder sings the same lines
+  in verse 2, and the group shouts on the drops and in the verse's gaps.
+  The pre-choruses, hooks, vamp and ad-libs keep their lines, now on the
+  talk box, until Dean has heard the verse.

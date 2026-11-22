@@ -258,9 +258,10 @@ compare against it:
   K-weighted, as loudness is measured (ITU-R BS.1770). The comparison
   looks at two windows after every hit where a target sounds: under the
   kick (5 to 35 ms) and after it (100 to 200 ms). A whole track's intro,
-  with no targets yet, has nothing to pump. Recordings that aren't
-  targets, like a remix's vocals, are left out of both mixes: they ride on
-  top of the pump, so it's measured in the music under them. After the kick, the median over the hits must
+  with no targets yet, has nothing to pump. Vocals that aren't targets
+  are left out of both mixes: recordings, like a remix's vocals, and
+  voices that sing (REQ-BEN-19), like the free remix's. They ride on top
+  of the pump, so it's measured in the music under them. After the kick, the median over the hits must
   be at least 2 dB down. That's about twice the smallest change in level
   people notice, so it's heard as pumping. The window under the kick is
   reported alongside it.
@@ -280,7 +281,10 @@ compare against it:
   faded in on the kick read 8 ms, with the dip in place from the hit. In
   remix 1's second version the vocals are close to half the mix's
   loudness, so the same pump in the music under them would measure about
-  half as much with them in. The kick has to die away for the pump to be
+  half as much with them in. The free remix's vocals are synths that sing,
+  and they ride the same way: with its talk box lead counted as music
+  (2026-11-22), the verse measured 0.6 to 1.9 dB, while the build, the same
+  pump with no vocals, measured 2.5 to 3.6 dB. The kick has to die away for the pump to be
   heard: a kick that stays within 3 dB of its peak for 150 ms fills the
   window after the hit with its own body. Remix 1's first kick did that,
   and silencing every target outright would still only have measured -1.1
@@ -430,9 +434,10 @@ its syllable: a vowel (`a`, `e`, `i`, `o` or `u`), after a consonant (`h`,
 `y`, `w`, `l`, `m`, `n`, `d` or `b`) or none, or `m` alone for a hum, with
 `-` on every other step: `syllables = "- - - - o - ye - a - - - la - - -"`.
 A note slid into keeps the syllable it glides from, so its step holds `-`.
-The singing synths (`mph_singer`, a formant voice, and `mph_vocoder`, a
-vocoder whose modulator is that voice) shape each note's vowel and
-consonant from it, and any other synth ignores it. A note on the same pitch
+The singing synths (`mph_singer`, a formant voice; `mph_vocoder`, a
+vocoder whose modulator is that voice; and `mph_talkbox`, a talk box: a
+synth through the same formants, a mouth opening into each vowel) shape
+each note's vowel and consonant from it, and any other synth ignores it. A note on the same pitch
 and accent with another syllable is another sound: it gets a template of
 its own (REQ-BEN-01), and a sample and instrument of its own in Renoise
 (REQ-REN-09).

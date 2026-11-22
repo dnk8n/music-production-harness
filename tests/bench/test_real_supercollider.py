@@ -394,7 +394,7 @@ def test_the_909_kit_hisses_and_its_kick_gets_out_of_the_way(
 @pytest.mark.req("REQ-BEN-19")
 @pytest.mark.req("REQ-TRK-08")
 @pytest.mark.req("REQ-BEN-09")
-@pytest.mark.parametrize("synth", ["mph_singer", "mph_vocoder", "mph_horn"])
+@pytest.mark.parametrize("synth", ["mph_singer", "mph_vocoder", "mph_talkbox", "mph_horn"])
 def test_phrases_sing_and_pass_with_real_supercollider(
     real: SubprocessRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, synth: str
 ) -> None:

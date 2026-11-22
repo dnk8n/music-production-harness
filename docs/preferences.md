@@ -48,6 +48,10 @@ up, add it to the spec, skill or doc it belongs to, and list it here.
 | A remix keeps only the vocals and a signature sound, and builds the rest new, with real sound design | spec/tracks/love-train.md, the `remix` skill |
 | A remix runs at the source's tempo, so the vocals are never stretched; nobody quotes the lyrics | the `remix` skill |
 | The first track's palette: spoken word, Detroit techno, a Jersey garage twist, West African drums | spec/components/benchmarks.md (North star) |
+| Synth vocals own being machines, with soul and high energy (talk box, vocoder, gospel shouts), rather than imitate a singer | spec/tracks/love-train.md, examples/projects/love-train-remix-1-free-synthesised/README.md |
+| Get one block right in every engine before the rest of a track | examples/projects/love-train-remix-1-free-synthesised/README.md |
+| A Renoise take is built as a Renoise programmer would (chosen plug-ins, Renoise's own devices) and doesn't rely on SuperCollider | examples/projects/love-train-remix-1-free-synthesised/README.md, issue #30 |
+| Fitting a synth to a given sound runs on Dean's Mac, with no cloud credits | examples/projects/love-train-remix-1-free-synthesised/README.md (its own spec to come) |
 
 ## Working with agents
 

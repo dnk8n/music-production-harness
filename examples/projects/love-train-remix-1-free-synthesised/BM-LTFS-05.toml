@@ -1,12 +1,12 @@
 # spec/tracks/love-train.md#bm-ltfs-05: the free version of remix 1, the whole track.
 # Remix 1's form, parts and mix (BM-LTDJ-05), with everything that was a
 # recording or a sample made anew: a synthesised 909 kit, new wordless vocal
-# lines for a soul singer, a machine (a vocoder) and a group, and a
-# synthesised train horn. It needs no samples, no recordings and no keys, so
+# lines sung by machines with soul (a talk box, a vocoder and a group, with
+# the group's shouts), and a synthesised train horn. It needs no samples, no recordings and no keys, so
 # it renders the same from a fresh clone (issue #68).
 id = "BM-LTFS-05"
 title = "Remix 1 for everyone, the whole track"
-hear = "a Detroit techno track sung by a soul singer, a machine and a group, with nothing recorded. A dry 909 groove builds with a rolling bass, and the machine teases the hook through the echo. Everything drops away for the train's horn, whose bend lands the groove. The singer's verse comes in line by line, each last word echoing into the gap, with the stabs answering in between. In the hooks the group answers every line, and the organ bass, the shaker and the swelling strings lift it into Jersey. The machine takes the bridge in the dub and sings the second verse, and at the peak it sings the hook with the singer, a third below. The horn drops the peak and, at the end, the outro."
+hear = "a Detroit techno track sung by machines with soul, a talk box, a vocoder and a group, with nothing recorded. A dry 909 groove builds with a rolling bass, and the vocoder teases the hook through the echo. Everything drops away for the train's horn, whose fall lands the groove with the group's shout. The talk box's verse comes in high and busy, line by line, the group shouting back in the gaps and each last word echoing away, with the stabs answering in between. In the hooks the group answers every line, and the organ bass, the shaker and the swelling strings lift it into Jersey. The vocoder takes the bridge in the dub and sings the second verse, and at the peak it sings the hook with the talk box, a third below. The horn drops the peak and, at the end, the outro."
 project = "Love Train remix 1, free: synthesised"
 bpm = 120
 bars = 240
@@ -18,23 +18,23 @@ sections = [
   { name = "Intro", bars = [9, 16], play = ["kick", "chh", "rim", "ride", "robot"] },
   { name = "Build", bars = [17, 24], play = ["kick", "chh", "rim", "ride", "ohh", "bass"] },
   { name = "Build", bars = [25, 32], play = ["kick", "chh", "rim", "ride", "ohh", "bass", "clap", "stabs", "robot"] },
-  { name = "Departure", bars = [33, 36], play = ["strings_a", "strings_b", "shaker", "horn"] },
-  { name = "Groove A", bars = [37, 52], play = ["kick", "clap", "chh", "ohh", "ride", "rim", "bass", "stabs", "lead", "horn"] },
+  { name = "Departure", bars = [33, 36], play = ["strings_a", "strings_b", "shaker", "horn", "shouts"] },
+  { name = "Groove A", bars = [37, 52], play = ["kick", "clap", "chh", "ohh", "ride", "rim", "bass", "stabs", "lead", "horn", "shouts"] },
   { name = "Pre-chorus", bars = [53, 60], play = ["kick", "clap", "chh", "ohh", "ride", "bass", "stabs", "strings_a", "strings_b", "lead"] },
   { name = "Hook", bars = [61, 76], play = ["kick", "clap", "chh", "ohh", "shaker", "organ", "stabs", "strings_a", "strings_b", "lead", "choir"] },
   { name = "Dub", bars = [77, 83], play = ["kick", "rim", "ride", "chh", "bass", "stabs", "lead", "choir"] },
   { name = "Dub", bars = [84, 92], play = ["kick", "rim", "ride", "chh", "bass", "stabs", "robot"] },
   { name = "Break", bars = [93, 96], play = ["stabs", "ride", "lead"] },
   { name = "Breakdown", bars = [97, 108], play = ["strings_a", "strings_b", "stabs", "shaker", "lead", "choir"] },
-  { name = "Departure II", bars = [109, 112], play = ["strings_a", "strings_b", "chh", "horn"] },
-  { name = "Peak", bars = [113, 128], play = ["kick", "clap", "chh", "ohh", "ride", "rim", "shaker", "bass", "stabs", "strings_a", "strings_b", "lead", "choir", "robot", "horn"] },
-  { name = "Groove B", bars = [129, 144], play = ["kick", "clap", "chh", "ohh", "ride", "rim", "bass", "stabs", "robot", "lead"] },
+  { name = "Departure II", bars = [109, 112], play = ["strings_a", "strings_b", "chh", "horn", "shouts"] },
+  { name = "Peak", bars = [113, 128], play = ["kick", "clap", "chh", "ohh", "ride", "rim", "shaker", "bass", "stabs", "strings_a", "strings_b", "lead", "choir", "robot", "horn", "shouts"] },
+  { name = "Groove B", bars = [129, 144], play = ["kick", "clap", "chh", "ohh", "ride", "rim", "bass", "stabs", "robot", "lead", "shouts"] },
   { name = "Pre-chorus 2", bars = [145, 152], play = ["kick", "clap", "chh", "ohh", "ride", "bass", "stabs", "strings_a", "strings_b", "lead"] },
   { name = "Hook 2", bars = [153, 168], play = ["kick", "clap", "chh", "ohh", "shaker", "organ", "stabs", "strings_a", "strings_b", "lead", "choir"] },
   { name = "Ad-libs", bars = [169, 176], play = ["kick", "clap", "chh", "ohh", "shaker", "organ", "stabs", "lead", "choir"] },
   { name = "Dub-out", bars = [177, 192], play = ["kick", "rim", "ride", "bass", "stabs", "strings_a", "strings_b", "robot"] },
-  { name = "Last train", bars = [193, 196], play = ["strings_a", "strings_b", "shaker", "horn"] },
-  { name = "Outro", bars = [197, 208], play = ["kick", "clap", "chh", "ohh", "ride", "rim", "bass", "stabs", "lead", "choir", "horn"] },
+  { name = "Last train", bars = [193, 196], play = ["strings_a", "strings_b", "shaker", "horn", "shouts"] },
+  { name = "Outro", bars = [197, 208], play = ["kick", "clap", "chh", "ohh", "ride", "rim", "bass", "stabs", "lead", "choir", "horn", "shouts"] },
   { name = "Outro", bars = [209, 224], play = ["kick", "chh", "ohh", "ride", "rim", "bass"] },
   { name = "DJ outro", bars = [225, 240], play = ["kick", "chh", "rim"] },
 ]
@@ -226,11 +226,11 @@ level = [[1, -14], [37, 0], [109, 0], [109, -10], [113, 0], [193, 0], [193, -10]
 # the parts' Cmaj9 and Fmaj9. Each line is cued on an even bar and sung from
 # its second beat, as the song's lines are, so it stays on its chords.
 
-# The lead: a soul singer, a formant voice. It sings verse 1, the
-# pre-choruses, the hooks, the vamp and the ad-libs.
+# The lead: a talk box, machine soul (Dean's choice, 2026-11-22). It sings
+# verse 1, the pre-choruses, the hooks, the vamp and the ad-libs.
 [voices.lead]
-sound = { synth = "mph_singer", why = "A soulful lead: a buzz through five formants that move from each consonant to its vowel, scooping up into every note, with a vibrato that fades in and a little breath." }
-gain_db = -5
+sound = { synth = "mph_talkbox", why = "Machine soul (Dean, 2026-11-22): a talk box lead, a bright synth played through a mouth, opening into each vowel, gliding between notes and scooping up into them, with a quick vibrato late in held notes." }
+gain_db = -4
 cues = [
   [40, "verse-a"], [44, "verse-b"], [48, "verse-c"], [52, "pre-a"], [56, "pre-b"],
   [60, "hook"], [64, "hook-b"], [68, "hook"], [72, "vamp"], [76, "vamp"],
@@ -296,28 +296,31 @@ accent    = ".  .  .  .  .  .  .  .  X  .  .  .  .  .  .  .  | .  .  X  .  .  . 
 slide     = ".  .  .  .  .  .  .  .  .  .  .  .  S  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
 syllables = "-  -  -  -  o  -  wo -  ye -  -  -  e  -  -  -  | -  -  o  -  la -  la -  ye -  -  -  -  -  -  -  | o  -  wo -  ye -  -  -  o  -  -  -  -  -  -  -"
 
-# Verse 1, three lines, sung low and close, each from the second beat of an
-# even bar for about thirteen beats, as the song's lines are.
+# Verse 1, three lines, each from the second beat of an even bar for about
+# thirteen beats, as the song's lines are: high (up to C5 and D5) and busy in
+# sixteenths, falling off its top notes as a talk box player does, with a gap
+# in each line's second and fourth bars for the group's shouts. Dean heard the
+# low, slow lines they replace as lethargic (rating 246, 2026-11-22).
 [voices.lead.phrases.verse-a]
-gate      = ".  .  .  .  x  -  x  -  -  -  x  -  x  -  x  -  | x  -  -  -  x  x  -  -  x  -  x  -  -  -  -  -  | .  .  x  -  x  -  x  -  -  -  -  -  x  -  x  -  | x  -  -  -  -  -  .  .  .  .  .  .  .  .  .  ."
-notes     = "-  -  -  -  A3 -  C4 -  -  -  A3 -  G3 -  A3 -  | C4 -  -  -  D4 C4 -  -  A3 -  G3 -  -  -  -  -  | -  -  F3 -  A3 -  C4 -  -  -  -  -  A3 -  G3 -  | E3 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
-accent    = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | X  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
-slide     = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  S  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
-syllables = "-  -  -  -  m  -  o  -  -  -  la -  da -  da -  | o  -  -  -  ye -  -  -  e  -  o  -  -  -  -  -  | -  -  la -  la -  ye -  -  -  -  -  o  -  wo -  | o  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+gate      = ".  .  .  .  x  x  -  x  x  -  x  -  x  -  .  .  | x  -  -  -  -  -  .  .  .  .  .  .  x  x  x  -  | x  -  -  x  x  -  x  -  x  -  x  -  x  -  -  x  | x  -  -  -  -  -  .  .  .  .  .  .  .  .  .  ."
+notes     = "-  -  -  -  A4 A4 -  C5 A4 -  G4 -  E4 -  -  -  | G4 -  -  -  -  -  -  -  -  -  -  -  D4 E4 G4 -  | A4 -  -  C5 A4 -  G4 -  E4 -  G4 -  C5 -  -  A4 | G4 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+accent    = ".  .  .  .  .  .  .  X  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | X  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+slide     = ".  .  .  .  .  .  .  S  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  S  .  .  .  .  .  .  .  .  .  .  .  S  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+syllables = "-  -  -  -  ye ye -  wo -  -  ye -  e  -  -  -  | o  -  -  -  -  -  -  -  -  -  -  -  da da ye -  | wo -  -  ye -  -  ye -  e  -  la -  la -  -  ye | -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
 
 [voices.lead.phrases.verse-b]
-gate      = ".  .  .  .  x  -  x  -  x  -  -  -  x  -  x  -  | x  -  -  -  x  -  x  -  x  x  x  -  -  -  -  -  | .  .  x  -  x  -  x  -  -  -  x  -  x  -  -  -  | x  -  -  -  -  -  .  .  .  .  .  .  .  .  .  ."
-notes     = "-  -  -  -  C4 -  A3 -  C4 -  -  -  D4 -  C4 -  | E4 -  -  -  D4 -  C4 -  D4 C4 A3 -  -  -  -  -  | -  -  A3 -  C4 -  A3 -  -  -  G3 -  F3 -  -  -  | G3 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
-accent    = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | X  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
-slide     = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  S  S  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
-syllables = "-  -  -  -  o  -  wo -  ye -  -  -  la -  la -  | o  -  -  -  e  -  la -  ye -  -  -  -  -  -  -  | -  -  la -  la -  ye -  -  -  e  -  o  -  -  -  | o  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+gate      = ".  .  .  .  x  x  -  x  x  -  x  -  x  -  .  .  | x  -  x  x  -  -  .  .  .  .  .  .  x  x  x  -  | x  -  -  x  -  x  x  -  x  -  x  -  x  -  x  -  | x  -  -  -  -  -  .  .  .  .  .  .  .  .  .  ."
+notes     = "-  -  -  -  A4 A4 -  C5 A4 -  C5 -  A4 -  -  -  | G4 -  A4 G4 -  -  -  -  -  -  -  -  E4 G4 A4 -  | C5 -  -  A4 -  C5 A4 -  G4 -  E4 -  G4 -  D4 -  | E4 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+accent    = ".  .  .  .  .  .  .  X  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | X  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+slide     = ".  .  .  .  .  .  .  S  .  .  .  .  .  .  .  .  | .  .  S  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  S  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+syllables = "-  -  -  -  ye ye -  wo -  -  ye -  e  -  -  -  | o  -  wo -  -  -  -  -  -  -  -  -  da da ye -  | wo -  -  ye -  o  -  -  ye -  e  -  la -  la -  | o  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
 
 [voices.lead.phrases.verse-c]
-gate      = ".  .  .  .  x  -  x  -  x  -  -  -  -  -  x  -  | x  -  x  -  x  -  -  -  x  x  -  -  x  -  -  -  | .  .  x  -  x  -  x  -  x  -  x  -  x  -  -  -  | x  -  -  -  -  -  -  -  .  .  .  .  .  .  .  ."
-notes     = "-  -  -  -  C4 -  D4 -  E4 -  -  -  -  -  D4 -  | C4 -  D4 -  E4 -  -  -  D4 C4 -  -  A3 -  -  -  | -  -  G3 -  A3 -  C4 -  D4 -  C4 -  A3 -  -  -  | C4 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
-accent    = ".  .  .  .  .  .  .  .  X  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
-slide     = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  S  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
-syllables = "-  -  -  -  ye -  ye -  o  -  -  -  -  -  la -  | o  -  la -  ye -  -  -  e  -  -  -  o  -  -  -  | -  -  la -  la -  ye -  o  -  e  -  wo -  -  -  | u  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+gate      = ".  .  .  .  x  -  x  -  x  -  x  -  x  x  -  x  | x  -  -  -  -  -  .  .  .  .  .  .  x  x  x  -  | x  -  x  -  x  -  x  x  -  -  x  -  x  -  x  -  | x  -  -  -  -  -  -  -  .  .  .  .  .  .  .  ."
+notes     = "-  -  -  -  A4 -  C5 -  C5 -  A4 -  C5 D5 -  D5 | C5 -  -  -  -  -  -  -  -  -  -  -  G4 A4 C5 -  | A4 -  G4 -  A4 -  C5 A4 -  -  G4 -  E4 -  G4 -  | C5 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+accent    = ".  .  .  .  .  .  .  .  X  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | X  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | X  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+slide     = ".  .  .  .  .  .  .  .  .  .  .  .  S  .  .  S  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  S  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+syllables = "-  -  -  -  ye -  ye -  wo -  o  -  ye -  -  e  | -  -  -  -  -  -  -  -  -  -  -  -  da da ye -  | wo -  ye -  o  -  ye -  -  -  e  -  la -  la -  | o  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
 
 # The pre-chorus, eight bars in two lines: long notes climbing from A to D,
 # then up to E, holding D (the ninth) into the hook.
@@ -430,25 +433,25 @@ syllables = "-  -  -  -  da -  da -  o  -  -  -  da -  da -  | o  -  -  -  -  - 
 
 # Verse 2: verse 1's lines, sung by the machine.
 [voices.robot.phrases.verse-a]
-gate      = ".  .  .  .  x  -  x  -  -  -  x  -  x  -  x  -  | x  -  -  -  x  x  -  -  x  -  x  -  -  -  -  -  | .  .  x  -  x  -  x  -  -  -  -  -  x  -  x  -  | x  -  -  -  -  -  .  .  .  .  .  .  .  .  .  ."
-notes     = "-  -  -  -  A3 -  C4 -  -  -  A3 -  G3 -  A3 -  | C4 -  -  -  D4 C4 -  -  A3 -  G3 -  -  -  -  -  | -  -  F3 -  A3 -  C4 -  -  -  -  -  A3 -  G3 -  | E3 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
-accent    = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | X  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
-slide     = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  S  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
-syllables = "-  -  -  -  m  -  o  -  -  -  la -  da -  da -  | o  -  -  -  ye -  -  -  e  -  o  -  -  -  -  -  | -  -  la -  la -  ye -  -  -  -  -  o  -  wo -  | o  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+gate      = ".  .  .  .  x  x  -  x  x  -  x  -  x  -  .  .  | x  -  -  -  -  -  .  .  .  .  .  .  x  x  x  -  | x  -  -  x  x  -  x  -  x  -  x  -  x  -  -  x  | x  -  -  -  -  -  .  .  .  .  .  .  .  .  .  ."
+notes     = "-  -  -  -  A4 A4 -  C5 A4 -  G4 -  E4 -  -  -  | G4 -  -  -  -  -  -  -  -  -  -  -  D4 E4 G4 -  | A4 -  -  C5 A4 -  G4 -  E4 -  G4 -  C5 -  -  A4 | G4 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+accent    = ".  .  .  .  .  .  .  X  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | X  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+slide     = ".  .  .  .  .  .  .  S  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  S  .  .  .  .  .  .  .  .  .  .  .  S  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+syllables = "-  -  -  -  ye ye -  wo -  -  ye -  e  -  -  -  | o  -  -  -  -  -  -  -  -  -  -  -  da da ye -  | wo -  -  ye -  -  ye -  e  -  la -  la -  -  ye | -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
 
 [voices.robot.phrases.verse-b]
-gate      = ".  .  .  .  x  -  x  -  x  -  -  -  x  -  x  -  | x  -  -  -  x  -  x  -  x  x  x  -  -  -  -  -  | .  .  x  -  x  -  x  -  -  -  x  -  x  -  -  -  | x  -  -  -  -  -  .  .  .  .  .  .  .  .  .  ."
-notes     = "-  -  -  -  C4 -  A3 -  C4 -  -  -  D4 -  C4 -  | E4 -  -  -  D4 -  C4 -  D4 C4 A3 -  -  -  -  -  | -  -  A3 -  C4 -  A3 -  -  -  G3 -  F3 -  -  -  | G3 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
-accent    = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | X  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
-slide     = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  S  S  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
-syllables = "-  -  -  -  o  -  wo -  ye -  -  -  la -  la -  | o  -  -  -  e  -  la -  ye -  -  -  -  -  -  -  | -  -  la -  la -  ye -  -  -  e  -  o  -  -  -  | o  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+gate      = ".  .  .  .  x  x  -  x  x  -  x  -  x  -  .  .  | x  -  x  x  -  -  .  .  .  .  .  .  x  x  x  -  | x  -  -  x  -  x  x  -  x  -  x  -  x  -  x  -  | x  -  -  -  -  -  .  .  .  .  .  .  .  .  .  ."
+notes     = "-  -  -  -  A4 A4 -  C5 A4 -  C5 -  A4 -  -  -  | G4 -  A4 G4 -  -  -  -  -  -  -  -  E4 G4 A4 -  | C5 -  -  A4 -  C5 A4 -  G4 -  E4 -  G4 -  D4 -  | E4 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+accent    = ".  .  .  .  .  .  .  X  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | X  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+slide     = ".  .  .  .  .  .  .  S  .  .  .  .  .  .  .  .  | .  .  S  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  S  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+syllables = "-  -  -  -  ye ye -  wo -  -  ye -  e  -  -  -  | o  -  wo -  -  -  -  -  -  -  -  -  da da ye -  | wo -  -  ye -  o  -  -  ye -  e  -  la -  la -  | o  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
 
 [voices.robot.phrases.verse-c]
-gate      = ".  .  .  .  x  -  x  -  x  -  -  -  -  -  x  -  | x  -  x  -  x  -  -  -  x  x  -  -  x  -  -  -  | .  .  x  -  x  -  x  -  x  -  x  -  x  -  -  -  | x  -  -  -  -  -  -  -  .  .  .  .  .  .  .  ."
-notes     = "-  -  -  -  C4 -  D4 -  E4 -  -  -  -  -  D4 -  | C4 -  D4 -  E4 -  -  -  D4 C4 -  -  A3 -  -  -  | -  -  G3 -  A3 -  C4 -  D4 -  C4 -  A3 -  -  -  | C4 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
-accent    = ".  .  .  .  .  .  .  .  X  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
-slide     = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  S  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
-syllables = "-  -  -  -  ye -  ye -  o  -  -  -  -  -  la -  | o  -  la -  ye -  -  -  e  -  -  -  o  -  -  -  | -  -  la -  la -  ye -  o  -  e  -  wo -  -  -  | u  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+gate      = ".  .  .  .  x  -  x  -  x  -  x  -  x  x  -  x  | x  -  -  -  -  -  .  .  .  .  .  .  x  x  x  -  | x  -  x  -  x  -  x  x  -  -  x  -  x  -  x  -  | x  -  -  -  -  -  -  -  .  .  .  .  .  .  .  ."
+notes     = "-  -  -  -  A4 -  C5 -  C5 -  A4 -  C5 D5 -  D5 | C5 -  -  -  -  -  -  -  -  -  -  -  G4 A4 C5 -  | A4 -  G4 -  A4 -  C5 A4 -  -  G4 -  E4 -  G4 -  | C5 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+accent    = ".  .  .  .  .  .  .  .  X  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | X  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | X  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+slide     = ".  .  .  .  .  .  .  .  .  .  .  .  S  .  .  S  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  S  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+syllables = "-  -  -  -  ye -  ye -  wo -  o  -  ye -  -  e  | -  -  -  -  -  -  -  -  -  -  -  -  da da ye -  | wo -  ye -  o  -  ye -  -  -  e  -  la -  la -  | o  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
 
 # At the peak, the machine sings the hook's first two bars a third below the
 # lead.
@@ -475,7 +478,7 @@ syllables = "e  -  -  -  -  -  -  -  o  -  -  -  o  -  -  -  | -  -  -  -  -  - 
 # The group: three voices in parallel major triads (F, G and C), answering
 # the lead and holding chords under its ad-libs.
 [voices.choir]
-sound = { synth = "mph_singer", why = "The lead's formant voice three times over, softer and breathier, each part with its own vibrato and waver." }
+sound = { synth = "mph_singer", why = "A formant voice three times over, softer and breathier, each part with its own vibrato and waver." }
 chord = [0, 4, 7]
 params = { attack = 0.12, release = 0.35, vibrato = 0.25, breath = 0.08, scoop = 0.3 }
 gain_db = -3
@@ -513,6 +516,42 @@ syllables = "-  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | -  -  o  -  wo - 
 gate      = "x  -  -  -  -  -  -  -  -  -  -  -  -  -  .  .  | x  -  -  -  -  -  -  -  -  -  -  -  -  -  .  .  | x  -  -  -  -  -  -  -  -  -  -  -  -  -  .  .  | x  -  -  -  -  -  -  -  -  -  -  -  -  -  .  ."
 notes     = "F3 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | G3 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | F3 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | C4 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
 syllables = "u  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | u  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | u  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | u  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+
+# The group's shouts (machine soul, Dean's choice on 2026-11-22: gospel group
+# shouts, owning that they are machines): the vocoder in major triads, short,
+# breathy and scooping up into each shout. Ho, hey! on each drop, as the
+# horn's fall lands it, and hey, hey! and ho, ho, hey! in the gaps of each
+# verse line, answering the lead. Each shout is C or G major, on the C bars.
+[voices.shouts]
+sound = { synth = "mph_vocoder", why = "Gospel group shouts from machines: the vocoder lead's 24 bands in a major triad, short and breathy, scooping up into each shout." }
+chord = [0, 4, 7]
+params = { attack = 0.004, release = 0.09, scoop = 0.6, breath = 0.14, hiss = 0.2, detune = 14, width = 0.9 }
+gain_db = 2
+cues = [
+  [36, "drop"], [40, "answer"], [44, "answer"], [48, "answer"], [112, "drop"],
+  [130, "answer"], [134, "answer"], [138, "answer"], [196, "drop"],
+]
+
+[voices.shouts.mix]
+highpass = 180
+level = -2
+send = { echo = -inf, hall = -12 }
+
+# Each drop's shout thrown into the echo with the horn's fall.
+[voices.shouts.automate]
+echo = [[1, -inf], [37, -inf], [37, -6], [37.25, -6], [37.25, -inf], [113, -inf], [113, -6], [113.25, -6], [113.25, -inf], [197, -inf], [197, -6], [197.25, -6], [197.25, -inf]]
+
+[voices.shouts.phrases.drop]
+gate      = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  x  -  | x  -  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+notes     = "-  -  -  -  -  -  -  -  -  -  -  -  -  -  C4 -  | C4 -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+accent    = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | X  .  .  .  .  .  .  .  .  .  .  .  .  .  .  ."
+syllables = "-  -  -  -  -  -  -  -  -  -  -  -  -  -  ho -  | he -  -  -  -  -  -  -  -  -  -  -  -  -  -  -"
+
+[voices.shouts.phrases.answer]
+gate      = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  x  -  x  -  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  x  -  x  -  x  -  .  ."
+notes     = "-  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | -  -  -  -  -  -  -  -  C4 -  C4 -  -  -  -  -  | -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | -  -  -  -  -  -  -  -  G3 -  G3 -  C4 -  -  -"
+accent    = ".  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  X  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  | .  .  .  .  .  .  .  .  .  .  .  .  X  .  .  ."
+syllables = "-  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | -  -  -  -  -  -  -  -  he -  he -  -  -  -  -  | -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  | -  -  -  -  -  -  -  -  ho -  ho -  he -  -  -"
 
 # The train's horn, synthesised: five chimes voiced as a real horn's are (the
 # Nathan K5LA's D#4 F#4 G#4 B4 D#5, a B major sixth), a semitone up and an

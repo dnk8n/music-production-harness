@@ -220,6 +220,30 @@ def test_the_whole_mix_must_change_enough_to_hear() -> None:
 
 
 @pytest.mark.req("REQ-BEN-12")
+@pytest.mark.req("REQ-BEN-19")
+def test_vocals_the_sidechain_leaves_alone_ride_on_top_of_the_pump() -> None:
+    sung = """
+[voices.lead]
+notes     = "E4 - - - - - - - G4 - - - - - - -"
+gate      = "x  - - - - - - - x  - - - - - - ."
+syllables = "o  - - - - - - - ye - - - - - - -"
+sound = { synth = "mph_singer" }
+
+[voices.choir]
+notes     = "C4 - - - - - - - - - - - - - - -"
+gate      = "x  - - - - - - - - - - - - - - ."
+syllables = "a  - - - - - - - - - - - - - - -"
+sound = { synth = "mph_singer" }
+"""
+    text = DUCKED.replace('targets = ["pad"]', 'targets = ["pad", "choir"]') + sung
+    # The lead sings and isn't ducked; the choir sings but is ducked, so it pumps.
+    assert render.riding(score.load_text(text)) == {"lead"}
+    assert render.riding(score.load_text(DUCKED)) == set()
+    # The free remix's voices sing their lines as phrases; its horn doesn't sing.
+    assert render.riding(score.load("BM-LTFS-05")) == {"lead", "robot", "choir", "shouts"}
+
+
+@pytest.mark.req("REQ-BEN-12")
 def test_mix_levels_are_compared_in_windows_after_each_hit_weighted_as_loudness() -> None:
     t = np.arange(RATE) / RATE
     dry = (0.3 * np.sin(2 * np.pi * 220 * t))[:, None].repeat(2, axis=1)

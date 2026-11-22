@@ -149,6 +149,19 @@ their target, until they were made louder at the source (REQ-BEN-09). On
 the way, measuring a whole track's hi-hat chokes went from 17 minutes to
 under a second, so the whole track renders in 5 minutes in a cloud copy.
 
+## 2026-11-22: machine soul
+
+Dean rated the free remix's first block 1 star: the horn's chord was
+dissonant and "too video game like", and the voices "lethargic and low
+energy". He asked to get that block right in both engines first, chose
+machine soul for the vocals (a talk box and a vocoder with gospel group
+shouts, owning that they are machines), asked for the Renoise take to be
+built as a Renoise programmer would, without SuperCollider, and for a way
+to fit a synth to a sound he gives it, running on his Mac. The horn was
+rebuilt as an air horn sounds, in the key, and the vocals as machine soul.
+On the way, the whole-mix pump check learned to leave out synth vocals as
+it left out a remix's recorded ones (REQ-BEN-12): sung lines ride on top.
+
 ## Outside the repo
 
 Some things are kept on Dean's Mac, on purpose:

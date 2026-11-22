@@ -206,6 +206,11 @@ class Voice:
         return bool(self.notes or self.phrases)
 
     @property
+    def sings(self) -> bool:
+        """True when its notes carry syllables (REQ-BEN-19): it's a vocal line."""
+        return bool(self.syllables) or any(p.syllables for p in self.phrases)
+
+    @property
     def steps(self) -> int:
         """Grid steps in a bar: 16 sixteenths, or 12 triplets (REQ-BEN-13)."""
         return len(bars_of(self.grid)[0]) if self.grid else STEPS

@@ -23,6 +23,7 @@ RELEASE_DEFAULT_S = {  # the `release` control
     "mph_strings": 1.1,
     "mph_singer": 0.18,
     "mph_vocoder": 0.15,
+    "mph_talkbox": 0.12,
     "mph_horn": 0.6,
 }
 GLIDE_DEFAULT_S = {  # the `glide` control
@@ -31,6 +32,7 @@ GLIDE_DEFAULT_S = {  # the `glide` control
     "mph_organ": 0.0,
     "mph_singer": 0.07,
     "mph_vocoder": 0.04,
+    "mph_talkbox": 0.06,
 }
 OTHER_RELEASE_S = 0.1  # a synth not listed here
 

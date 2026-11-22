@@ -54,8 +54,10 @@ uv run mph bench serve                    # listen, and rate each take
 On a Mac without Renoise, or anywhere with `--engine supercollider`, each
 benchmark renders in SuperCollider; with Renoise set up (`mph renoise
 install`), the `renoise` take renders too, as a song you can open and
-change. In a Linux cloud copy each block took about 70 to 80 seconds to
-render in SuperCollider (2026-11-21).
+change. In a Linux cloud copy each block took 70 to 115 seconds to render
+in SuperCollider, and the whole track about 5 minutes; on Dean's Mac the
+whole track's Renoise take took under 13 minutes (2026-11-21). Every take
+rendered so far passes every measurement.
 
 ## What Dean thought
 

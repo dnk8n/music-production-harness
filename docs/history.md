@@ -145,7 +145,9 @@ syllable per note (REQ-BEN-19). Two things learned on the way, now in the
 spec: a legato note can't be timed against its template, because the note
 before still sounds over its start (REQ-BEN-01); and the first singing
 synths were so quiet that level matching held them at +12 dB, 17 dB under
-their target, until they were made louder at the source (REQ-BEN-09).
+their target, until they were made louder at the source (REQ-BEN-09). On
+the way, measuring a whole track's hi-hat chokes went from 17 minutes to
+under a second, so the whole track renders in 5 minutes in a cloud copy.
 
 ## Outside the repo
 

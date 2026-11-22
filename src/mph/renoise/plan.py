@@ -87,6 +87,10 @@ class Synth:
     families: tuple[Family, ...]
     release_s: float = 0.0  # the synth's release after a note-off
     glide_s: float = 0.0  # how long a slide takes; 0 is at once
+    # Renoise clips a float sample above full scale when it loads it, so samples
+    # that peak above 1.0 are lowered by this to peak at 1.0, and it goes back on
+    # their volume.
+    boost: float = 1.0
 
     def family(self, event: Event) -> int:
         """The instrument a note plays: the one for its syllable and accent, or
@@ -326,7 +330,7 @@ def _track_plan(score: Score, events: Sequence[Event], track: Track) -> dict[str
     found: dict[str, Data] = {
         "name": track.name,
         "sample": track.sample,
-        "volume": round(track.gain, 6),
+        "volume": round(track.gain * (track.synth.boost if track.synth else 1.0), 6),
         "transpose": transpose,
         "fine_tune": fine_tune,
         "slices": list(track.slices),

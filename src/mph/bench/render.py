@@ -113,6 +113,7 @@ CLIP_SEARCH_S = 0.01  # how far either way a cue is looked for
 CLIP_PART = 0.25  # the loudest window in a cue's first and last quarter is checked
 SAMPLE_GAP_S = 0.25  # silence between a synth's samples in the render that makes them
 SAMPLE_MARGIN_S = 0.01  # kept after each sample's release (REQ-REN-09)
+FULL_SCALE = 1.0  # Renoise clips a float sample above this when it loads it (REQ-REN-09)
 RENOISE_DEVICES = "renoise-devices.json"  # what the bridge tool found of Renoise's devices
 
 
@@ -651,24 +652,40 @@ def synth_samples(runner: Runner, tools: sc.Tools, setup: Setup) -> dict[str, so
         audio.read(sc.render(runner, tools, solo, notes, out))[0], [v.name for v in score.voices]
     )
     out.unlink(missing_ok=True)
-    synths = {}
-    for name, found in windows.items():
-        zones: dict[tuple[str, bool], list[song_plan.Zone]] = {}
-        for (pitch, accent, syllable), at, span in found:
-            first = round(at * plan.rate)
-            label = "".join((f"-{syllable}" if syllable else "", "-accent" if accent else ""))
-            path = setup.folder / "sounds" / name / f"{pitch}{label}.wav"
-            audio.write_float(path, stems[name][first : first + round(span * plan.rate)], plan.rate)
-            zone = song_plan.Zone(str(path), song_plan.renoise_note(pitch))
-            zones.setdefault((syllable, accent), []).append(zone)
-        order = sung[name]
-        families = tuple(
-            song_plan.Family(tuple(zones[key]), key[1], key[0])
-            for key in sorted(zones, key=lambda k: (order.index(k[0]), k[1]))
-        )
-        release, glide = timing[name]
-        synths[name] = song_plan.Synth(families, release, glide)
-    return synths
+    return {
+        name: _sampled(setup, name, found, stems[name], order=sung[name], timing=timing[name])
+        for name, found in windows.items()
+    }
+
+
+def _sampled(
+    setup: Setup,
+    name: str,
+    found: Sequence[tuple[sampling.Sound, float, float]],
+    stem: audio.Audio,
+    *,
+    order: Sequence[str],
+    timing: tuple[float, float],
+) -> song_plan.Synth:
+    """One voice's samples, cut from its render into ``sounds/<voice>/``.
+    Renoise clips a float sample above full scale when it loads it, so when
+    any of them peaks above it they are all lowered by the same factor to
+    peak at full scale, and the factor goes back on their volume (REQ-REN-09)."""
+    rate = setup.plan.rate
+    cuts = [stem[round(at * rate) : round(at * rate) + round(span * rate)] for _, at, span in found]
+    boost = max([FULL_SCALE, *(float(np.abs(cut).max(initial=0.0)) for cut in cuts)]) / FULL_SCALE
+    zones: dict[tuple[str, bool], list[song_plan.Zone]] = {}
+    for ((pitch, accent, syllable), _, _), cut in zip(found, cuts, strict=True):
+        label = "".join((f"-{syllable}" if syllable else "", "-accent" if accent else ""))
+        path = setup.folder / "sounds" / name / f"{pitch}{label}.wav"
+        audio.write_float(path, cut / boost, rate)
+        zone = song_plan.Zone(str(path), song_plan.renoise_note(pitch))
+        zones.setdefault((syllable, accent), []).append(zone)
+    families = tuple(
+        song_plan.Family(tuple(zones[key]), key[1], key[0])
+        for key in sorted(zones, key=lambda k: (order.index(k[0]), k[1]))
+    )
+    return song_plan.Synth(families, *timing, boost=boost)
 
 
 def cut_clips(setup: Setup) -> dict[str, list[Path]]:

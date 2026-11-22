@@ -35,8 +35,11 @@ FULL = 0x80
 
 
 def _played(path: str, track: dict[str, Any], rate: int) -> tuple[np.ndarray, float]:
-    """A sample as the song plays it: stereo, at the render rate, at its gain."""
+    """A sample as the song plays it: stereo, at the render rate, at its gain.
+    A float sample is clipped at full scale as it loads, as Renoise 3.5.4
+    clips one (REQ-REN-09, measured 2026-11-22)."""
     data, native = soundfile.read(path, dtype="float32", always_2d=True)
+    data = np.clip(data, -1.0, 1.0)
     if data.shape[1] == 1:
         data = np.repeat(data, 2, axis=1)
     pitch = 2 ** ((track["transpose"] + track["fine_tune"] / 128) / 12)

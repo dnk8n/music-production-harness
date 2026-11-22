@@ -8,14 +8,18 @@ REQ-TRK-08 without real apps. What the lead sings is test_singing.py's.
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Sequence
 from pathlib import Path
 
+import numpy as np
 import pytest
 
-from mph.bench import render, score
+from mph.bench import audio, render, score
 from mph.bench.score import Play, Section
+from mph.proc import Result
 from mph.renoise import bridge
 from tests.bench.fake_renoise import FakeRenoise
+from tests.bench.fake_sc import fake_scsynth
 from tests.bench.test_render import cfg_for, conn, renoise_ready, runner
 from tests.bench.test_tracks import own, rounded, shifted
 
@@ -332,6 +336,42 @@ def test_renoise_plays_the_phrases_from_an_instrument_per_syllable(
         "lead m",
         "lead u",
     ]
+
+
+HOT = 8.0  # the talk box's samples peaked up to 7.4 times full scale
+
+
+def _hot_scsynth(argv: Sequence[str]) -> Result:
+    """scsynth for a synth that renders far past full scale, as the talk box does."""
+    done = fake_scsynth(argv)
+    if "-N" in argv:
+        out = Path(argv[argv.index("-N") + 3])
+        data, rate = audio.read(out)
+        audio.write_float(out, data * HOT, rate)
+    return done
+
+
+@pytest.mark.req("REQ-REN-09")
+def test_renoise_lowers_hot_samples_together_and_gives_the_gain_back(
+    conn: sqlite3.Connection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scores(monkeypatch)
+    cfg = cfg_for(tmp_path)
+    home = renoise_ready(tmp_path, cfg)
+    fake = FakeRenoise(bridge.jobs_dir(cfg))
+    hot = runner(scsynth=_hot_scsynth)
+    outcome = render.run("BM-PH", cfg, hot, conn, home=home, clock=fake.clock())
+    # Clipped as they loaded, the accents would lose most of their lift (BM-LTFS-01).
+    assert _failures(outcome.report) == []
+    lead = next(t for t in fake.performed[0]["songs"][0]["tracks"] if t["name"] == "lead")
+    files = [z["file"] for z in lead["zones"]] + [
+        z["file"] for m in lead["more"] for z in m["zones"]
+    ]
+    peaks = [float(np.abs(audio.read(Path(f))[0]).max()) for f in files]
+    assert max(peaks) == pytest.approx(1.0)  # the hottest sample at full scale...
+    assert min(peaks) < 0.9  # ...and the others lowered with it, not each to full scale
+    sounds = sorted((outcome.folder / "sounds" / "lead").glob("*.wav"))
+    assert sorted(Path(f) for f in files) == sounds
 
 
 WITH_BASS = (

@@ -294,6 +294,19 @@ def test_accent_instruments_come_after_every_track() -> None:
     assert "mix" not in song  # no mix and no sidechain: no mixer to build
 
 
+@pytest.mark.req("REQ-REN-09")
+def test_samples_lowered_to_full_scale_get_their_gain_back_on_their_volume() -> None:
+    loaded = score.load_text(ACID + LEAD)
+    zones = (song_plan.Family((song_plan.Zone("a.wav", 24),)),)
+    tracks = [
+        song_plan.Track("bass", "", 0.25, synth=song_plan.Synth(zones, boost=7.5)),
+        song_plan.Track("lead", "", 0.25, synth=song_plan.Synth(zones)),
+    ]
+    song = song_plan.song(loaded, score.events(loaded), tracks, rate=48000, save="x", renders=[])
+    found = cast("list[dict[str, Any]]", song["tracks"])
+    assert [t["volume"] for t in found] == [1.875, 0.25]  # 0.25 x 7.5, and 0.25 as it was
+
+
 @pytest.mark.lua
 @pytest.mark.req("REQ-REN-01")
 def test_the_tool_adds_tracks_before_the_master(tmp_path: Path) -> None:
